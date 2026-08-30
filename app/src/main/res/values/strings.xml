@@ -1,0 +1,371 @@
+<resources>
+    <string name="app_name">Photo Organizer</string>
+
+    <!-- Generic -->
+    <string name="dialog_ok">OK</string>
+    <string name="dialog_cancel">Cancel</string>
+    <string name="dialog_confirm">Confirm</string>
+    <string name="back_cd">Back</string>
+    <string name="close_cd">Close</string>
+    <string name="media_type_photo">Photo</string>
+    <string name="media_type_video">Video</string>
+    <string name="media_type_screenshot">Screenshot</string>
+    <string name="media_type_raw">RAW</string>
+    <string name="media_type_gif">GIF</string>
+    <string name="media_type_live_photo">Live Photo</string>
+    <string name="media_preview_close_cd">Close preview</string>
+    <string name="media_tile_cd">%1$s, %2$s, %3$s</string>
+
+    <!-- Bottom navigation -->
+    <string name="nav_dashboard">Home</string>
+    <string name="nav_organize">Organize</string>
+    <string name="nav_tools">Tools</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Dashboard -->
+    <string name="dashboard_title">Dashboard</string>
+    <string name="dashboard_refresh_cd">Refresh scan</string>
+    <string name="pull_refresh_pull">Pull down to refresh</string>
+    <string name="pull_refresh_release">Release to refresh</string>
+    <string name="pull_refresh_refreshing">Refreshing</string>
+    <string name="pull_refresh_done">Refreshed</string>
+    <string name="hero_title">Local library</string>
+    <string name="hero_subtitle">%1$s · scanned at %2$s</string>
+    <string name="permission_card_title">Connect your photo library</string>
+    <string name="permission_card_summary">Allow photo and video access to show counts, space and screenshots. Original files never leave the device.</string>
+    <string name="permission_request_action">Grant access and scan</string>
+    <string name="permission_pre_info_title">Before scanning</string>
+    <string name="permission_pre_info_1">Permission scope is limited to the media library</string>
+    <string name="permission_pre_info_2">Originals stay on device</string>
+    <string name="permission_limited_title">Limited media access</string>
+    <string name="permission_limited_summary">Photo or video access is partial; counts reflect only available items.</string>
+    <string name="scanning_title">Scanning media library</string>
+    <string name="scanning_summary">First scan reads file names, sizes, types and capture dates, all on device.</string>
+    <string name="scanning_progress_label">Building local index</string>
+    <string name="error_title">Scan did not complete</string>
+    <string name="error_retry">Retry scan</string>
+    <string name="error_delete_launch_failed">Could not start system delete</string>
+    <string name="error_scan_failed">Media scan failed</string>
+    <string name="section_space_overview">Space overview</string>
+    <string name="section_space_subtitle">Live index</string>
+    <string name="metric_photos">Photos</string>
+    <string name="metric_videos">Videos</string>
+    <string name="metric_screenshots">Screenshots</string>
+    <string name="metric_folders">Folders</string>
+    <string name="metric_folders_value">sources</string>
+    <string name="section_review_progress">Review progress</string>
+    <string name="progress_unreviewed">%1$s un-reviewed</string>
+    <string name="progress_start">Start</string>
+    <string name="progress_total">%1$s items total</string>
+    <string name="progress_reviewed">%1$s already reviewed</string>
+    <string name="progress_ring_label">Reviewed</string>
+    <string name="progress_start_summary">Continue with smart, targeted or manual review</string>
+    <string name="next_steps">Next steps</string>
+    <string name="next_duplicates">Duplicates and similar photos</string>
+    <plurals name="dashboard_duplicate_summary">
+        <item quantity="one">%1$d group · %2$s reclaimable</item>
+        <item quantity="other">%1$d groups · %2$s reclaimable</item>
+    </plurals>
+    <string name="dashboard_duplicate_pending">Detection has not run yet</string>
+    <string name="next_safety">Safety check</string>
+    <string name="dashboard_safety_normal">Permissions, index and original-file guard are healthy</string>
+
+    <!-- Organize -->
+    <string name="organize_title">Organize</string>
+    <string name="organize_subtitle">Pick a review mode</string>
+    <string name="organize_mode_smart">Smart mode</string>
+    <string name="organize_mode_smart_summary">Pull duplicates, screenshots and large files first</string>
+    <string name="organize_mode_targeted">Targeted mode</string>
+    <string name="organize_mode_targeted_summary">Filter by album, date, type and size</string>
+    <string name="organize_mode_manual">Manual mode</string>
+    <string name="organize_mode_manual_summary">Gallery grid with a dedicated batch-selection mode</string>
+    <string name="manual_mode_title">Manual mode</string>
+    <string name="organize_marked_title">Marked content</string>
+    <string name="organize_marked_trash">Discarded</string>
+    <string name="organize_marked_kept">Kept</string>
+    <plurals name="organize_marked_count">
+        <item quantity="one">%1$d item · view and restore</item>
+        <item quantity="other">%1$d items · view and restore</item>
+    </plurals>
+
+    <!-- Review (swipe) -->
+    <string name="review_progress">%1$d / %2$d</string>
+    <string name="review_action_keep">Keep</string>
+    <string name="review_action_trash">Trash</string>
+    <string name="review_action_album">Album</string>
+    <string name="review_action_preview">Open preview</string>
+    <string name="review_action_previous">Previous item</string>
+    <string name="review_action_next">Next item</string>
+    <string name="empty_review_title">This batch is done</string>
+    <string name="empty_review_summary">Return to the organize page for the next task</string>
+    <string name="empty_review_action">Back</string>
+
+    <!-- Manual grid -->
+    <string name="manual_sort_by_date">By date</string>
+    <string name="manual_sort_by_size">By size</string>
+    <plurals name="manual_selected_count">
+        <item quantity="one">%1$d selected</item>
+        <item quantity="other">%1$d selected</item>
+    </plurals>
+    <string name="action_select_all">Select all</string>
+    <string name="manual_keep">Keep</string>
+    <string name="manual_trash">Discard</string>
+    <string name="manual_clear">Clear marks</string>
+    <string name="manual_unknown_date">Date unknown</string>
+    <string name="manual_select_mode_cd">Select media</string>
+    <string name="manual_search_cd">Search by file name</string>
+    <string name="manual_search_hint">Search file names</string>
+    <string name="manual_search_empty_title">No matches</string>
+    <string name="manual_search_empty_summary">No file name contains that text. Try a shorter keyword.</string>
+    <string name="manual_search_clear">Clear search</string>
+    <string name="marked_kept_title">Kept</string>
+    <string name="marked_trash_title">Discarded</string>
+    <string name="marked_empty_title">Nothing here yet</string>
+    <string name="marked_empty_summary">Items marked during review will appear here.</string>
+    <string name="marked_restore">Restore</string>
+    <string name="marked_delete_menu_cd">More options</string>
+    <string name="marked_delete_all_action">Delete all discarded items</string>
+    <string name="marked_delete_selected_action">Delete selected</string>
+
+    <!-- Targeted filter sheet -->
+    <string name="targeted_sheet_title">Review filters</string>
+    <string name="targeted_sheet_summary">Pick album, date, type and size, then start.</string>
+    <string name="filter_label_album">Album</string>
+    <string name="filter_label_type">Type</string>
+    <string name="filter_value_all">All</string>
+    <string name="filter_value_photos">Photos only</string>
+    <string name="filter_value_videos">Videos only</string>
+    <string name="filter_value_screenshots">Screenshots only</string>
+    <string name="filter_value_live_photos">Live Photos only</string>
+    <string name="filter_apply">Apply</string>
+    <string name="filter_reset">Reset</string>
+    <string name="filter_start_date">Start date</string>
+    <string name="filter_end_date">End date</string>
+    <string name="filter_not_set">Any</string>
+    <string name="filter_clear_value">Clear this filter</string>
+    <plurals name="filter_album_selected_count">
+        <item quantity="one">%1$d album selected</item>
+        <item quantity="other">%1$d albums selected</item>
+    </plurals>
+    <string name="filter_album_picker_title">Choose albums</string>
+    <string name="filter_album_empty">No albums are currently available</string>
+    <string name="filter_minimum_size">File size</string>
+    <string name="filter_minimum_size_hint">Only show files larger than this</string>
+
+    <!-- Dialogs -->
+    <string name="discard_title">Confirm trash</string>
+    <plurals name="discard_summary">
+        <item quantity="one">Will request system delete for %1$d item (%2$s). Cancelling the system dialog keeps every file.</item>
+        <item quantity="other">Will request system delete for %1$d items (%2$s). Cancelling the system dialog keeps every file.</item>
+    </plurals>
+    <string name="discard_action_continue">Confirm delete</string>
+    <string name="album_dialog_title">Choose target album</string>
+    <string name="album_dialog_summary">Logical album · originals stay put</string>
+    <string name="album_new">New album</string>
+    <string name="album_name_hint">Album name</string>
+    <string name="default_album_name">Current photo</string>
+
+    <!-- Tools -->
+    <string name="tools_title">Tools</string>
+    <string name="tools_analysis_running">Analyzing local media…</string>
+    <string name="tools_duplicate_title">Duplicates and similar photos</string>
+    <string name="duplicate_empty">No duplicate groups detected.</string>
+    <plurals name="tools_summary_duplicate">
+        <item quantity="one">%1$d group · %2$s reclaimable</item>
+        <item quantity="other">%1$d groups · %2$s reclaimable</item>
+    </plurals>
+    <string name="tools_screenshots_title">Screenshots</string>
+    <string name="screenshot_empty">No screenshots in this index.</string>
+    <plurals name="tools_summary_screenshots">
+        <item quantity="one">%1$d item · %2$s</item>
+        <item quantity="other">%1$d items · %2$s</item>
+    </plurals>
+    <string name="tools_largest_title">Largest files</string>
+    <string name="largest_empty">No files above %1$s.</string>
+    <plurals name="tools_summary_largest">
+        <item quantity="one">%1$d item · %2$s</item>
+        <item quantity="other">%1$d items · %2$s</item>
+    </plurals>
+    <string name="tools_largest_threshold_title">Large file threshold</string>
+    <string name="tools_largest_threshold_summary">Only files at or above %1$s are listed</string>
+    <string name="tools_threshold_option">Above %1$s</string>
+    <string name="section_tools_media">Media processing</string>
+    <string name="section_tools_cleanup">Cleanup analysis</string>
+    <string name="tools_duplicate_hint">Marks are applied here; deletion still happens from Discarded with the system dialog.</string>
+    <plurals name="tools_duplicate_group_detail">
+        <item quantity="one">%1$d copy · %2$s reclaimable</item>
+        <item quantity="other">%1$d copies · %2$s reclaimable</item>
+    </plurals>
+    <string name="tools_duplicate_keep_one">Keep one</string>
+    <string name="tools_open_group">View group</string>
+    <string name="tools_reclaimable_title">Reclaimable space</string>
+    <string name="tools_reclaimable_summary">Upper bound across duplicates, screenshots and large files; overlaps are counted once per category.</string>
+    <string name="tools_reclaimable_none">Nothing to clean up right now.</string>
+    <string name="tools_reclaimable_breakdown">Duplicates %1$s · Screenshots %2$s · Large files %3$s</string>
+    <string name="tools_duplicate_cleanup_menu_cd">Bulk deduplicate</string>
+    <string name="tools_duplicate_strategy_largest">Keep the largest copy</string>
+    <string name="tools_duplicate_strategy_newest">Keep the newest copy</string>
+    <string name="tools_duplicate_strategy_oldest">Keep the oldest copy</string>
+    <string name="tools_duplicate_strategy_largest_summary">Highest quality wins</string>
+    <string name="tools_duplicate_strategy_newest_summary">Most recent capture date wins</string>
+    <string name="tools_duplicate_strategy_oldest_summary">Original capture date wins</string>
+    <plurals name="tools_duplicate_cleanup_done">
+        <item quantity="one">%1$d copy marked as discarded</item>
+        <item quantity="other">%1$d copies marked as discarded</item>
+    </plurals>
+    <string name="manual_mark_all_trash">Discard everything here</string>
+    <string name="manual_clear_all_marks">Clear all marks in this list</string>
+    <string name="media_tools_engine_ready">On-device engine ready</string>
+    <string name="media_tool_output_format">Output format</string>
+    <string name="media_tool_resize">Long edge</string>
+    <string name="media_tool_resolution">Resolution</string>
+    <string name="media_tool_tracks">Tracks</string>
+    <string name="media_tool_keep_original">Original</string>
+    <string name="media_tool_track_both">Video + audio</string>
+    <string name="media_tool_track_video">Mute audio</string>
+    <string name="media_tool_track_audio">Audio only</string>
+    <string name="media_tool_extract_audio_title">Audio extraction</string>
+    <string name="media_tool_extract_audio_action">Choose video to extract audio</string>
+    <string name="media_tool_saved_detail">%1$s to %2$s · %3$d%% smaller</string>
+    <string name="media_tool_grew_detail">%1$s to %2$s · the re-encode is larger, keep the original</string>
+    <string name="section_tools_about">About tools</string>
+    <string name="tools_media_title">Media tools</string>
+    <string name="tools_media_summary_ready">Compress photos and videos, extract audio</string>
+    <string name="tools_refresh_cd">Refresh analysis</string>
+    <string name="tools_about_summary">Analysis and processing both run on device. Results are saved as new files in Photo Organizer folders, and originals are never modified.</string>
+
+    <!-- Media tools (FFmpeg) -->
+    <string name="media_tools_title">Media tools</string>
+    <string name="media_tools_intro">Photos are re-encoded by the platform image encoder and videos by the device hardware codecs. Everything runs locally and originals stay untouched.</string>
+    <string name="ffmpeg_status_unavailable">FFmpeg unavailable</string>
+    <string name="media_tool_compress_image_title">Image compression</string>
+    <string name="media_tool_compress_video_title">Video compression</string>
+    <string name="ffmpeg_running">Processing…</string>
+    <string name="ffmpeg_failed">Processing failed</string>
+    <string name="ffmpeg_cancel">Cancel</string>
+    <string name="media_tool_tab_image">Photos</string>
+    <string name="media_tool_tab_video">Videos</string>
+    <string name="section_media_tool_output">Output settings</string>
+    <string name="section_media_tool_source">Pick source files</string>
+    <string name="media_tool_quality">Quality</string>
+    <string name="media_tool_quality_hint">Lower values shrink the file further at the cost of detail.</string>
+    <string name="media_tool_keep_exif">Keep capture info</string>
+    <string name="media_tool_keep_exif_summary">Copy date, camera and GPS tags into the result (JPEG only)</string>
+    <string name="media_tool_bitrate">Target bitrate</string>
+    <string name="media_tool_bitrate_auto">Auto</string>
+    <string name="media_tool_bitrate_value">%1$s Mbps</string>
+    <string name="media_tool_bitrate_hint">Auto measures the source bitrate and picks a clearly lower target.</string>
+    <string name="media_tool_pick_images">Choose photos</string>
+    <string name="media_tool_pick_videos">Choose videos</string>
+    <plurals name="media_tool_pick_summary">
+        <item quantity="one">Up to %1$d item, processed one after another</item>
+        <item quantity="other">Up to %1$d items, processed one after another</item>
+    </plurals>
+    <plurals name="media_tool_extract_audio_summary">
+        <item quantity="one">Up to %1$d video, audio saved as M4A</item>
+        <item quantity="other">Up to %1$d videos, audio saved as M4A</item>
+    </plurals>
+    <string name="media_tool_progress_queue">Item %1$d of %2$d</string>
+    <string name="media_tool_results">Results</string>
+    <plurals name="media_tool_results_total">
+        <item quantity="one">%1$d file · %2$s saved</item>
+        <item quantity="other">%1$d files · %2$s saved</item>
+    </plurals>
+    <plurals name="media_tool_results_total_none">
+        <item quantity="one">%1$d file · no size reduction</item>
+        <item quantity="other">%1$d files · no size reduction</item>
+    </plurals>
+    <string name="media_tool_clear_results">Clear results</string>
+    <plurals name="media_tool_failed_count">
+        <item quantity="one">%1$d item could not be processed</item>
+        <item quantity="other">%1$d items could not be processed</item>
+    </plurals>
+    <string name="media_tool_more_cd">More actions</string>
+    <string name="media_tool_output_folder">Results are saved to %1$s and originals stay untouched.</string>
+    <string name="media_tool_format_jpeg_desc">Widely compatible, best for photos</string>
+    <string name="media_tool_format_webp_desc">Smaller files, slightly less compatible</string>
+    <string name="media_tool_format_png_desc">Lossless, best for screenshots and graphics</string>
+    <string name="media_tool_resize_original_desc">Keep the original pixel size</string>
+    <string name="media_tool_resize_value">Long edge %1$d px</string>
+    <string name="media_tool_resolution_original_desc">Keep the original frame size</string>
+    <string name="media_tool_resolution_1080_desc">Sharp on large screens</string>
+    <string name="media_tool_resolution_720_desc">Balanced size and detail</string>
+    <string name="media_tool_resolution_480_desc">Smallest files, best for sharing</string>
+    <string name="media_tool_track_both_desc">Keep the video and audio tracks</string>
+    <string name="media_tool_track_video_desc">Drop the audio track</string>
+    <string name="media_tool_track_audio_desc">Export the audio track as M4A</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_help_cd">Help</string>
+    <string name="settings_appearance">Appearance</string>
+    <string name="settings_theme_title">Theme</string>
+    <string name="settings_theme_summary">%1$s</string>
+    <string name="settings_theme_auto">Follow system</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_state_safety">State and safety</string>
+    <string name="settings_permission_title">Photo and video permission</string>
+    <string name="settings_permission_value_granted">Media library access granted</string>
+    <string name="settings_permission_value_limited">Limited media access; the index contains only available items</string>
+    <string name="settings_permission_value_needed">Authorization is required before scanning</string>
+    <string name="settings_index_title">Media index</string>
+    <plurals name="settings_indexed_count">
+        <item quantity="one">Indexed %1$d local item</item>
+        <item quantity="other">Indexed %1$d local items</item>
+    </plurals>
+    <string name="settings_index_value_pending">Not scanned yet</string>
+    <string name="index_scope_dialog_title">Index search range</string>
+    <string name="index_scope_all">All albums</string>
+    <string name="index_scope_all_summary">Index every accessible photo and video</string>
+    <string name="index_scope_exclude">Exclude selected albums</string>
+    <string name="index_scope_exclude_summary">Selected albums stay out of the index and review tasks</string>
+    <string name="index_scope_only">Only selected albums</string>
+    <string name="index_scope_only_summary">Ignore other albums and process only this range</string>
+    <string name="index_scope_album_title">Albums</string>
+    <string name="index_scope_summary_all">All albums · %1$s</string>
+    <plurals name="index_scope_summary_exclude">
+        <item quantity="one">%1$d album excluded · %2$s</item>
+        <item quantity="other">%1$d albums excluded · %2$s</item>
+    </plurals>
+    <plurals name="index_scope_summary_only">
+        <item quantity="one">Only %1$d album · %2$s</item>
+        <item quantity="other">Only %1$d albums · %2$s</item>
+    </plurals>
+    <string name="settings_open_app_settings">Open system app settings</string>
+    <string name="settings_organize_behavior">Review behavior</string>
+    <string name="settings_default_sort">Default sort</string>
+    <string name="settings_sort_date">By date</string>
+    <string name="settings_sort_size">By size</string>
+    <string name="settings_organize_animation">Swipe animations</string>
+    <string name="settings_animation_summary">Show directional feedback when swiping</string>
+    <string name="settings_organize_confirm_delete">Confirm before delete</string>
+    <string name="settings_confirm_delete_summary">Show item count and size before opening the required system dialog</string>
+    <string name="settings_compression_defaults">Processing defaults</string>
+    <string name="settings_image_quality">Image quality (JPEG)</string>
+    <string name="settings_image_quality_high">High · 90</string>
+    <string name="settings_image_quality_medium">Balanced · 80</string>
+    <string name="settings_image_quality_low">Small file · 65</string>
+    <string name="settings_video_quality">Video quality</string>
+    <string name="settings_video_quality_high">High · sharper</string>
+    <string name="settings_video_quality_medium">Balanced</string>
+    <string name="settings_video_quality_low">Small file</string>
+    <string name="settings_metadata">Metadata</string>
+    <string name="settings_metadata_keep">Preserve</string>
+    <string name="settings_metadata_strip">Remove</string>
+    <string name="settings_device_capabilities">Device capabilities</string>
+    <string name="settings_api_summary">Android API %1$d</string>
+    <string name="device_capabilities_detail">API %1$d · %2$s · processing engine: platform image encoder + hardware video codecs · bundled FFmpeg: %3$s</string>
+    <string name="settings_about">About</string>
+    <string name="settings_about_version">Photo Organizer</string>
+    <string name="settings_about_summary">App information, privacy, source code and licenses</string>
+    <string name="settings_version_summary">v%1$s</string>
+    <string name="about_title">About</string>
+    <string name="about_application_section">About this app</string>
+    <string name="about_application_description">Photo Organizer indexes photos and videos on this device, then helps you review them with keep and discard marks. Discarded items are only removed after Android displays its system confirmation.</string>
+    <string name="about_privacy_description">Indexing, review marks and media tools stay on the device. Media tools create a new file and do not overwrite the original.</string>
+    <string name="about_open_source_section">Source code and licenses</string>
+    <string name="about_license_note">The listed projects retain their own copyright notices and license terms. FFmpeg availability depends on the device architecture.</string>
+    <string name="help_dialog_title">Photo Organizer help</string>
+    <string name="help_dialog_message">Dashboard shows counts, space and review progress. Organize offers smart, targeted and manual review. Tools finds duplicates, screenshots and large files, and processes images or videos with bundled FFmpeg. Settings controls theme and processing defaults. Everything runs locally.</string>
+</resources>

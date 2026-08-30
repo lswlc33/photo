@@ -1,0 +1,231 @@
+package com.example.photoorganizer.screens.tools
+
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.photoorganizer.R
+import com.example.photoorganizer.media.DuplicateGroup
+import com.example.photoorganizer.media.DuplicateKeepStrategy
+import com.example.photoorganizer.media.ReviewState
+import com.example.photoorganizer.media.ToolAnalyzer
+import com.example.photoorganizer.media.formatBytes
+import com.example.photoorganizer.ui.components.CompactTextButton
+import com.example.photoorganizer.ui.components.EmptyState
+import com.example.photoorganizer.ui.components.MediaThumbnail
+import com.example.photoorganizer.ui.components.OverlaySpinnerChoicePopup
+import com.example.photoorganizer.ui.components.ScreenColumn
+import com.example.photoorganizer.ui.components.SectionTitle
+import com.example.photoorganizer.ui.components.standardCardColors
+import kotlinx.coroutines.launch
+import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.Icon
+import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.SnackbarHost
+import top.yukonga.miuix.kmp.basic.SnackbarHostState
+import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.theme.MiuixTheme
+
+/**
+ * Duplicate groups detected by content hash. Each group offers a one-tap
+ * "keep the largest copy" action that only writes review marks; deletion still
+ * goes through the discarded page and the system confirmation.
+ */
+@Composable
+fun DuplicateGroupsScreen(
+    groups: List<DuplicateGroup>,
+    analysisReady: Boolean,
+    onBack: () -> Unit,
+    onMark: (Long, ReviewState) -> Unit,
+    onOpenGroup: (DuplicateGroup) -> Unit,
+) {
+    var strategy by rememberSaveable { mutableStateOf(DuplicateKeepStrategy.LARGEST) }
+    var showStrategyPopup by remember { mutableStateOf(false) }
+    val snackbarHostState = remember { SnackbarHostState() }
+    val scope = rememberCoroutineScope()
+    val resources = LocalResources.current
+    val announceCleanup: (Int) -> Unit = { discarded ->
+        val message = resources.getQuantityString(
+            R.plurals.tools_duplicate_cleanup_done,
+            discarded,
+            discarded,
+        )
+        scope.launch { snackbarHostState.showSnackbar(message) }
+    }
+    val applyPlan: (List<DuplicateGroup>, DuplicateKeepStrategy) -> Int = { target, keep ->
+        val plan = ToolAnalyzer.planDuplicateCleanup(target, keep)
+        plan.forEach { (id, state) -> onMark(id, state) }
+        plan.count { it.value == ReviewState.TRASH_MARKED }
+    }
+    ScreenColumn(
+        title = stringResource(R.string.tools_duplicate_title),
+        navigationIcon = {
+            IconButton(onClick = onBack) {
+                Icon(
+                    Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.back_cd),
+                )
+            }
+        },
+        actions = {
+            if (analysisReady && groups.isNotEmpty()) {
+                OverlaySpinnerChoicePopup(
+                    show = showStrategyPopup,
+                    options = DuplicateKeepStrategy.entries,
+                    selected = strategy,
+                    title = { option -> stringResource(option.titleRes()) },
+                    summary = { option -> stringResource(option.summaryRes()) },
+                    onSelect = { option ->
+                        strategy = option
+                        announceCleanup(applyPlan(groups, option))
+                    },
+                    onDismissRequest = { showStrategyPopup = false },
+                ) {
+                    IconButton(onClick = { showStrategyPopup = true }) {
+                        Icon(
+                            Icons.Default.MoreVert,
+                            contentDescription = stringResource(R.string.tools_duplicate_cleanup_menu_cd),
+                        )
+                    }
+                }
+            }
+        },
+        contentBottomPadding = 32.dp,
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+    ) {
+        if (!analysisReady) {
+            EmptyState(
+                title = stringResource(R.string.tools_analysis_running),
+                summary = stringResource(R.string.tools_duplicate_hint),
+            )
+            return@ScreenColumn
+        }
+        if (groups.isEmpty()) {
+            EmptyState(
+                title = stringResource(R.string.duplicate_empty),
+                summary = stringResource(R.string.tools_duplicate_hint),
+            )
+            return@ScreenColumn
+        }
+
+        SectionTitle(
+            title = pluralStringResource(
+                R.plurals.tools_summary_duplicate,
+                groups.size,
+                groups.size,
+                formatBytes(groups.sumOf { it.reclaimableBytes(strategy) }),
+            ),
+            subtitle = stringResource(strategy.titleRes()),
+        )
+        Text(
+            text = stringResource(R.string.tools_duplicate_hint),
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+        )
+        Card(modifier = Modifier.fillMaxWidth(), colors = standardCardColors()) {
+            Column(
+                Modifier.padding(vertical = 4.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                groups.forEach { group ->
+                    DuplicateGroupRow(
+                        group = group,
+                        strategy = strategy,
+                        onOpen = { onOpenGroup(group) },
+                        onKeepOne = {
+                            announceCleanup(applyPlan(listOf(group), strategy))
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DuplicateGroupRow(
+    group: DuplicateGroup,
+    strategy: DuplicateKeepStrategy,
+    onOpen: () -> Unit,
+    onKeepOne: () -> Unit,
+) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            group.items.take(4).forEach { item ->
+                MediaThumbnail(
+                    uri = item.uri,
+                    modifier = Modifier
+                        .size(58.dp)
+                        .clip(RoundedCornerShape(6.dp)),
+                    requestSize = 256,
+                )
+            }
+        }
+        Text(
+            text = group.items.firstOrNull()?.displayName.orEmpty(),
+            color = MiuixTheme.colorScheme.onSurface,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+        )
+        Text(
+            text = pluralStringResource(
+                R.plurals.tools_duplicate_group_detail,
+                group.items.size,
+                group.items.size,
+                formatBytes(group.reclaimableBytes(strategy)),
+            ),
+            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+            fontSize = 12.sp,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            CompactTextButton(
+                text = stringResource(R.string.tools_duplicate_keep_one),
+                onClick = onKeepOne,
+            )
+            CompactTextButton(
+                text = stringResource(R.string.tools_open_group),
+                onClick = onOpen,
+            )
+        }
+    }
+}
+
+private fun DuplicateKeepStrategy.titleRes(): Int = when (this) {
+    DuplicateKeepStrategy.LARGEST -> R.string.tools_duplicate_strategy_largest
+    DuplicateKeepStrategy.NEWEST -> R.string.tools_duplicate_strategy_newest
+    DuplicateKeepStrategy.OLDEST -> R.string.tools_duplicate_strategy_oldest
+}
+
+private fun DuplicateKeepStrategy.summaryRes(): Int = when (this) {
+    DuplicateKeepStrategy.LARGEST -> R.string.tools_duplicate_strategy_largest_summary
+    DuplicateKeepStrategy.NEWEST -> R.string.tools_duplicate_strategy_newest_summary
+    DuplicateKeepStrategy.OLDEST -> R.string.tools_duplicate_strategy_oldest_summary
+}

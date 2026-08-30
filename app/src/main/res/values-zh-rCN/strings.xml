@@ -1,0 +1,353 @@
+<resources>
+    <string name="app_name">照片整理</string>
+
+    <!-- 通用 -->
+    <string name="dialog_ok">好的</string>
+    <string name="dialog_cancel">取消</string>
+    <string name="dialog_confirm">确认</string>
+    <string name="back_cd">返回</string>
+    <string name="close_cd">关闭</string>
+    <string name="media_type_photo">照片</string>
+    <string name="media_type_video">视频</string>
+    <string name="media_type_screenshot">截屏</string>
+    <string name="media_type_raw">RAW</string>
+    <string name="media_type_gif">GIF</string>
+    <string name="media_type_live_photo">实况照片</string>
+    <string name="media_preview_close_cd">关闭预览</string>
+    <string name="media_tile_cd">%1$s，%2$s，%3$s</string>
+
+    <!-- 底部导航 -->
+    <string name="nav_dashboard">首页</string>
+    <string name="nav_organize">整理</string>
+    <string name="nav_tools">工具</string>
+    <string name="nav_settings">设置</string>
+
+    <!-- 仪表盘 -->
+    <string name="dashboard_title">仪表盘</string>
+    <string name="dashboard_refresh_cd">重新扫描</string>
+    <string name="pull_refresh_pull">下拉刷新</string>
+    <string name="pull_refresh_release">松开刷新</string>
+    <string name="pull_refresh_refreshing">正在刷新</string>
+    <string name="pull_refresh_done">刷新成功</string>
+    <string name="hero_title">本地图库</string>
+    <string name="hero_subtitle">%1$s · 扫描于 %2$s</string>
+    <string name="permission_card_title">连接你的照片库</string>
+    <string name="permission_card_summary">允许访问照片和视频后，即可查看数量、空间与截屏统计。原文件不会离开设备。</string>
+    <string name="permission_request_action">授权并扫描</string>
+    <string name="permission_pre_info_title">扫描前须知</string>
+    <string name="permission_pre_info_1">权限范围仅限媒体库</string>
+    <string name="permission_pre_info_2">原文件始终留在设备上</string>
+    <string name="permission_limited_title">部分媒体访问</string>
+    <string name="permission_limited_summary">照片或视频权限并不完整，统计仅包含当前可访问内容。</string>
+    <string name="scanning_title">正在扫描媒体库</string>
+    <string name="scanning_summary">首次扫描会读取文件名、大小、类型与拍摄日期，全程在本机完成。</string>
+    <string name="scanning_progress_label">正在建立本地索引</string>
+    <string name="error_title">扫描未完成</string>
+    <string name="error_retry">重试扫描</string>
+    <string name="error_delete_launch_failed">无法发起系统删除</string>
+    <string name="error_scan_failed">媒体扫描失败</string>
+    <string name="section_space_overview">空间概览</string>
+    <string name="section_space_subtitle">实时索引</string>
+    <string name="metric_photos">照片</string>
+    <string name="metric_videos">视频</string>
+    <string name="metric_screenshots">截屏</string>
+    <string name="metric_folders">目录</string>
+    <string name="metric_folders_value">个来源</string>
+    <string name="section_review_progress">整理进度</string>
+    <string name="progress_unreviewed">%1$s 张待整理</string>
+    <string name="progress_start">开始整理</string>
+    <string name="progress_total">共 %1$s 项</string>
+    <string name="progress_reviewed">已整理 %1$s 项</string>
+    <string name="progress_ring_label">已整理</string>
+    <string name="progress_start_summary">继续智能、定向或手动整理</string>
+    <string name="next_steps">下一步</string>
+    <string name="next_duplicates">重复与相似照片</string>
+    <plurals name="dashboard_duplicate_summary">
+        <item quantity="other">%1$d 组 · 可释放 %2$s</item>
+    </plurals>
+    <string name="dashboard_duplicate_pending">尚未运行检测</string>
+    <string name="next_safety">安全检查</string>
+    <string name="dashboard_safety_normal">权限、索引与原图保护均正常</string>
+
+    <!-- 整理 -->
+    <string name="organize_title">整理</string>
+    <string name="organize_subtitle">选择整理方式</string>
+    <string name="organize_mode_smart">智能模式</string>
+    <string name="organize_mode_smart_summary">优先清理重复、截屏与大文件</string>
+    <string name="organize_mode_targeted">定向模式</string>
+    <string name="organize_mode_targeted_summary">按相册、日期、类型和大小筛选</string>
+    <string name="organize_mode_manual">手动模式</string>
+    <string name="organize_mode_manual_summary">网格浏览，可进入批量选择模式统一标记</string>
+    <string name="manual_mode_title">手动模式</string>
+    <string name="organize_marked_title">已标记内容</string>
+    <string name="organize_marked_trash">已弃置</string>
+    <string name="organize_marked_kept">已保留</string>
+    <plurals name="organize_marked_count">
+        <item quantity="other">%1$d 项，可查看并还原</item>
+    </plurals>
+
+    <!-- 快速整理 -->
+    <string name="review_progress">%1$d / %2$d</string>
+    <string name="review_action_keep">保留</string>
+    <string name="review_action_trash">弃置</string>
+    <string name="review_action_album">相册</string>
+    <string name="review_action_preview">打开预览</string>
+    <string name="review_action_previous">上一项</string>
+    <string name="review_action_next">下一项</string>
+    <string name="empty_review_title">本批已完成</string>
+    <string name="empty_review_summary">回到整理页开始下一个任务</string>
+    <string name="empty_review_action">返回</string>
+
+    <!-- 手动网格 -->
+    <string name="manual_sort_by_date">按日期</string>
+    <string name="manual_sort_by_size">按大小</string>
+    <plurals name="manual_selected_count">
+        <item quantity="other">已选 %1$d 项</item>
+    </plurals>
+    <string name="action_select_all">全选</string>
+    <string name="manual_keep">保留</string>
+    <string name="manual_trash">弃置</string>
+    <string name="manual_clear">清除标记</string>
+    <string name="manual_unknown_date">日期未知</string>
+    <string name="manual_select_mode_cd">选择媒体</string>
+    <string name="manual_search_cd">按文件名搜索</string>
+    <string name="manual_search_hint">搜索文件名</string>
+    <string name="manual_search_empty_title">没有匹配项</string>
+    <string name="manual_search_empty_summary">没有文件名包含该文本，试试更短的关键词。</string>
+    <string name="manual_search_clear">清空搜索</string>
+    <string name="marked_kept_title">已保留</string>
+    <string name="marked_trash_title">已弃置</string>
+    <string name="marked_empty_title">这里还是空的</string>
+    <string name="marked_empty_summary">整理过程中标记的内容会显示在这里。</string>
+    <string name="marked_restore">还原</string>
+    <string name="marked_delete_menu_cd">更多选项</string>
+    <string name="marked_delete_all_action">删除全部已弃置内容</string>
+    <string name="marked_delete_selected_action">删除所选</string>
+
+    <!-- 定向筛选 -->
+    <string name="targeted_sheet_title">整理筛选</string>
+    <string name="targeted_sheet_summary">选择相册、日期、类型和大小后开始。</string>
+    <string name="filter_label_album">相册</string>
+    <string name="filter_label_type">类型</string>
+    <string name="filter_value_all">全部</string>
+    <string name="filter_value_photos">仅照片</string>
+    <string name="filter_value_videos">仅视频</string>
+    <string name="filter_value_screenshots">仅截屏</string>
+    <string name="filter_value_live_photos">仅实况照片</string>
+    <string name="filter_apply">应用</string>
+    <string name="filter_reset">重置</string>
+    <string name="filter_start_date">开始日期</string>
+    <string name="filter_end_date">结束日期</string>
+    <string name="filter_not_set">不限</string>
+    <string name="filter_clear_value">清除该条件</string>
+    <plurals name="filter_album_selected_count">
+        <item quantity="other">已选择 %1$d 个相册</item>
+    </plurals>
+    <string name="filter_album_picker_title">选择相册</string>
+    <string name="filter_album_empty">当前没有可选择的相册</string>
+    <string name="filter_minimum_size">文件大小</string>
+    <string name="filter_minimum_size_hint">仅显示大于此大小的文件</string>
+
+    <!-- 对话框 -->
+    <string name="discard_title">确认删除</string>
+    <plurals name="discard_summary">
+        <item quantity="other">即将请求系统删除 %1$d 项（共 %2$s）。取消系统弹窗不会删除任何文件。</item>
+    </plurals>
+    <string name="discard_action_continue">确认删除</string>
+    <string name="album_dialog_title">选择目标相册</string>
+    <string name="album_dialog_summary">逻辑相册 · 不移动原文件</string>
+    <string name="album_new">新建相册</string>
+    <string name="album_name_hint">相册名称</string>
+    <string name="default_album_name">当前照片</string>
+
+    <!-- 工具 -->
+    <string name="tools_title">工具</string>
+    <string name="tools_analysis_running">正在分析本地媒体…</string>
+    <string name="tools_duplicate_title">重复与相似照片</string>
+    <string name="duplicate_empty">未发现重复内容。</string>
+    <plurals name="tools_summary_duplicate">
+        <item quantity="other">%1$d 组 · 可释放 %2$s</item>
+    </plurals>
+    <string name="tools_screenshots_title">截屏</string>
+    <string name="screenshot_empty">索引中没有截屏。</string>
+    <plurals name="tools_summary_screenshots">
+        <item quantity="other">%1$d 张 · %2$s</item>
+    </plurals>
+    <string name="tools_largest_title">大文件</string>
+    <string name="largest_empty">没有超过 %1$s 的文件。</string>
+    <plurals name="tools_summary_largest">
+        <item quantity="other">%1$d 个 · %2$s</item>
+    </plurals>
+    <string name="tools_largest_threshold_title">大文件阈值</string>
+    <string name="tools_largest_threshold_summary">仅列出不小于 %1$s 的文件</string>
+    <string name="tools_threshold_option">大于 %1$s</string>
+    <string name="section_tools_media">媒体处理</string>
+    <string name="section_tools_cleanup">清理分析</string>
+    <string name="tools_duplicate_hint">此处只写入标记，删除仍需在“已弃置”中通过系统确认完成。</string>
+    <plurals name="tools_duplicate_group_detail">
+        <item quantity="other">%1$d 个副本 · 可释放 %2$s</item>
+    </plurals>
+    <string name="tools_duplicate_keep_one">只保留一张</string>
+    <string name="tools_open_group">查看该组</string>
+    <string name="tools_reclaimable_title">可释放空间</string>
+    <string name="tools_reclaimable_summary">重复内容、截屏与大文件的合计上限，同一类别内不会重复计算。</string>
+    <string name="tools_reclaimable_none">暂时没有需要清理的内容。</string>
+    <string name="tools_reclaimable_breakdown">重复 %1$s · 截屏 %2$s · 大文件 %3$s</string>
+    <string name="tools_duplicate_cleanup_menu_cd">批量去重</string>
+    <string name="tools_duplicate_strategy_largest">保留体积最大的一张</string>
+    <string name="tools_duplicate_strategy_newest">保留时间最新的一张</string>
+    <string name="tools_duplicate_strategy_oldest">保留时间最早的一张</string>
+    <string name="tools_duplicate_strategy_largest_summary">画质通常最好</string>
+    <string name="tools_duplicate_strategy_newest_summary">以最近的拍摄时间为准</string>
+    <string name="tools_duplicate_strategy_oldest_summary">以最初的拍摄时间为准</string>
+    <plurals name="tools_duplicate_cleanup_done">
+        <item quantity="other">已将 %1$d 个副本标记为弃置</item>
+    </plurals>
+    <string name="manual_mark_all_trash">全部标记为弃置</string>
+    <string name="manual_clear_all_marks">清除此列表的全部标记</string>
+    <string name="media_tools_engine_ready">本机处理引擎已就绪</string>
+    <string name="media_tool_output_format">输出格式</string>
+    <string name="media_tool_resize">长边尺寸</string>
+    <string name="media_tool_resolution">分辨率</string>
+    <string name="media_tool_tracks">音视频轨道</string>
+    <string name="media_tool_keep_original">保持原始</string>
+    <string name="media_tool_track_both">视频 + 音频</string>
+    <string name="media_tool_track_video">移除音频</string>
+    <string name="media_tool_track_audio">仅提取音频</string>
+    <string name="media_tool_extract_audio_title">音频提取</string>
+    <string name="media_tool_extract_audio_action">选择视频并提取音频</string>
+    <string name="media_tool_saved_detail">%1$s → %2$s · 体积减少 %3$d%%</string>
+    <string name="media_tool_grew_detail">%1$s → %2$s · 重新编码后反而更大，建议保留原文件</string>
+    <string name="section_tools_about">工具说明</string>
+    <string name="tools_media_title">媒体处理</string>
+    <string name="tools_media_summary_ready">压缩照片与视频、提取音频</string>
+    <string name="tools_refresh_cd">刷新分析</string>
+    <string name="tools_about_summary">分析与处理均在本机完成。结果会作为新文件保存到「照片整理」目录，原文件不会被修改。</string>
+
+    <!-- 媒体处理（FFmpeg） -->
+    <string name="media_tools_title">媒体处理</string>
+    <string name="media_tools_intro">照片使用系统图像编码器重新编码，视频使用设备硬件编解码器转码。全部在本机完成，不会修改原文件。</string>
+    <string name="ffmpeg_status_unavailable">当前设备不支持 FFmpeg</string>
+    <string name="media_tool_compress_image_title">图片压缩</string>
+    <string name="media_tool_compress_video_title">视频压缩</string>
+    <string name="ffmpeg_running">处理中…</string>
+    <string name="ffmpeg_failed">处理失败</string>
+    <string name="ffmpeg_cancel">取消</string>
+    <string name="media_tool_tab_image">照片</string>
+    <string name="media_tool_tab_video">视频</string>
+    <string name="section_media_tool_output">输出设置</string>
+    <string name="section_media_tool_source">选择源文件</string>
+    <string name="media_tool_quality">质量</string>
+    <string name="media_tool_quality_hint">数值越低体积越小，细节损失越多。</string>
+    <string name="media_tool_keep_exif">保留拍摄信息</string>
+    <string name="media_tool_keep_exif_summary">将日期、相机与 GPS 信息复制到结果（仅 JPEG）</string>
+    <string name="media_tool_bitrate">目标码率</string>
+    <string name="media_tool_bitrate_auto">自动</string>
+    <string name="media_tool_bitrate_value">%1$s Mbps</string>
+    <string name="media_tool_bitrate_hint">自动会测量源码率并选择明显更低的目标值。</string>
+    <string name="media_tool_pick_images">选择照片</string>
+    <string name="media_tool_pick_videos">选择视频</string>
+    <plurals name="media_tool_pick_summary">
+        <item quantity="other">最多 %1$d 项，依次处理</item>
+    </plurals>
+    <plurals name="media_tool_extract_audio_summary">
+        <item quantity="other">最多 %1$d 个视频，音频保存为 M4A</item>
+    </plurals>
+    <string name="media_tool_progress_queue">第 %1$d / %2$d 项</string>
+    <string name="media_tool_results">处理结果</string>
+    <plurals name="media_tool_results_total">
+        <item quantity="other">%1$d 个文件 · 节省 %2$s</item>
+    </plurals>
+    <plurals name="media_tool_results_total_none">
+        <item quantity="other">%1$d 个文件 · 体积未减少</item>
+    </plurals>
+    <string name="media_tool_clear_results">清空结果</string>
+    <plurals name="media_tool_failed_count">
+        <item quantity="other">%1$d 项处理失败</item>
+    </plurals>
+    <string name="media_tool_more_cd">更多操作</string>
+    <string name="media_tool_output_folder">结果保存到 %1$s，原文件不会被修改。</string>
+    <string name="media_tool_format_jpeg_desc">兼容性最好，适合照片</string>
+    <string name="media_tool_format_webp_desc">体积更小，兼容性略差</string>
+    <string name="media_tool_format_png_desc">无损，适合截屏和图形</string>
+    <string name="media_tool_resize_original_desc">保持原始像素尺寸</string>
+    <string name="media_tool_resize_value">长边 %1$d 像素</string>
+    <string name="media_tool_resolution_original_desc">保持原始画面尺寸</string>
+    <string name="media_tool_resolution_1080_desc">大屏观看清晰</string>
+    <string name="media_tool_resolution_720_desc">体积与画质均衡</string>
+    <string name="media_tool_resolution_480_desc">体积最小，适合分享</string>
+    <string name="media_tool_track_both_desc">保留视频与音频轨道</string>
+    <string name="media_tool_track_video_desc">移除音频轨道</string>
+    <string name="media_tool_track_audio_desc">将音频轨道导出为 M4A</string>
+
+    <!-- 设置 -->
+    <string name="settings_title">设置</string>
+    <string name="settings_help_cd">帮助</string>
+    <string name="settings_appearance">外观</string>
+    <string name="settings_theme_title">主题</string>
+    <string name="settings_theme_summary">%1$s</string>
+    <string name="settings_theme_auto">跟随系统</string>
+    <string name="settings_theme_light">浅色</string>
+    <string name="settings_theme_dark">深色</string>
+    <string name="settings_state_safety">状态与安全</string>
+    <string name="settings_permission_title">照片与视频权限</string>
+    <string name="settings_permission_value_granted">已授权访问媒体库</string>
+    <string name="settings_permission_value_limited">当前为部分媒体访问，索引仅包含可访问项目</string>
+    <string name="settings_permission_value_needed">需要授权后才能扫描</string>
+    <string name="settings_index_title">媒体索引</string>
+    <plurals name="settings_indexed_count">
+        <item quantity="other">已索引 %1$d 项</item>
+    </plurals>
+    <string name="settings_index_value_pending">尚未扫描</string>
+    <string name="index_scope_dialog_title">索引搜索范围</string>
+    <string name="index_scope_all">全部图库</string>
+    <string name="index_scope_all_summary">索引所有可访问的照片与视频</string>
+    <string name="index_scope_exclude">排除所选图库</string>
+    <string name="index_scope_exclude_summary">所选图库不会出现在索引和整理任务中</string>
+    <string name="index_scope_only">仅索引所选图库</string>
+    <string name="index_scope_only_summary">忽略其他图库，只处理选择的范围</string>
+    <string name="index_scope_album_title">图库</string>
+    <string name="index_scope_summary_all">全部图库 · %1$s</string>
+    <plurals name="index_scope_summary_exclude">
+        <item quantity="other">已排除 %1$d 个图库 · %2$s</item>
+    </plurals>
+    <plurals name="index_scope_summary_only">
+        <item quantity="other">仅索引 %1$d 个图库 · %2$s</item>
+    </plurals>
+    <string name="settings_open_app_settings">打开系统应用设置</string>
+    <string name="settings_organize_behavior">整理行为</string>
+    <string name="settings_default_sort">默认排序</string>
+    <string name="settings_sort_date">按日期</string>
+    <string name="settings_sort_size">按大小</string>
+    <string name="settings_organize_animation">滑动动画</string>
+    <string name="settings_animation_summary">滑动时显示方向反馈</string>
+    <string name="settings_organize_confirm_delete">删除前确认</string>
+    <string name="settings_confirm_delete_summary">打开必需的系统确认前，先显示项目数量和空间占用</string>
+    <string name="settings_compression_defaults">处理默认项</string>
+    <string name="settings_image_quality">图片质量（JPEG）</string>
+    <string name="settings_image_quality_high">高 · 90</string>
+    <string name="settings_image_quality_medium">均衡 · 80</string>
+    <string name="settings_image_quality_low">小体积 · 65</string>
+    <string name="settings_video_quality">视频质量</string>
+    <string name="settings_video_quality_high">高 · 更清晰</string>
+    <string name="settings_video_quality_medium">均衡</string>
+    <string name="settings_video_quality_low">小体积</string>
+    <string name="settings_metadata">元数据</string>
+    <string name="settings_metadata_keep">保留</string>
+    <string name="settings_metadata_strip">移除</string>
+    <string name="settings_device_capabilities">设备能力</string>
+    <string name="settings_api_summary">Android API %1$d</string>
+    <string name="device_capabilities_detail">API %1$d · %2$s · 处理引擎：系统图像编码器 + 硬件视频编解码器 · 内置 FFmpeg：%3$s</string>
+    <string name="settings_about">关于</string>
+    <string name="settings_about_version">照片整理</string>
+    <string name="settings_about_summary">应用信息、隐私、源代码与许可</string>
+    <string name="settings_version_summary">v%1$s</string>
+    <string name="about_title">关于</string>
+    <string name="about_application_section">软件介绍</string>
+    <string name="about_application_description">照片整理会在本机索引照片和视频，并通过保留与弃置标记帮助你逐项检查。只有在 Android 显示系统确认后，已弃置内容才会被真正删除。</string>
+    <string name="about_privacy_description">索引、整理标记和媒体工具均在设备本地运行。媒体工具会创建新文件，不会覆盖原文件。</string>
+    <string name="about_open_source_section">源代码与开源许可</string>
+    <string name="about_license_note">所列项目保留各自的版权声明和许可条款。FFmpeg 是否可用取决于设备架构。</string>
+    <string name="help_dialog_title">使用帮助</string>
+    <string name="help_dialog_message">仪表盘展示数量、空间与整理进度；整理页提供智能、定向、手动三种整理方式；工具页可查找重复、截屏与大文件，并基于内置 FFmpeg 处理图片与视频；设置页管理主题与处理默认项。所有功能均在本地完成。</string>
+</resources>
