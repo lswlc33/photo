@@ -3,6 +3,10 @@
 build/
 app/build/
 local.properties
+*.jks
+*.keystore
+release-signing.properties
 *.iml
 .idea/
 artifacts/
+.workbuddy/
