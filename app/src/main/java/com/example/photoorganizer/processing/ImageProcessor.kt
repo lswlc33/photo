@@ -7,7 +7,10 @@ import android.graphics.Matrix
 import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
 import androidx.core.graphics.scale
+import com.example.photoorganizer.R
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -51,19 +54,29 @@ object ImageProcessor {
         val originalBytes = GalleryWriter.sourceSize(context, source)
         val input = GalleryWriter.copyToCache(context, source, "img_in")
         val output = GalleryWriter.cacheFile(context, "img", format.extension)
+        var decoded: Bitmap? = null
+        var oriented: Bitmap? = null
         try {
             onProgress(.15f)
-            val decoded = decodeScaled(input, resize.longEdgePx)
-                ?: error("Cannot decode the selected image")
+            val decodedBitmap = decodeScaled(input, resize.longEdgePx)
+                ?: throw ProcessingException(R.string.processing_error_decode_image)
+            decoded = decodedBitmap
+            currentCoroutineContext().ensureActive()
             onProgress(.45f)
-            val oriented = applyExifRotation(input, decoded)
+            val orientedBitmap = applyExifRotation(input, decodedBitmap)
+            oriented = orientedBitmap
+            currentCoroutineContext().ensureActive()
             onProgress(.6f)
             output.outputStream().use { stream ->
-                val ok = oriented.compress(format.toCompressFormat(), quality.coerceIn(1, 100), stream)
-                check(ok) { "Encoding to ${format.name} failed" }
+                val ok = orientedBitmap.compress(format.toCompressFormat(), quality.coerceIn(1, 100), stream)
+                if (!ok) {
+                    throw ProcessingException(
+                        R.string.processing_error_encode_image,
+                        listOf(format.name),
+                    )
+                }
             }
-            oriented.recycle()
-            if (decoded !== oriented) decoded.recycle()
+            currentCoroutineContext().ensureActive()
             onProgress(.8f)
             if (!stripMetadata && format == ImageFormat.JPEG) {
                 copyExif(input, output)
@@ -78,6 +91,8 @@ object ImageProcessor {
                 outputBytes = outputBytes,
             )
         } finally {
+            oriented?.takeIf { it !== decoded && !it.isRecycled }?.recycle()
+            decoded?.takeIf { !it.isRecycled }?.recycle()
             input.delete()
             output.delete()
         }
@@ -91,11 +106,18 @@ object ImageProcessor {
         if (sourceLongEdge <= 0) return null
 
         val options = BitmapFactory.Options()
-        if (longEdgePx != null && sourceLongEdge > longEdgePx) {
-            var sample = 1
-            while (sourceLongEdge / (sample * 2) >= longEdgePx) sample *= 2
-            options.inSampleSize = sample
+        val sample = if (longEdgePx == null) {
+            if (!originalSizeIsSupported(bounds.outWidth, bounds.outHeight)) {
+                throw ProcessingException(
+                    R.string.processing_error_original_too_large,
+                    listOf(bounds.outWidth, bounds.outHeight),
+                )
+            }
+            1
+        } else {
+            resizeDecodeSampleSize(sourceLongEdge, longEdgePx)
         }
+        options.inSampleSize = sample
         val decoded = BitmapFactory.decodeFile(file.absolutePath, options) ?: return null
         if (longEdgePx == null) return decoded
 
@@ -118,11 +140,19 @@ object ImageProcessor {
         }.getOrDefault(ExifInterface.ORIENTATION_NORMAL)
         val matrix = Matrix()
         when (orientation) {
+            ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
             ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
             ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
             ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
-            ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.postScale(-1f, 1f)
             ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.postScale(1f, -1f)
+            ExifInterface.ORIENTATION_TRANSPOSE -> {
+                matrix.postRotate(90f)
+                matrix.postScale(-1f, 1f)
+            }
+            ExifInterface.ORIENTATION_TRANSVERSE -> {
+                matrix.postRotate(270f)
+                matrix.postScale(-1f, 1f)
+            }
             else -> return bitmap
         }
         return runCatching {
@@ -132,7 +162,7 @@ object ImageProcessor {
 
     /** Carries date/camera tags over while dropping the now-baked rotation. */
     private fun copyExif(source: File, target: File) {
-        runCatching {
+        try {
             val from = ExifInterface(source)
             val to = ExifInterface(target)
             PRESERVED_EXIF_TAGS.forEach { tag ->
@@ -140,6 +170,8 @@ object ImageProcessor {
             }
             to.setAttribute(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL.toString())
             to.saveAttributes()
+        } catch (failure: Throwable) {
+            throw ProcessingException(R.string.processing_error_copy_metadata, cause = failure)
         }
     }
 

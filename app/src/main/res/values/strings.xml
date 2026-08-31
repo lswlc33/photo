@@ -282,6 +282,18 @@
     </plurals>
     <string name="media_tool_more_cd">More actions</string>
     <string name="media_tool_output_folder">Results are saved to %1$s and originals stay untouched.</string>
+    <string name="processing_error_empty_source">The selected file has no content (0 bytes).</string>
+    <string name="processing_error_open_source">The selected file could not be opened.</string>
+    <string name="processing_error_decode_image">This image could not be decoded; the file may be damaged or unsupported.</string>
+    <string name="processing_error_original_too_large">The original image is %1$d x %2$d pixels, which is too large to process safely. Choose 3840 px or a smaller size.</string>
+    <string name="processing_error_encode_image">Encoding to %1$s failed.</string>
+    <string name="processing_error_copy_metadata">The image was encoded, but its metadata could not be preserved.</string>
+    <string name="processing_error_gallery_insert">The gallery entry could not be created; check storage space.</string>
+    <string name="processing_error_gallery_write">The result could not be written to the gallery.</string>
+    <string name="processing_error_gallery_publish">The result could not be published to the gallery.</string>
+    <string name="processing_error_empty_output">Transcoding produced an empty file; this device may not support the required encoder.</string>
+    <string name="processing_error_video_export">Video transcoding failed (%1$s); this device may not support the required encoder.</string>
+    <string name="processing_error_unknown">Processing failed: %1$s</string>
     <string name="media_tool_format_jpeg_desc">Widely compatible, best for photos</string>
     <string name="media_tool_format_webp_desc">Smaller files, slightly less compatible</string>
     <string name="media_tool_format_png_desc">Lossless, best for screenshots and graphics</string>

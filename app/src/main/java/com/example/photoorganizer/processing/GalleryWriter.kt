@@ -4,10 +4,13 @@ import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
 import android.provider.MediaStore
+import com.example.photoorganizer.R
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 /** Result of a completed local processing job. */
 data class ProcessedMedia(
@@ -31,12 +34,23 @@ internal object GalleryWriter {
     const val VIDEO_FOLDER = "Movies/Photo Organizer"
     const val AUDIO_FOLDER = "Music/Photo Organizer"
 
-    fun copyToCache(context: Context, source: Uri, prefix: String): File {
+    suspend fun copyToCache(context: Context, source: Uri, prefix: String): File {
         val target = File.createTempFile(prefix, ".bin", context.cacheDir)
         try {
             context.contentResolver.openInputStream(source)?.use { input ->
-                target.outputStream().use { output -> input.copyTo(output) }
-            } ?: error("Cannot open $source")
+                target.outputStream().use { output ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        output.write(buffer, 0, read)
+                    }
+                }
+            } ?: throw ProcessingException(R.string.processing_error_open_source)
+            if (target.length() <= 0L) {
+                throw ProcessingException(R.string.processing_error_empty_source)
+            }
             return target
         } catch (t: Throwable) {
             target.delete()
@@ -81,7 +95,7 @@ internal object GalleryWriter {
         )?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
     }.getOrNull() ?: uri.lastPathSegment ?: uri.toString()
 
-    fun publishImage(context: Context, file: File, mimeType: String): Uri {
+    suspend fun publishImage(context: Context, file: File, mimeType: String): Uri {
         val values = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, file.name)
             put(MediaStore.Images.Media.MIME_TYPE, mimeType)
@@ -91,7 +105,7 @@ internal object GalleryWriter {
         return publish(context, MediaStore.Images.Media.getContentUri("external_primary"), values, file)
     }
 
-    fun publishVideo(context: Context, file: File, mimeType: String = "video/mp4"): Uri {
+    suspend fun publishVideo(context: Context, file: File, mimeType: String = "video/mp4"): Uri {
         val values = ContentValues().apply {
             put(MediaStore.Video.Media.DISPLAY_NAME, file.name)
             put(MediaStore.Video.Media.MIME_TYPE, mimeType)
@@ -101,7 +115,7 @@ internal object GalleryWriter {
         return publish(context, MediaStore.Video.Media.getContentUri("external_primary"), values, file)
     }
 
-    fun publishAudio(context: Context, file: File, mimeType: String = "audio/mp4"): Uri {
+    suspend fun publishAudio(context: Context, file: File, mimeType: String = "audio/mp4"): Uri {
         val values = ContentValues().apply {
             put(MediaStore.Audio.Media.DISPLAY_NAME, file.name)
             put(MediaStore.Audio.Media.MIME_TYPE, mimeType)
@@ -111,16 +125,27 @@ internal object GalleryWriter {
         return publish(context, MediaStore.Audio.Media.getContentUri("external_primary"), values, file)
     }
 
-    private fun publish(context: Context, collection: Uri, values: ContentValues, file: File): Uri {
+    private suspend fun publish(context: Context, collection: Uri, values: ContentValues, file: File): Uri {
         val resolver = context.contentResolver
-        val uri = resolver.insert(collection, values) ?: error("MediaStore insert failed")
+        val uri = resolver.insert(collection, values)
+            ?: throw ProcessingException(R.string.processing_error_gallery_insert)
         try {
             resolver.openOutputStream(uri, "w")?.use { output ->
-                file.inputStream().use { input -> input.copyTo(output) }
-            } ?: error("Cannot open MediaStore output")
+                file.inputStream().use { input ->
+                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        output.write(buffer, 0, read)
+                    }
+                }
+            } ?: throw ProcessingException(R.string.processing_error_gallery_write)
             values.clear()
             values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-            check(resolver.update(uri, values, null, null) > 0) { "MediaStore publish failed" }
+            if (resolver.update(uri, values, null, null) <= 0) {
+                throw ProcessingException(R.string.processing_error_gallery_publish)
+            }
             return uri
         } catch (t: Throwable) {
             resolver.delete(uri, null, null)

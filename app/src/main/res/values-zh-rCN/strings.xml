@@ -267,6 +267,18 @@
     </plurals>
     <string name="media_tool_more_cd">更多操作</string>
     <string name="media_tool_output_folder">结果保存到 %1$s，原文件不会被修改。</string>
+    <string name="processing_error_empty_source">所选文件内容为空（0 字节）。</string>
+    <string name="processing_error_open_source">无法打开所选文件。</string>
+    <string name="processing_error_decode_image">无法解码这张图片，文件可能已损坏或格式不受支持。</string>
+    <string name="processing_error_original_too_large">原图尺寸为 %1$d × %2$d 像素，直接处理可能耗尽内存。请选择 3840 像素或更小尺寸。</string>
+    <string name="processing_error_encode_image">编码为 %1$s 失败。</string>
+    <string name="processing_error_copy_metadata">图片已编码，但无法保留其元数据。</string>
+    <string name="processing_error_gallery_insert">无法创建图库条目，请检查存储空间。</string>
+    <string name="processing_error_gallery_write">无法把结果写入图库。</string>
+    <string name="processing_error_gallery_publish">无法把结果发布到图库。</string>
+    <string name="processing_error_empty_output">转码生成了空文件，本设备可能不支持所需的编码器。</string>
+    <string name="processing_error_video_export">视频转码失败（%1$s），本设备可能不支持所需的编码器。</string>
+    <string name="processing_error_unknown">处理失败：%1$s</string>
     <string name="media_tool_format_jpeg_desc">兼容性最好，适合照片</string>
     <string name="media_tool_format_webp_desc">体积更小，兼容性略差</string>
     <string name="media_tool_format_png_desc">无损，适合截屏和图形</string>

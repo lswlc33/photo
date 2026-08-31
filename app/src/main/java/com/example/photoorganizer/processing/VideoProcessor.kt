@@ -16,6 +16,7 @@ import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
 import androidx.media3.transformer.VideoEncoderSettings
+import com.example.photoorganizer.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -57,14 +58,28 @@ object VideoProcessor {
         onProgress: (Float) -> Unit = {},
     ): ProcessedMedia {
         val originalBytes = GalleryWriter.sourceSize(context, source)
+        if (originalBytes <= 0L) {
+            throw ProcessingException(R.string.processing_error_empty_source)
+        }
         val audioOnly = trackMode == VideoTrackMode.AUDIO_ONLY
         val output = GalleryWriter.cacheFile(context, if (audioOnly) "aud" else "vid", if (audioOnly) "m4a" else "mp4")
         val targetBitrate = bitrateOverride
+            ?.coerceIn(MIN_BITRATE, resolution.ceilingBitrate)
             ?: withContext(Dispatchers.IO) { resolveTargetBitrate(context, source, resolution) }
         try {
-            runExport(context, source, output.absolutePath, resolution, trackMode, targetBitrate, onProgress)
+            try {
+                runExport(context, source, output.absolutePath, resolution, trackMode, targetBitrate, onProgress)
+            } catch (export: ExportException) {
+                throw ProcessingException(
+                    R.string.processing_error_video_export,
+                    listOf(exportReason(export)),
+                    export,
+                )
+            }
             val outputBytes = output.length()
-            check(outputBytes > 0L) { "Transcoding produced an empty file" }
+            if (outputBytes <= 0L) {
+                throw ProcessingException(R.string.processing_error_empty_output)
+            }
             val uri = withContext(Dispatchers.IO) {
                 if (audioOnly) {
                     GalleryWriter.publishAudio(context, output)
@@ -213,5 +228,13 @@ object VideoProcessor {
             progressPoller.cancel()
             if (coroutineContext.isActive) transformer.removeAllListeners()
         }
+    }
+
+    /** Short, stable identifier for an export failure, shown inside the error text. */
+    @androidx.annotation.OptIn(UnstableApi::class)
+    private fun exportReason(exception: ExportException): String {
+        val name = ExportException.getErrorCodeName(exception.errorCode)
+        val cause = exception.cause?.message?.takeIf { it.isNotBlank() }
+        return if (cause == null) name else "$name: $cause"
     }
 }
