@@ -1,6 +1,8 @@
 package com.example.photoorganizer.screens.review
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -34,6 +36,7 @@ import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -80,11 +83,15 @@ import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
+import kotlinx.coroutines.delay
 
 enum class MediaGridMode { MANUAL, KEPT, TRASH, SCREENSHOTS, LARGEST, DUPLICATE_GROUP }
 
 /** Extra scroll clearance so the floating selection toolbar never covers the last row. */
 private val SelectionToolbarClearance = 84.dp
+
+/** How long the discarded page's bin button stays armed before it reverts. */
+private const val ArmedTimeoutMillis = 3_000L
 
 /** Whether a grid mode lets the user attach keep/discard marks. */
 private val MediaGridMode.supportsMarking: Boolean
@@ -119,21 +126,17 @@ fun ManualGridScreen(
     val gridState = rememberLazyGridState()
     var showDeleteMenu by remember { mutableStateOf(false) }
     var showSortPopup by remember { mutableStateOf(false) }
+    // The bin icon on the discarded page arms on the first tap and only fires the
+    // delete request on the second, so a stray tap cannot wipe the list.
+    var deleteAllArmed by remember { mutableStateOf(false) }
     val sortOptions = remember { listOf(false, true) }
     val allMediaIds = remember(media) { media.map { it.id }.toSet() }
-    // Overflow actions differ per mode: the discarded page deletes, while the
-    // analysis-driven lists (screenshots, large files, one duplicate group) need
-    // a way to mark or clear the whole list in one tap.
+    // Deleting from the discarded page is the one destructive bulk action that must
+    // stay visible, so it gets its own bin button below instead of hiding here. The
+    // analysis-driven lists (screenshots, large files, one duplicate group) keep the
+    // overflow menu for marking or clearing the whole list in one tap.
     val overflowActions = remember(mode, onDeleteRequest, onMark, allMediaIds) {
         buildList {
-            if (mode == MediaGridMode.TRASH) {
-                add(
-                    OverlayAction(
-                        labelRes = R.string.marked_delete_all_action,
-                        onClick = { onDeleteRequest(allMediaIds) },
-                    ),
-                )
-            }
             // Manual mode spans the whole library, so a single tap must not be
             // able to discard everything there.
             if (mode.supportsMarking && mode != MediaGridMode.MANUAL) {
@@ -306,6 +309,17 @@ fun ManualGridScreen(
                                     )
                                 }
                             }
+                        }
+                        if (mode == MediaGridMode.TRASH && media.isNotEmpty()) {
+                            DeleteAllBinButton(
+                                armed = deleteAllArmed,
+                                onArm = { deleteAllArmed = true },
+                                onDisarm = { deleteAllArmed = false },
+                                onConfirm = {
+                                    deleteAllArmed = false
+                                    onDeleteRequest(allMediaIds)
+                                },
+                            )
                         }
                     }
                 },
@@ -508,6 +522,41 @@ fun ManualGridScreen(
                 previewItem = null
                 temporaryPreview = false
             },
+        )
+    }
+}
+
+/**
+ * Bin action for the discarded page. Deleting for real is destructive and irreversible,
+ * so the first tap only arms the button (it turns red and swaps to the crossed-out bin)
+ * and the second tap raises the confirmation dialog. The armed state lapses on its own so
+ * a forgotten tap cannot stay primed.
+ */
+@Composable
+private fun DeleteAllBinButton(
+    armed: Boolean,
+    onArm: () -> Unit,
+    onDisarm: () -> Unit,
+    onConfirm: () -> Unit,
+) {
+    LaunchedEffect(armed) {
+        if (armed) {
+            delay(ArmedTimeoutMillis)
+            onDisarm()
+        }
+    }
+    val tint by animateColorAsState(
+        targetValue = if (armed) DangerRed else MiuixTheme.colorScheme.onSurface,
+        animationSpec = tween(durationMillis = 180),
+        label = "bin-tint",
+    )
+    IconButton(onClick = { if (armed) onConfirm() else onArm() }) {
+        Icon(
+            imageVector = if (armed) Icons.Default.DeleteForever else Icons.Default.DeleteOutline,
+            contentDescription = stringResource(
+                if (armed) R.string.marked_delete_all_confirm_cd else R.string.marked_delete_all_cd,
+            ),
+            tint = tint,
         )
     }
 }

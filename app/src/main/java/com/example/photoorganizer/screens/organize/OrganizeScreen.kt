@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Filter
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,12 +45,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import com.example.photoorganizer.R
 import com.example.photoorganizer.media.TargetFilters
 import com.example.photoorganizer.media.TypeFilter
 import com.example.photoorganizer.media.albumDisplayName
 import com.example.photoorganizer.media.scanDate
+import com.example.photoorganizer.ui.components.DialogActions
 import com.example.photoorganizer.ui.components.ScreenColumn
 import com.example.photoorganizer.ui.components.SectionTitle
 import com.example.photoorganizer.ui.components.standardCardColors
@@ -61,10 +62,11 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
 import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.MindMap
+import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.CheckboxPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
@@ -128,16 +130,15 @@ fun OrganizeScreen(
             }
         }
     }
-    if (showTargetedSheet) {
-        TargetedFilterDialog(
-            availableAlbums = availableAlbums,
-            onDismiss = { showTargetedSheet = false },
-            onApply = {
-                showTargetedSheet = false
-                onOpenTargeted(it)
-            },
-        )
-    }
+    TargetedFilterSheet(
+        show = showTargetedSheet,
+        availableAlbums = availableAlbums,
+        onDismiss = { showTargetedSheet = false },
+        onApply = {
+            showTargetedSheet = false
+            onOpenTargeted(it)
+        },
+    )
 }
 
 @Composable
@@ -179,7 +180,8 @@ private fun ModeRow(
 }
 
 @Composable
-private fun TargetedFilterDialog(
+private fun TargetedFilterSheet(
+    show: Boolean,
     availableAlbums: List<String>,
     initial: TargetFilters = TargetFilters(),
     onDismiss: () -> Unit,
@@ -194,133 +196,123 @@ private fun TargetedFilterDialog(
         mutableStateOf(initial.minSizeBytes?.div(MEGABYTE)?.toString().orEmpty())
     }
     var showAlbumPicker by rememberSaveable { mutableStateOf(false) }
-
-    Dialog(onDismissRequest = onDismiss) {
-        Card(Modifier.fillMaxWidth().padding(20.dp), colors = standardCardColors()) {
-            Column(
-                Modifier
-                    .padding(18.dp)
-                    .heightIn(max = 620.dp)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
+    val reset = {
+        albumPaths = emptySet()
+        startDateMillis = null
+        endDateMillis = null
+        type = TypeFilter.ALL
+        minimumMb = ""
+    }
+    OverlayBottomSheet(
+        show = show,
+        title = stringResource(R.string.targeted_sheet_title),
+        onDismissRequest = onDismiss,
+        endAction = {
+            IconButton(onClick = reset) {
+                Icon(
+                    Icons.Default.Refresh,
+                    contentDescription = stringResource(R.string.filter_reset),
+                    tint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                )
+            }
+        },
+    ) {
+        Column(
+            Modifier
+                .heightIn(max = 560.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                stringResource(R.string.targeted_sheet_summary),
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                fontSize = 12.sp,
+            )
+            FilterValueRow(
+                title = stringResource(R.string.filter_label_album),
+                value = if (albumPaths.isEmpty()) {
+                    stringResource(R.string.filter_value_all)
+                } else {
+                    pluralStringResource(R.plurals.filter_album_selected_count, albumPaths.size, albumPaths.size)
+                },
+                onClick = { showAlbumPicker = true },
+            )
+            FilterValueRow(
+                title = stringResource(R.string.filter_start_date),
+                value = startDateMillis?.let(::scanDate) ?: stringResource(R.string.filter_not_set),
+                onClick = {
+                    showDatePicker(context, startDateMillis, endOfDay = false) { startDateMillis = it }
+                },
+                onClear = if (startDateMillis != null) ({ startDateMillis = null }) else null,
+            )
+            FilterValueRow(
+                title = stringResource(R.string.filter_end_date),
+                value = endDateMillis?.let(::scanDate) ?: stringResource(R.string.filter_not_set),
+                onClick = {
+                    showDatePicker(context, endDateMillis, endOfDay = true) { endDateMillis = it }
+                },
+                onClear = if (endDateMillis != null) ({ endDateMillis = null }) else null,
+            )
+            SectionTitle(stringResource(R.string.filter_label_type))
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
             ) {
-                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(
-                            stringResource(R.string.targeted_sheet_title),
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = MiuixTheme.colorScheme.onSurface,
-                        )
-                        Text(
-                            stringResource(R.string.targeted_sheet_summary),
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            fontSize = 12.sp,
-                        )
-                    }
-                    IconButton(onClick = {
-                        albumPaths = emptySet()
-                        startDateMillis = null
-                        endDateMillis = null
-                        type = TypeFilter.ALL
-                        minimumMb = ""
-                    }) {
-                        Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.filter_reset))
-                    }
-                }
-                FilterValueRow(
-                    title = stringResource(R.string.filter_label_album),
-                    value = if (albumPaths.isEmpty()) {
-                        stringResource(R.string.filter_value_all)
-                    } else {
-                        pluralStringResource(R.plurals.filter_album_selected_count, albumPaths.size, albumPaths.size)
-                    },
-                    onClick = { showAlbumPicker = true },
-                )
-                FilterValueRow(
-                    title = stringResource(R.string.filter_start_date),
-                    value = startDateMillis?.let(::scanDate) ?: stringResource(R.string.filter_not_set),
-                    onClick = {
-                        showDatePicker(context, startDateMillis, endOfDay = false) { startDateMillis = it }
-                    },
-                    onClear = if (startDateMillis != null) ({ startDateMillis = null }) else null,
-                )
-                FilterValueRow(
-                    title = stringResource(R.string.filter_end_date),
-                    value = endDateMillis?.let(::scanDate) ?: stringResource(R.string.filter_not_set),
-                    onClick = {
-                        showDatePicker(context, endDateMillis, endOfDay = true) { endDateMillis = it }
-                    },
-                    onClear = if (endDateMillis != null) ({ endDateMillis = null }) else null,
-                )
-                SectionTitle(stringResource(R.string.filter_label_type))
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(7.dp),
-                ) {
-                    TypeFilter.entries.forEach { option ->
-                        FilterChip(
-                            label = stringResource(typeLabel(option)),
-                            selected = option == type,
-                            onClick = { type = option },
-                        )
-                    }
-                }
-                SectionTitle(stringResource(R.string.filter_minimum_size))
-                TextField(
-                    value = minimumMb,
-                    onValueChange = { value -> minimumMb = value.filter(Char::isDigit).take(6) },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    label = stringResource(R.string.filter_minimum_size_hint),
-                    useLabelAsPlaceholder = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    trailingIcon = {
-                        Text(
-                            "MB",
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            modifier = Modifier.padding(end = 14.dp),
-                        )
-                    },
-                )
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(
-                        text = stringResource(R.string.dialog_cancel),
-                        onClick = onDismiss,
-                        modifier = Modifier.weight(1f),
-                    )
-                    TextButton(
-                        text = stringResource(R.string.filter_apply),
-                        onClick = {
-                            val start = startDateMillis
-                            val end = endDateMillis
-                            onApply(
-                                TargetFilters(
-                                    albumPaths = albumPaths,
-                                    startDateMillis = if (start != null && end != null) minOf(start, end) else start,
-                                    endDateMillis = if (start != null && end != null) maxOf(start, end) else end,
-                                    type = type,
-                                    minSizeBytes = minimumMb.toLongOrNull()?.times(MEGABYTE),
-                                ),
-                            )
-                        },
-                        modifier = Modifier.weight(1f),
+                TypeFilter.entries.forEach { option ->
+                    FilterChip(
+                        label = stringResource(typeLabel(option)),
+                        selected = option == type,
+                        onClick = { type = option },
                     )
                 }
             }
+            SectionTitle(stringResource(R.string.filter_minimum_size))
+            TextField(
+                value = minimumMb,
+                onValueChange = { value -> minimumMb = value.filter(Char::isDigit).take(6) },
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                label = stringResource(R.string.filter_minimum_size_hint),
+                useLabelAsPlaceholder = true,
+                modifier = Modifier.fillMaxWidth(),
+                trailingIcon = {
+                    Text(
+                        "MB",
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        modifier = Modifier.padding(end = 14.dp),
+                    )
+                },
+            )
+            DialogActions(
+                confirmText = stringResource(R.string.filter_apply),
+                onCancel = onDismiss,
+                onConfirm = {
+                    val start = startDateMillis
+                    val end = endDateMillis
+                    onApply(
+                        TargetFilters(
+                            albumPaths = albumPaths,
+                            startDateMillis = if (start != null && end != null) minOf(start, end) else start,
+                            endDateMillis = if (start != null && end != null) maxOf(start, end) else end,
+                            type = type,
+                            minSizeBytes = minimumMb.toLongOrNull()?.times(MEGABYTE),
+                        ),
+                    )
+                },
+            )
         }
     }
-    if (showAlbumPicker) {
-        AlbumMultiSelectDialog(
-            availableAlbums = availableAlbums,
-            selected = albumPaths,
-            onDismiss = { showAlbumPicker = false },
-            onConfirm = {
-                albumPaths = it
-                showAlbumPicker = false
-            },
-        )
-    }
+    AlbumMultiSelectDialog(
+        show = showAlbumPicker,
+        availableAlbums = availableAlbums,
+        selected = albumPaths,
+        onDismiss = { showAlbumPicker = false },
+        onConfirm = {
+            albumPaths = it
+            showAlbumPicker = false
+        },
+    )
 }
 
 @Composable
@@ -382,56 +374,54 @@ private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
 
 @Composable
 private fun AlbumMultiSelectDialog(
+    show: Boolean,
     availableAlbums: List<String>,
     selected: Set<String>,
     onDismiss: () -> Unit,
     onConfirm: (Set<String>) -> Unit,
 ) {
-    var working by remember(selected) { mutableStateOf(selected) }
-
-    Dialog(onDismissRequest = onDismiss) {
-        Card(Modifier.fillMaxWidth().padding(20.dp), colors = standardCardColors()) {
-            Column(Modifier.padding(18.dp).heightIn(max = 560.dp)) {
-                Text(
-                    stringResource(R.string.filter_album_picker_title),
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MiuixTheme.colorScheme.onSurface,
-                )
-                Column(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
-                    availableAlbums.forEach { path ->
-                        val checked = path in working
-                        CheckboxPreference(
-                            title = albumDisplayName(path),
-                            summary = path,
-                            checked = checked,
-                            onCheckedChange = {
-                                working = if (it) working + path else working - path
-                            },
-                            insideMargin = AlbumRowMargin,
-                        )
-                    }
-                    if (availableAlbums.isEmpty()) {
-                        Text(
-                            stringResource(R.string.filter_album_empty),
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            modifier = Modifier.padding(vertical = 18.dp),
-                        )
-                    }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(
-                        text = stringResource(R.string.dialog_cancel),
-                        onClick = onDismiss,
-                        modifier = Modifier.weight(1f),
+    var working by remember { mutableStateOf(selected) }
+    // Re-seed the working selection each time the picker is opened, because the
+    // overlay remains composed until its exit animation finishes.
+    LaunchedEffect(show, selected) {
+        if (show) working = selected
+    }
+    OverlayDialog(
+        show = show,
+        title = stringResource(R.string.filter_album_picker_title),
+        onDismissRequest = onDismiss,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                Modifier
+                    .heightIn(max = 320.dp)
+                    .verticalScroll(rememberScrollState()),
+            ) {
+                availableAlbums.forEach { path ->
+                    val checked = path in working
+                    CheckboxPreference(
+                        title = albumDisplayName(path),
+                        summary = path,
+                        checked = checked,
+                        onCheckedChange = {
+                            working = if (it) working + path else working - path
+                        },
+                        insideMargin = AlbumRowMargin,
                     )
-                    TextButton(
-                        text = stringResource(R.string.dialog_confirm),
-                        onClick = { onConfirm(working) },
-                        modifier = Modifier.weight(1f),
+                }
+                if (availableAlbums.isEmpty()) {
+                    Text(
+                        stringResource(R.string.filter_album_empty),
+                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                        modifier = Modifier.padding(vertical = 18.dp),
                     )
                 }
             }
+            DialogActions(
+                confirmText = stringResource(R.string.dialog_confirm),
+                onCancel = onDismiss,
+                onConfirm = { onConfirm(working) },
+            )
         }
     }
 }

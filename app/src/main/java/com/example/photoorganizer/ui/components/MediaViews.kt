@@ -118,7 +118,10 @@ fun MediaThumbnail(
             contentScale = contentScale,
         )
     } else {
-        Box(modifier, contentAlignment = Alignment.Center) {
+        Box(
+            modifier.background(MiuixTheme.colorScheme.surfaceContainerHigh),
+            contentAlignment = Alignment.Center,
+        ) {
             Icon(
                 Icons.Default.PhotoLibrary,
                 contentDescription = null,

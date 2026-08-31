@@ -1,8 +1,8 @@
 package com.example.photoorganizer.media
 
 /**
- * Small bounded cache for expensive content hashes. A null result is cached
- * too, so an unreadable item is not retried on every recomposition.
+ * Small bounded cache for successful content hashes. Failed reads are retried
+ * on the next analysis because permission and provider failures may be transient.
  */
 data class MediaHashKey(
     val uri: String,
@@ -22,7 +22,7 @@ class MediaHashCache(private val maxEntries: Int = 2_048) {
             if (values.containsKey(key)) return values[key]
         }
         val result = compute()
-        synchronized(values) { values[key] = result }
+        if (result != null) synchronized(values) { values[key] = result }
         return result
     }
 

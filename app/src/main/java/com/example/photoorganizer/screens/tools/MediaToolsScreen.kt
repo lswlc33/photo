@@ -41,6 +41,7 @@ import com.example.photoorganizer.processing.ImageFormat
 import com.example.photoorganizer.processing.ImageProcessor
 import com.example.photoorganizer.processing.ImageResizeOption
 import com.example.photoorganizer.processing.ProcessedMedia
+import com.example.photoorganizer.processing.ProcessingException
 import com.example.photoorganizer.processing.VideoProcessor
 import com.example.photoorganizer.processing.VideoResolution
 import com.example.photoorganizer.processing.VideoTrackMode
@@ -57,6 +58,7 @@ import com.example.photoorganizer.ui.theme.AccentBlue
 import com.example.photoorganizer.ui.theme.AccentGreen
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
@@ -166,8 +168,7 @@ fun MediaToolsScreen(
         sources: List<Uri>,
         process: suspend (Uri, (Float) -> Unit) -> ProcessedMedia,
     ) {
-        if (sources.isEmpty()) return
-        job?.cancel()
+        if (sources.isEmpty() || running) return
         running = true
         errorMessage = null
         queueIndex = 1
@@ -180,6 +181,7 @@ fun MediaToolsScreen(
             val previousResultCount = results.size
             try {
                 sources.forEachIndexed { index, source ->
+                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
                     queueIndex = index + 1
                     try {
                         val processed = process(source) { itemProgress ->
@@ -192,7 +194,7 @@ fun MediaToolsScreen(
                         throw cancelled
                     } catch (t: Throwable) {
                         batchFailures++
-                        errorMessage = t.message ?: t.javaClass.simpleName
+                        errorMessage = describeFailure(resources, context, source, t)
                     }
                     progress = (index + 1f) / sources.size
                 }
@@ -638,4 +640,27 @@ private fun com.example.photoorganizer.ffmpeg.VideoQuality.toDefaultResolution()
     com.example.photoorganizer.ffmpeg.VideoQuality.HIGH -> VideoResolution.P1080
     com.example.photoorganizer.ffmpeg.VideoQuality.MEDIUM -> VideoResolution.P720
     com.example.photoorganizer.ffmpeg.VideoQuality.LOW -> VideoResolution.P480
+}
+
+/**
+ * Turns a processing failure into a localized, file-scoped message. Pipeline
+ * errors carry a string resource; anything else falls back to its class name so
+ * the user still sees which file failed.
+ */
+private fun describeFailure(
+    resources: android.content.res.Resources,
+    context: android.content.Context,
+    source: Uri,
+    error: Throwable,
+): String {
+    val reason = if (error is ProcessingException) {
+        resources.getString(error.messageRes, *error.formatArgs.toTypedArray())
+    } else {
+        resources.getString(
+            R.string.processing_error_unknown,
+            error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.simpleName,
+        )
+    }
+    val name = runCatching { GalleryWriter.displayName(context, source) }.getOrNull()
+    return if (name.isNullOrBlank()) reason else "$name · $reason"
 }

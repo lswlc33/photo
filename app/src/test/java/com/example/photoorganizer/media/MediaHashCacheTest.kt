@@ -6,7 +6,7 @@ import org.junit.Test
 
 class MediaHashCacheTest {
     @Test
-    fun cachesSuccessfulAndFailedResultsByMediaVersion() {
+    fun cachesSuccessfulResultsAndRetriesTransientFailures() {
         val item = key(size = 100L, modified = 1_000L)
         val cache = MediaHashCache()
         var calls = 0
@@ -17,8 +17,8 @@ class MediaHashCacheTest {
 
         val unreadable = key(size = 200L, modified = 1_000L)
         assertNull(cache.getOrCompute(unreadable) { calls++; null })
-        assertNull(cache.getOrCompute(unreadable) { calls++; "late" })
-        assertEquals(2, calls)
+        assertEquals("late", cache.getOrCompute(unreadable) { calls++; "late" })
+        assertEquals(3, calls)
     }
 
     @Test

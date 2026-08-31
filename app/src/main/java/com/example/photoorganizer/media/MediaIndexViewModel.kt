@@ -65,7 +65,9 @@ class MediaIndexViewModel(application: Application) : AndroidViewModel(applicati
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Throwable) {
-                _state.update { it.copy(scanning = false, error = failure, analyzingDuplicates = false) }
+                if (generation == refreshGeneration) {
+                    _state.update { it.copy(scanning = false, error = failure, analyzingDuplicates = false) }
+                }
             }
         }
     }
@@ -73,11 +75,12 @@ class MediaIndexViewModel(application: Application) : AndroidViewModel(applicati
     private fun launchDuplicateAnalysis(items: List<IndexedMedia>, generation: Long): Job =
         viewModelScope.launch(Dispatchers.IO) {
         try {
+            val analysisJob = currentCoroutineContext()[Job]
             val groups = ToolAnalyzer.analyzeDuplicates(
                 items = items,
                 contentHashOf = { item ->
                     hashCache.getOrCompute(item) {
-                        ToolAnalyzer.contentHash(resolver, item.uri)
+                        ToolAnalyzer.contentHash(resolver, item.uri) { analysisJob?.ensureActive() }
                     }
                 },
             )
@@ -86,6 +89,10 @@ class MediaIndexViewModel(application: Application) : AndroidViewModel(applicati
             _state.update { it.copy(analyzingDuplicates = false, duplicateGroups = groups) }
         } catch (cancelled: CancellationException) {
             throw cancelled
+        } catch (_: Throwable) {
+            if (generation == refreshGeneration) {
+                _state.update { it.copy(analyzingDuplicates = false, duplicateGroups = emptyList()) }
+            }
         }
     }
 }

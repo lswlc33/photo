@@ -5,10 +5,7 @@ import android.os.Build
 import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.rememberScrollState
@@ -16,6 +13,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -27,7 +25,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import com.example.photoorganizer.R
 import com.example.photoorganizer.ffmpeg.VideoQuality
 import com.example.photoorganizer.media.IndexScope
@@ -35,13 +32,12 @@ import com.example.photoorganizer.media.IndexScopeMode
 import com.example.photoorganizer.media.albumDisplayName
 import com.example.photoorganizer.ui.PreferenceGroup
 import com.example.photoorganizer.ui.ThemeMode
+import com.example.photoorganizer.ui.components.DialogActions
 import com.example.photoorganizer.ui.components.MessageDialog
 import com.example.photoorganizer.ui.components.OverlayChoicePopup
 import com.example.photoorganizer.ui.components.ScreenColumn
-import com.example.photoorganizer.ui.components.standardCardColors
-import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.CheckboxPreference
 import top.yukonga.miuix.kmp.preference.RadioButtonPreference
@@ -252,36 +248,33 @@ fun SettingsScreen(
         }
     }
 
-    if (showIndexScopeDialog) {
-        IndexScopeDialog(
-            availableAlbums = availableAlbums,
-            current = indexScope,
-            onDismiss = { showIndexScopeDialog = false },
-            onConfirm = {
-                showIndexScopeDialog = false
-                onIndexScopeChange(it)
-            },
-        )
-    }
-    if (showCapabilitiesDialog) {
-        MessageDialog(
-            title = stringResource(R.string.settings_device_capabilities),
-            message = stringResource(
-                R.string.device_capabilities_detail,
-                Build.VERSION.SDK_INT,
-                Build.SUPPORTED_ABIS.firstOrNull() ?: "?",
-                ffmpegVersion ?: stringResource(R.string.ffmpeg_status_unavailable),
-            ),
-            onDismiss = { showCapabilitiesDialog = false },
-        )
-    }
-    if (showHelpDialog) {
-        MessageDialog(
-            title = stringResource(R.string.help_dialog_title),
-            message = stringResource(R.string.help_dialog_message),
-            onDismiss = { showHelpDialog = false },
-        )
-    }
+    IndexScopeDialog(
+        show = showIndexScopeDialog,
+        availableAlbums = availableAlbums,
+        current = indexScope,
+        onDismiss = { showIndexScopeDialog = false },
+        onConfirm = {
+            showIndexScopeDialog = false
+            onIndexScopeChange(it)
+        },
+    )
+    MessageDialog(
+        show = showCapabilitiesDialog,
+        title = stringResource(R.string.settings_device_capabilities),
+        message = stringResource(
+            R.string.device_capabilities_detail,
+            Build.VERSION.SDK_INT,
+            Build.SUPPORTED_ABIS.firstOrNull() ?: "?",
+            ffmpegVersion ?: stringResource(R.string.ffmpeg_status_unavailable),
+        ),
+        onDismiss = { showCapabilitiesDialog = false },
+    )
+    MessageDialog(
+        show = showHelpDialog,
+        title = stringResource(R.string.help_dialog_title),
+        message = stringResource(R.string.help_dialog_message),
+        onDismiss = { showHelpDialog = false },
+    )
 }
 
 @Composable
@@ -310,29 +303,42 @@ private fun indexScopeSummary(scope: IndexScope, indexedCount: Int): String {
 
 @Composable
 private fun IndexScopeDialog(
+    show: Boolean,
     availableAlbums: List<String>,
     current: IndexScope,
     onDismiss: () -> Unit,
     onConfirm: (IndexScope) -> Unit,
 ) {
-    var mode by remember(current) { mutableStateOf(current.mode) }
-    var selectedAlbums by remember(current) { mutableStateOf(current.albumPaths) }
-    Dialog(onDismissRequest = onDismiss) {
-        Card(Modifier.fillMaxWidth().padding(20.dp), colors = standardCardColors()) {
-            Column(Modifier.padding(16.dp).heightIn(max = 620.dp)) {
-                Text(
-                    stringResource(R.string.index_scope_dialog_title),
-                    fontSize = 20.sp,
-                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
-                    color = MiuixTheme.colorScheme.onSurface,
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
-                )
+    var mode by remember { mutableStateOf(current.mode) }
+    var selectedAlbums by remember { mutableStateOf(current.albumPaths) }
+    // The overlay stays composed through its exit animation, so re-seed the
+    // working copy whenever the dialog is reopened.
+    LaunchedEffect(show, current) {
+        if (show) {
+            mode = current.mode
+            selectedAlbums = current.albumPaths
+        }
+    }
+    OverlayDialog(
+        show = show,
+        title = stringResource(R.string.index_scope_dialog_title),
+        onDismissRequest = onDismiss,
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Radio group and album checkboxes share one scroll area so the
+            // action row stays pinned inside the dialog on short screens.
+            Column(
+                Modifier
+                    .heightIn(max = OverlayScrollMaxHeight)
+                    .verticalScroll(rememberScrollState()),
+            ) {
                 IndexScopeMode.entries.forEach { option ->
                     RadioButtonPreference(
                         title = stringResource(indexScopeModeLabel(option)),
                         summary = stringResource(indexScopeModeSummary(option)),
                         selected = option == mode,
                         onClick = { mode = option },
+                        insideMargin = IndexScopeRowMargin,
                     )
                 }
                 if (mode != IndexScopeMode.ALL) {
@@ -340,40 +346,36 @@ private fun IndexScopeDialog(
                         stringResource(R.string.index_scope_album_title),
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         fontSize = 12.sp,
-                        modifier = Modifier.padding(start = 8.dp, top = 8.dp, bottom = 4.dp),
+                        modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 2.dp),
                     )
-                    Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
-                        availableAlbums.forEach { path ->
-                            val checked = path in selectedAlbums
-                            CheckboxPreference(
-                                title = albumDisplayName(path),
-                                summary = path,
-                                checked = checked,
-                                onCheckedChange = {
-                                    selectedAlbums =
-                                        if (it) selectedAlbums + path else selectedAlbums - path
-                                },
-                                insideMargin = IndexScopeRowMargin,
-                            )
-                        }
+                    availableAlbums.forEach { path ->
+                        val checked = path in selectedAlbums
+                        CheckboxPreference(
+                            title = albumDisplayName(path),
+                            summary = path,
+                            checked = checked,
+                            onCheckedChange = {
+                                selectedAlbums =
+                                    if (it) selectedAlbums + path else selectedAlbums - path
+                            },
+                            insideMargin = IndexScopeRowMargin,
+                        )
                     }
-                } else {
-                    Spacer(Modifier.weight(1f, fill = false))
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(
-                        text = stringResource(R.string.dialog_cancel),
-                        onClick = onDismiss,
-                        modifier = Modifier.weight(1f),
-                    )
-                    TextButton(
-                        text = stringResource(R.string.dialog_confirm),
-                        enabled = mode != IndexScopeMode.ONLY || selectedAlbums.isNotEmpty(),
-                        onClick = { onConfirm(IndexScope(mode, selectedAlbums)) },
-                        modifier = Modifier.weight(1f),
-                    )
+                    if (availableAlbums.isEmpty()) {
+                        Text(
+                            stringResource(R.string.filter_album_empty),
+                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                            modifier = Modifier.padding(vertical = 18.dp),
+                        )
+                    }
                 }
             }
+            DialogActions(
+                confirmText = stringResource(R.string.dialog_confirm),
+                confirmEnabled = mode != IndexScopeMode.ONLY || selectedAlbums.isNotEmpty(),
+                onCancel = onDismiss,
+                onConfirm = { onConfirm(IndexScope(mode, selectedAlbums)) },
+            )
         }
     }
 }
@@ -399,3 +401,6 @@ private fun openAppSettings(context: android.content.Context) {
 }
 
 private val IndexScopeRowMargin = PaddingValues(horizontal = 4.dp, vertical = 10.dp)
+
+/** Keeps the scrolling body of an overlay dialog clear of its action row. */
+private val OverlayScrollMaxHeight = 380.dp

@@ -121,8 +121,9 @@
     <string name="marked_empty_summary">整理过程中标记的内容会显示在这里。</string>
     <string name="marked_restore">还原</string>
     <string name="marked_delete_menu_cd">更多选项</string>
-    <string name="marked_delete_all_action">删除全部已弃置内容</string>
     <string name="marked_delete_selected_action">删除所选</string>
+    <string name="marked_delete_all_cd">清空已弃置内容</string>
+    <string name="marked_delete_all_confirm_cd">再次点击清空已弃置内容</string>
 
     <!-- 定向筛选 -->
     <string name="targeted_sheet_title">整理筛选</string>

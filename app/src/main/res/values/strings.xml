@@ -124,8 +124,9 @@
     <string name="marked_empty_summary">Items marked during review will appear here.</string>
     <string name="marked_restore">Restore</string>
     <string name="marked_delete_menu_cd">More options</string>
-    <string name="marked_delete_all_action">Delete all discarded items</string>
     <string name="marked_delete_selected_action">Delete selected</string>
+    <string name="marked_delete_all_cd">Empty discarded items</string>
+    <string name="marked_delete_all_confirm_cd">Tap again to empty discarded items</string>
 
     <!-- Targeted filter sheet -->
     <string name="targeted_sheet_title">Review filters</string>

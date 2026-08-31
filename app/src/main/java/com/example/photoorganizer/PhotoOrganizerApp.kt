@@ -24,6 +24,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.CompositionLocalProvider
@@ -48,13 +49,14 @@ import androidx.core.content.edit
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.photoorganizer.ffmpeg.FfmpegEngine
 import com.example.photoorganizer.ffmpeg.VideoQuality
 import com.example.photoorganizer.media.LogicalAlbum
 import com.example.photoorganizer.media.LogicalAlbumStore
 import com.example.photoorganizer.media.IndexScope
 import com.example.photoorganizer.media.IndexScopeMode
-import com.example.photoorganizer.media.MediaStoreIndexer
+import com.example.photoorganizer.media.MediaIndexViewModel
 import com.example.photoorganizer.media.ReviewState
 import com.example.photoorganizer.media.TargetFilters
 import com.example.photoorganizer.media.DuplicateGroup
@@ -65,6 +67,7 @@ import com.example.photoorganizer.media.applyTargetFilters
 import com.example.photoorganizer.media.formatBytes
 import com.example.photoorganizer.media.mediaPermissionState
 import com.example.photoorganizer.media.photoPermissionRequest
+import com.example.photoorganizer.media.reviewPreferenceKey
 import com.example.photoorganizer.media.toUiMedia
 import com.example.photoorganizer.screens.dashboard.DashboardScreen
 import com.example.photoorganizer.screens.dashboard.DashboardState
@@ -85,6 +88,7 @@ import com.example.photoorganizer.ui.FloatingBottomBarTopMargin
 import com.example.photoorganizer.ui.LocalOverlayPopupCount
 import com.example.photoorganizer.ui.SyncSystemBarsWithTheme
 import com.example.photoorganizer.ui.ThemeMode
+import com.example.photoorganizer.ui.TrackOverlayPopup
 import com.example.photoorganizer.ui.floatingBottomBarContentPadding
 import com.example.photoorganizer.ui.rememberOverlayPopupCount
 import com.example.photoorganizer.ui.components.AlbumDialog
@@ -96,6 +100,7 @@ import com.example.photoorganizer.ui.toColorSchemeMode
 import com.example.photoorganizer.ui.themeModeFromName
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
+import top.yukonga.miuix.kmp.basic.Scaffold
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collect
@@ -141,13 +146,12 @@ fun PhotoOrganizerApp() {
     val initialPermissionState = remember { context.mediaPermissionState() }
     var permissionState by remember { mutableStateOf(initialPermissionState) }
     val hasMediaPermission = permissionState.hasAccess
-    var dashboardState by remember {
-        mutableStateOf<DashboardState>(if (initialPermissionState.hasAccess) DashboardState.Scanning else DashboardState.NoPermission)
-    }
-    var availableAlbums by remember { mutableStateOf<List<String>>(emptyList()) }
+    val indexViewModel: MediaIndexViewModel = viewModel()
+    val indexState by indexViewModel.state.collectAsState()
     var scanRequest by remember { mutableIntStateOf(0) }
     val reviewStates = remember { mutableStateMapOf<Long, ReviewState>() }
     var pendingDeleteIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
+    var pendingDeleteReviewKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
     var deleteError by remember { mutableStateOf<String?>(null) }
     val deleteLaunchFailedText = stringResource(R.string.error_delete_launch_failed)
     val scanFailedText = stringResource(R.string.error_scan_failed)
@@ -158,9 +162,13 @@ fun PhotoOrganizerApp() {
                 reviewStates.remove(id)
                 prefs.edit { remove("review_$id") }
             }
+            if (pendingDeleteReviewKeys.isNotEmpty()) {
+                prefs.edit { pendingDeleteReviewKeys.forEach(::remove) }
+            }
             scanRequest++
         }
         pendingDeleteIds = emptySet()
+        pendingDeleteReviewKeys = emptySet()
     }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { _ ->
         permissionState = context.mediaPermissionState()
@@ -186,59 +194,57 @@ fun PhotoOrganizerApp() {
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    LaunchedEffect(permissionState, scanRequest) {
-        if (!permissionState.hasAccess) {
-            dashboardState = DashboardState.NoPermission
-            return@LaunchedEffect
-        }
-        dashboardState = DashboardState.Scanning
-        dashboardState = runCatching {
-            withContext(Dispatchers.IO) {
-                MediaStoreIndexer(context.contentResolver).scan(
-                    includeImages = permissionState.images || permissionState.selectedOnly,
-                    includeVideos = permissionState.videos || permissionState.selectedOnly,
-                    permissionLimited = permissionState.isLimited,
-                    scope = indexScope,
-                )
-            }
-        }.fold(
-            onSuccess = { snapshot ->
-                availableAlbums = snapshot.availableAlbums
-                snapshot.items.forEach { item ->
-                    val saved = prefs.getString("review_${item.id}", null)
-                        ?.let { value -> ReviewState.entries.firstOrNull { it.name == value } }
-                    reviewStates[item.id] = saved ?: reviewStates[item.id] ?: ReviewState.UNREVIEWED
-                }
-                DashboardState.Ready(
-                    statistics = com.example.photoorganizer.media.MediaStatistics.from(snapshot),
-                    scannedAtMillis = snapshot.scannedAtMillis,
-                    permissionLimited = snapshot.permissionLimited,
-                    items = snapshot.items,
-                )
-            },
-            onFailure = { DashboardState.Error(it.message ?: scanFailedText) },
-        )
+    LaunchedEffect(permissionState, scanRequest, indexScope) {
+        indexViewModel.refresh(permissionState, indexScope)
     }
 
-    val rawItems = (dashboardState as? DashboardState.Ready)?.items ?: emptyList()
-    val mediaIndexReady = dashboardState is DashboardState.Ready
-    val media = rawItems.map { it.toUiMedia(reviewStates[it.id] ?: ReviewState.UNREVIEWED) }
-    var toolAnalysis by remember { mutableStateOf(ToolAnalysis.Empty) }
-    var toolAnalysisReady by remember { mutableStateOf(false) }
-    LaunchedEffect(rawItems, mediaIndexReady, largestThresholdMb) {
-        toolAnalysisReady = false
-        toolAnalysis = if (rawItems.isEmpty()) {
-            ToolAnalysis.Empty
-        } else {
-            withContext(Dispatchers.IO) {
-                ToolAnalyzer.analyze(
-                    items = rawItems,
-                    largestThresholdBytes = ToolAnalyzer.thresholdBytesOf(largestThresholdMb),
-                    contentHashOf = { item -> ToolAnalyzer.contentHash(context.contentResolver, item.uri) },
-                )
-            }
+    val dashboardState: DashboardState = when {
+        !permissionState.hasAccess -> DashboardState.NoPermission
+        indexState.scanning || indexState.snapshot == null && indexState.error == null -> DashboardState.Scanning
+        indexState.error != null -> DashboardState.Error(indexState.error?.message ?: scanFailedText)
+        else -> indexState.snapshot!!.let { snapshot ->
+            DashboardState.Ready(
+                statistics = com.example.photoorganizer.media.MediaStatistics.from(snapshot),
+                scannedAtMillis = snapshot.scannedAtMillis,
+                permissionLimited = snapshot.permissionLimited,
+                items = snapshot.items,
+            )
         }
-        toolAnalysisReady = mediaIndexReady
+    }
+    val rawItems = indexState.snapshot?.items ?: emptyList()
+    val mediaIndexReady = dashboardState is DashboardState.Ready
+    val availableAlbums = indexState.snapshot?.availableAlbums ?: emptyList()
+    LaunchedEffect(indexState.snapshot, indexScope) {
+        val snapshot = indexState.snapshot ?: return@LaunchedEffect
+        val activeReviewKeys = snapshot.items.mapTo(hashSetOf()) { it.reviewPreferenceKey() }
+        val activeIds = snapshot.items.mapTo(hashSetOf()) { it.id }
+        reviewStates.keys.retainAll(activeIds)
+        snapshot.items.forEach { item ->
+            val savedValue = prefs.getString(item.reviewPreferenceKey(), null)
+                ?: prefs.getString("review_${item.id}", null)?.also { legacy ->
+                    prefs.edit {
+                        putString(item.reviewPreferenceKey(), legacy)
+                        remove("review_${item.id}")
+                    }
+                }
+            reviewStates[item.id] = savedValue?.let { value ->
+                ReviewState.entries.firstOrNull { it.name == value }
+            } ?: ReviewState.UNREVIEWED
+        }
+        if (indexScope.mode == IndexScopeMode.ALL && !snapshot.permissionLimited) {
+            cleanupReviewPreferences(prefs, activeReviewKeys)
+        }
+    }
+    val media = rawItems.map { it.toUiMedia(reviewStates[it.id] ?: ReviewState.UNREVIEWED) }
+    val toolAnalysisReady = mediaIndexReady && !indexState.analyzingDuplicates
+    val toolAnalysis = remember(indexState.duplicateGroups, rawItems, largestThresholdMb) {
+        val thresholdBytes = ToolAnalyzer.thresholdBytesOf(largestThresholdMb)
+        ToolAnalysis(
+            duplicates = indexState.duplicateGroups,
+            screenshots = ToolAnalyzer.findScreenshots(rawItems),
+            largest = ToolAnalyzer.findLargest(rawItems, thresholdBytes),
+            largestThresholdBytes = thresholdBytes,
+        )
     }
 
     var selectedPage by rememberSaveable { mutableStateOf(AppPage.DASHBOARD) }
@@ -274,13 +280,21 @@ fun PhotoOrganizerApp() {
         runCatching {
             val request = MediaStore.createDeleteRequest(context.contentResolver, uris)
             pendingDeleteIds = markIds
+            pendingDeleteReviewKeys = rawItems
+                .filter { it.id in markIds }
+                .mapTo(hashSetOf()) { it.reviewPreferenceKey() }
             deleteLauncher.launch(IntentSenderRequest.Builder(request.intentSender).build())
         }.onFailure { deleteError = it.message ?: deleteLaunchFailedText }
     }
 
     fun markMedia(id: Long, state: ReviewState) {
         reviewStates[id] = state
-        prefs.edit { putString("review_$id", state.name) }
+        rawItems.firstOrNull { it.id == id }?.let { item ->
+            prefs.edit {
+                putString(item.reviewPreferenceKey(), state.name)
+                remove("review_$id")
+            }
+        }
     }
 
     fun requestDiscard(ids: Set<Long>) {
@@ -336,14 +350,23 @@ fun PhotoOrganizerApp() {
         val bottomBarHideOffset = with(LocalDensity.current) {
             (FloatingBottomBarHeight + FloatingBottomBarTopMargin + FloatingBottomBarBottomMargin).toPx()
         }
-        Box(Modifier.fillMaxSize().background(MiuixTheme.colorScheme.background)) {
+        CompositionLocalProvider(LocalOverlayPopupCount provides overlayPopupCount) {
+        // Root MIUIX Scaffold. It publishes LocalRootDialogStates /
+        // LocalRootPopupStates for the whole app, so every overlay declared by a
+        // page outside of that page's own Scaffold still finds a host. The
+        // Scaffold layout places its popup host last, which keeps those overlays
+        // above both the page content and the floating glass bar.
+        Scaffold(
+            modifier = Modifier.fillMaxSize(),
+            containerColor = MiuixTheme.colorScheme.background,
+        ) {
+        Box(Modifier.fillMaxSize()) {
             Box(
                 Modifier
                     .fillMaxSize()
                     .layerBackdrop(backdrop)
                     .background(MiuixTheme.colorScheme.background),
             ) {
-                CompositionLocalProvider(LocalOverlayPopupCount provides overlayPopupCount) {
                 AnimatedContent(
                     targetState = selectedPage,
                     transitionSpec = {
@@ -540,7 +563,6 @@ fun PhotoOrganizerApp() {
                         null -> Unit
                     }
                 }
-                }
             }
 
             if (selectedMode == null) {
@@ -558,26 +580,41 @@ fun PhotoOrganizerApp() {
                 )
             }
 
-            if (showDiscardDialog) {
+            // App-level dialogs. They render through the root Scaffold's popup
+            // host, so they layer above the page content and the glass bar.
+            run {
                 val pending = media.filter {
                     it.state == ReviewState.TRASH_MARKED && it.id in pendingDiscardIds
                 }
+                // The dialog stays composed through its exit animation, so the
+                // summary keeps rendering the last known selection after the
+                // pending set is cleared.
+                var discardCount by remember { mutableIntStateOf(0) }
+                var discardBytes by remember { mutableStateOf("") }
+                val pendingBytes = formatBytes(pending.sumOf { it.sizeBytes })
+                LaunchedEffect(showDiscardDialog, pending.size, pendingBytes) {
+                    if (showDiscardDialog) {
+                        discardCount = pending.size
+                        discardBytes = pendingBytes
+                    }
+                }
                 DiscardDialog(
-                    count = pending.size,
-                    bytes = formatBytes(pending.sumOf { it.sizeBytes }),
+                    show = showDiscardDialog,
+                    count = discardCount,
+                    bytes = discardBytes,
                     onDismiss = {
                         showDiscardDialog = false
                         pendingDiscardIds = emptySet()
                     },
                     onConfirm = {
+                        val ids = pending.map { it.id }.toSet()
                         showDiscardDialog = false
                         pendingDiscardIds = emptySet()
-                        beginSystemDelete(pending.map { it.id }.toSet())
+                        beginSystemDelete(ids)
                     },
                 )
-            }
-            if (showAlbumDialog) {
                 AlbumDialog(
+                    show = showAlbumDialog,
                     mediaName = media.firstOrNull { it.id == selectedMediaId }?.displayName
                         ?: stringResource(R.string.default_album_name),
                     albums = logicalAlbums,
@@ -604,14 +641,17 @@ fun PhotoOrganizerApp() {
                     },
                     onDismiss = { showAlbumDialog = false },
                 )
-            }
-            deleteError?.let { message ->
+                var errorMessage by remember { mutableStateOf("") }
+                LaunchedEffect(deleteError) { deleteError?.let { errorMessage = it } }
                 MessageDialog(
+                    show = deleteError != null,
                     title = stringResource(R.string.error_title),
-                    message = message,
+                    message = errorMessage,
                     onDismiss = { deleteError = null },
                 )
             }
+        }
+        }
         }
     }
 }
@@ -640,6 +680,14 @@ private fun writePreference(prefs: SharedPreferences, key: String, value: Any?) 
             is Enum<*> -> putString(key, value.name)
             else -> Unit
         }
+    }
+}
+
+private fun cleanupReviewPreferences(prefs: SharedPreferences, activeKeys: Set<String>) {
+    val staleKeys = prefs.all.keys
+        .filter { it.startsWith("review_") && it !in activeKeys }
+    if (staleKeys.isNotEmpty()) {
+        prefs.edit { staleKeys.forEach(::remove) }
     }
 }
 

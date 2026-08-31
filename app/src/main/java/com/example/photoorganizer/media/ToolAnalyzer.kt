@@ -126,19 +126,28 @@ object ToolAnalyzer {
             .sortedByDescending { it.reclaimableBytes }
     }
 
-    fun contentHash(resolver: android.content.ContentResolver, uri: android.net.Uri): String? {
-        return runCatching {
+    fun contentHash(
+        resolver: android.content.ContentResolver,
+        uri: android.net.Uri,
+        checkActive: () -> Unit = {},
+    ): String? {
+        return try {
             resolver.openInputStream(uri)?.use { input ->
                 val digest = java.security.MessageDigest.getInstance("SHA-256")
                 val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
                 while (true) {
+                    checkActive()
                     val read = input.read(buffer)
                     if (read < 0) break
                     digest.update(buffer, 0, read)
                 }
                 digest.digest().joinToString("") { byte -> "%02x".format(byte) }
             }
-        }.getOrNull()
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (_: Throwable) {
+            null
+        }
     }
 
 }
