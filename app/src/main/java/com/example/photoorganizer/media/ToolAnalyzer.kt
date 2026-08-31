@@ -1,7 +1,5 @@
 package com.example.photoorganizer.media
 
-import java.security.MessageDigest
-
 /** Which copy of a duplicate group survives a bulk cleanup. */
 enum class DuplicateKeepStrategy {
     LARGEST,
@@ -109,7 +107,7 @@ object ToolAnalyzer {
             items = items,
             isEligible = { true },
             sizeBytes = { it.sizeBytes },
-            contentHash = { item -> contentHashOf?.invoke(item) ?: hashKey(item) },
+            contentHash = { item -> contentHashOf?.invoke(item) },
         ).map { (hash, group) ->
                 DuplicateGroup(
                     hash = hash,
@@ -134,28 +132,13 @@ object ToolAnalyzer {
         }.getOrNull()
     }
 
-    private fun hashKey(item: IndexedMedia): String {
-        val raw = buildString {
-            append(item.displayName.lowercase())
-            append('|')
-            append(item.sizeBytes)
-            append('|')
-            append(item.width ?: 0)
-            append('x')
-            append(item.height ?: 0)
-            append('|')
-            append(item.dateTakenMillis ?: 0L)
-        }
-        val digest = MessageDigest.getInstance("SHA-1").digest(raw.toByteArray())
-        return digest.joinToString("") { b -> "%02x".format(b) }
-    }
 }
 
 internal fun <T> findExactDuplicateGroups(
     items: List<T>,
     isEligible: (T) -> Boolean,
     sizeBytes: (T) -> Long,
-    contentHash: (T) -> String,
+    contentHash: (T) -> String?,
 ): List<Pair<String, List<T>>> = items
     .asSequence()
     .filter { item -> isEligible(item) && sizeBytes(item) > 0L }
@@ -163,7 +146,12 @@ internal fun <T> findExactDuplicateGroups(
     .values
     .asSequence()
     .filter { sameSize -> sameSize.size > 1 }
-    .flatMap { sameSize -> sameSize.groupBy(contentHash).asSequence() }
+    .flatMap { sameSize ->
+        sameSize
+            .mapNotNull { item -> contentHash(item)?.takeIf(String::isNotBlank)?.let { it to item } }
+            .groupBy({ it.first }, { it.second })
+            .asSequence()
+    }
     .filter { (_, group) -> group.size > 1 }
     .map { (hash, group) -> hash to group }
     .toList()

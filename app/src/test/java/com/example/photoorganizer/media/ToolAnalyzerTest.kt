@@ -29,6 +29,21 @@ class ToolAnalyzerTest {
     }
 
     @Test
+    fun unreadableContentIsNotTreatedAsDuplicate() {
+        val groups = findExactDuplicateGroups(
+            items = listOf(
+                TestMedia(id = 1L, size = 100L),
+                TestMedia(id = 2L, size = 100L),
+            ),
+            isEligible = { true },
+            sizeBytes = { it.size },
+            contentHash = { null },
+        )
+
+        assertEquals(emptyList<Pair<String, List<TestMedia>>>(), groups)
+    }
+
+    @Test
     fun mediaIdsAreUniqueAcrossCollections() {
         val imageId = stableMediaId(42L, IndexedMediaType.IMAGE)
         val videoId = stableMediaId(42L, IndexedMediaType.VIDEO)
