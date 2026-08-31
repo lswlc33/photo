@@ -71,11 +71,9 @@ object ToolAnalyzer {
         largestThresholdBytes: Long = DefaultLargestThresholdBytes,
         contentHashOf: ((IndexedMedia) -> String?)? = null,
     ): ToolAnalysis {
-        val duplicates = findDuplicates(items, contentHashOf)
-        val screenshots = items.filter { it.isScreenshot }.sortedByDescending { it.sizeBytes }
-        val largest = items
-            .filter { it.sizeBytes >= largestThresholdBytes }
-            .sortedByDescending { it.sizeBytes }
+        val duplicates = analyzeDuplicates(items, contentHashOf)
+        val screenshots = findScreenshots(items)
+        val largest = findLargest(items, largestThresholdBytes)
         return ToolAnalysis(
             duplicates = duplicates,
             screenshots = screenshots,
@@ -83,6 +81,17 @@ object ToolAnalyzer {
             largestThresholdBytes = largestThresholdBytes,
         )
     }
+
+    fun analyzeDuplicates(
+        items: List<IndexedMedia>,
+        contentHashOf: ((IndexedMedia) -> String?)? = null,
+    ): List<DuplicateGroup> = findDuplicates(items, contentHashOf)
+
+    fun findScreenshots(items: List<IndexedMedia>): List<IndexedMedia> =
+        items.filter { it.isScreenshot }.sortedByDescending { it.sizeBytes }
+
+    fun findLargest(items: List<IndexedMedia>, thresholdBytes: Long): List<IndexedMedia> =
+        items.filter { it.sizeBytes >= thresholdBytes }.sortedByDescending { it.sizeBytes }
 
     /**
      * Review marks that implement "keep one copy per duplicate group". Pure so the

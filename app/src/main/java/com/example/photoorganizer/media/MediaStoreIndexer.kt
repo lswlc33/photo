@@ -61,6 +61,7 @@ class MediaStoreIndexer(
             durationMillis = null,
             dateTakenMillis = cursor.getLongOrNull(MediaStore.Images.Media.DATE_TAKEN)
                 ?: cursor.getLongOrNull(MediaStore.Images.Media.DATE_MODIFIED)?.times(1000L),
+            dateModifiedMillis = cursor.getLongOrNull(MediaStore.Images.Media.DATE_MODIFIED)?.times(1000L),
             relativePath = relativePath,
             isScreenshot = isScreenshot(displayName, relativePath),
             motionVideoUri = if (isEmbeddedMotionPhoto(cursor.getBlobOrNull(MediaStore.MediaColumns.XMP))) uri else null,
@@ -84,6 +85,7 @@ class MediaStoreIndexer(
             durationMillis = cursor.getLongOrNull(MediaStore.Video.Media.DURATION),
             dateTakenMillis = cursor.getLongOrNull(MediaStore.Video.Media.DATE_TAKEN)
                 ?: cursor.getLongOrNull(MediaStore.Video.Media.DATE_MODIFIED)?.times(1000L),
+            dateModifiedMillis = cursor.getLongOrNull(MediaStore.Video.Media.DATE_MODIFIED)?.times(1000L),
             relativePath = cursor.getStringOrNull(MediaStore.Video.Media.RELATIVE_PATH),
             isScreenshot = false,
         )

@@ -21,6 +21,7 @@ data class IndexedMedia(
     val relativePath: String?,
     val isScreenshot: Boolean,
     val motionVideoUri: Uri? = null,
+    val dateModifiedMillis: Long? = null,
 )
 
 val IndexedMedia.isLivePhoto: Boolean get() = motionVideoUri != null
