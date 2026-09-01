@@ -13,16 +13,20 @@ object PerceptualHash {
     const val Width: Int = 9
     const val Height: Int = 8
 
-    /** Hamming distance below which two photos count as the same shot. */
-    const val DefaultMaxDistance: Int = 8
+    /**
+     * Hamming distance below which two photos count as the same shot. Kept tight
+     * on purpose: the similar list offers a one-tap "keep one copy", so a false
+     * grouping costs the user a photo while a miss only costs some space.
+     */
+    const val DefaultMaxDistance: Int = 5
 
     /**
-     * Hashes with almost no set or almost no cleared bits come from flat or
-     * smoothly graded images (blank pages, single-colour backdrops), where every
-     * such image lands within a few bits of every other one. They are dropped
-     * instead of being reported as a giant false-positive cluster.
+     * Hashes with few set or few cleared bits come from images without much
+     * horizontal detail: flat backdrops, smooth gradients and mostly-empty UI
+     * screenshots. Every such image lands within a few bits of every other one,
+     * so they are dropped instead of forming one giant false-positive cluster.
      */
-    const val MinFeatureBits: Int = 6
+    const val MinFeatureBits: Int = 14
 
     /**
      * Packs a [Width] x [Height] grid of luminance values into 64 bits, one bit

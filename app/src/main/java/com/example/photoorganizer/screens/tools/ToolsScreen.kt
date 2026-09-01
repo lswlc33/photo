@@ -27,6 +27,7 @@ import com.example.photoorganizer.ui.components.SectionTitle
 import com.example.photoorganizer.ui.components.standardCardColors
 import com.example.photoorganizer.ui.components.rememberRefreshBridge
 import com.example.photoorganizer.ui.theme.AccentBlue
+import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Icon
@@ -42,6 +43,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 @Composable
 fun ToolsScreen(
     analysis: ToolAnalysis,
+    hasPermission: Boolean,
     indexReady: Boolean,
     duplicateAnalysisReady: Boolean,
     similar: SimilarAnalysisState,
@@ -49,6 +51,7 @@ fun ToolsScreen(
     largestThresholdMb: Int,
     onLargestThresholdChange: (Int) -> Unit,
     onRefresh: () -> Unit,
+    onRequestPermission: () -> Unit,
     onOpenDuplicates: () -> Unit,
     onOpenScreenshots: () -> Unit,
     onOpenLargest: () -> Unit,
@@ -71,95 +74,114 @@ fun ToolsScreen(
             }
         },
     ) {
-        ReclaimableCard(analysis = analysis, analysisReady = indexReady && duplicateAnalysisReady)
-        PreferenceGroup(stringResource(R.string.section_tools_cleanup)) {
-            ArrowPreference(
-                title = stringResource(R.string.tools_duplicate_title),
-                summary = when {
-                    !duplicateAnalysisReady -> stringResource(R.string.tools_analysis_running)
-                    analysis.duplicates.isEmpty() -> stringResource(R.string.duplicate_empty)
-                    else -> pluralStringResource(
-                        R.plurals.tools_summary_duplicate,
-                        analysis.duplicates.size,
-                        analysis.duplicates.size,
-                        formatBytes(analysis.duplicateReclaimableBytes),
-                    )
-                },
-                onClick = onOpenDuplicates,
-            )
-            ArrowPreference(
-                title = stringResource(R.string.tools_screenshots_title),
-                summary = when {
-                    !indexReady -> stringResource(R.string.tools_analysis_running)
-                    analysis.screenshots.isEmpty() -> stringResource(R.string.screenshot_empty)
-                    else -> pluralStringResource(
-                        R.plurals.tools_summary_screenshots,
-                        analysis.screenshots.size,
-                        analysis.screenshots.size,
-                        formatBytes(analysis.screenshotsBytes),
-                    )
-                },
-                onClick = onOpenScreenshots,
-            )
-            ArrowPreference(
-                title = stringResource(R.string.tools_largest_title),
-                summary = when {
-                    !indexReady -> stringResource(R.string.tools_analysis_running)
-                    analysis.largest.isEmpty() -> stringResource(R.string.largest_empty, thresholdLabel)
-                    else -> pluralStringResource(
-                        R.plurals.tools_summary_largest,
-                        analysis.largest.size,
-                        analysis.largest.size,
-                        formatBytes(analysis.largestBytes),
-                    )
-                },
-                onClick = onOpenLargest,
-            )
-            ArrowPreference(
-                title = stringResource(R.string.tools_similar_title),
-                summary = when {
-                    !indexReady -> stringResource(R.string.tools_analysis_running)
-                    similar.isRunning -> stringResource(
-                        R.string.tools_similar_progress,
-                        similar.hashedCount,
-                        similar.totalCount,
-                    )
-                    !similar.isReady -> stringResource(R.string.tools_similar_start_summary)
-                    similar.groups.isEmpty() -> stringResource(R.string.tools_similar_empty)
-                    else -> pluralStringResource(
-                        R.plurals.tools_summary_similar,
-                        similar.groups.size,
-                        similar.groups.size,
-                        formatBytes(similar.groups.sumOf { it.reclaimableBytes }),
-                    )
-                },
-                enabled = indexReady && !similar.isRunning,
-                onClick = if (similar.isReady) onOpenSimilar else onAnalyzeSimilar,
-            )
-            if (similar.isRunning) {
-                Column(
-                    Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    LinearProgressIndicator(
-                        progress = similar.progress,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    CompactTextButton(
-                        text = stringResource(R.string.processing_cancel),
-                        onClick = onCancelSimilarAnalysis,
-                    )
-                }
+        ReclaimableCard(
+            analysis = analysis,
+            analysisReady = indexReady && duplicateAnalysisReady,
+            hasPermission = hasPermission,
+        )
+        // Without media access there is nothing to analyse, and claiming the
+        // analysis is still running would be a lie the user cannot resolve.
+        if (!hasPermission) {
+            PreferenceGroup(stringResource(R.string.section_tools_cleanup)) {
+                BasicComponent(
+                    title = stringResource(R.string.tools_permission_required),
+                    summary = stringResource(R.string.tools_permission_required_summary),
+                )
+                ArrowPreference(
+                    title = stringResource(R.string.permission_request_action),
+                    onClick = onRequestPermission,
+                )
             }
-            OverlaySpinnerPreference(
-                items = thresholdOptions.map { mb ->
-                    SpinnerEntry(title = stringResource(R.string.tools_threshold_option, formatBytes(ToolAnalyzer.thresholdBytesOf(mb))))
-                },
-                selectedIndex = thresholdOptions.indexOf(largestThresholdMb).coerceAtLeast(0),
-                title = stringResource(R.string.tools_largest_threshold_title),
-                renderInRootScaffold = true,
-                onSelectedIndexChange = { index -> thresholdOptions.getOrNull(index)?.let(onLargestThresholdChange) },
-            )
+        } else {
+            PreferenceGroup(stringResource(R.string.section_tools_cleanup)) {
+                ArrowPreference(
+                    title = stringResource(R.string.tools_duplicate_title),
+                    summary = when {
+                        !duplicateAnalysisReady -> stringResource(R.string.tools_analysis_running)
+                        analysis.duplicates.isEmpty() -> stringResource(R.string.duplicate_empty)
+                        else -> pluralStringResource(
+                            R.plurals.tools_summary_duplicate,
+                            analysis.duplicates.size,
+                            analysis.duplicates.size,
+                            formatBytes(analysis.duplicateReclaimableBytes),
+                        )
+                    },
+                    onClick = onOpenDuplicates,
+                )
+                ArrowPreference(
+                    title = stringResource(R.string.tools_screenshots_title),
+                    summary = when {
+                        !indexReady -> stringResource(R.string.tools_analysis_running)
+                        analysis.screenshots.isEmpty() -> stringResource(R.string.screenshot_empty)
+                        else -> pluralStringResource(
+                            R.plurals.tools_summary_screenshots,
+                            analysis.screenshots.size,
+                            analysis.screenshots.size,
+                            formatBytes(analysis.screenshotsBytes),
+                        )
+                    },
+                    onClick = onOpenScreenshots,
+                )
+                ArrowPreference(
+                    title = stringResource(R.string.tools_largest_title),
+                    summary = when {
+                        !indexReady -> stringResource(R.string.tools_analysis_running)
+                        analysis.largest.isEmpty() -> stringResource(R.string.largest_empty, thresholdLabel)
+                        else -> pluralStringResource(
+                            R.plurals.tools_summary_largest,
+                            analysis.largest.size,
+                            analysis.largest.size,
+                            formatBytes(analysis.largestBytes),
+                        )
+                    },
+                    onClick = onOpenLargest,
+                )
+                ArrowPreference(
+                    title = stringResource(R.string.tools_similar_title),
+                    summary = when {
+                        !indexReady -> stringResource(R.string.tools_analysis_running)
+                        similar.isRunning -> stringResource(
+                            R.string.tools_similar_progress,
+                            similar.hashedCount,
+                            similar.totalCount,
+                        )
+                        !similar.isReady -> stringResource(R.string.tools_similar_start_summary)
+                        similar.groups.isEmpty() -> stringResource(R.string.tools_similar_empty)
+                        else -> pluralStringResource(
+                            R.plurals.tools_summary_similar,
+                            similar.groups.size,
+                            similar.groups.size,
+                            formatBytes(similar.groups.sumOf { it.reclaimableBytes }),
+                        )
+                    },
+                    enabled = indexReady && !similar.isRunning,
+                    onClick = if (similar.isReady) onOpenSimilar else onAnalyzeSimilar,
+                )
+                if (similar.isRunning) {
+                    Column(
+                        Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        LinearProgressIndicator(
+                            progress = similar.progress,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        CompactTextButton(
+                            text = stringResource(R.string.processing_cancel),
+                            onClick = onCancelSimilarAnalysis,
+                        )
+                    }
+                }
+                OverlaySpinnerPreference(
+                    items = thresholdOptions.map { mb ->
+                        SpinnerEntry(title = stringResource(R.string.tools_threshold_option, formatBytes(ToolAnalyzer.thresholdBytesOf(mb))))
+                    },
+                    selectedIndex = thresholdOptions.indexOf(largestThresholdMb).coerceAtLeast(0),
+                    title = stringResource(R.string.tools_largest_threshold_title),
+                    renderInRootScaffold = true,
+                    onSelectedIndexChange = { index -> thresholdOptions.getOrNull(index)?.let(onLargestThresholdChange) },
+                )
+            }
         }
         PreferenceGroup(stringResource(R.string.section_tools_media)) {
             ArrowPreference(
@@ -186,7 +208,7 @@ fun ToolsScreen(
  * plus the per-category breakdown that produced it.
  */
 @Composable
-private fun ReclaimableCard(analysis: ToolAnalysis, analysisReady: Boolean) {
+private fun ReclaimableCard(analysis: ToolAnalysis, analysisReady: Boolean, hasPermission: Boolean) {
     val ready = analysisReady && !analysis.isEmpty
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -216,6 +238,7 @@ private fun ReclaimableCard(analysis: ToolAnalysis, analysisReady: Boolean) {
             Text(stringResource(R.string.tools_reclaimable_title), color = labelColor, fontSize = 13.sp)
             Text(
                 text = when {
+                    !hasPermission -> stringResource(R.string.tools_permission_required)
                     !analysisReady -> stringResource(R.string.tools_analysis_running)
                     analysis.isEmpty -> stringResource(R.string.tools_reclaimable_none)
                     else -> formatBytes(analysis.reclaimableBytes)

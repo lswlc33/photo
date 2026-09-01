@@ -173,6 +173,8 @@
     <string name="tools_analysis_running">正在分析本地媒体…</string>
     <string name="tools_duplicate_title">精确重复照片</string>
     <string name="duplicate_empty">未发现重复内容。</string>
+    <string name="tools_permission_required">需要相册权限</string>
+    <string name="tools_permission_required_summary">清理分析需要读取本地图库，因此要照片和视频权限。下方的媒体处理无需权限即可使用。</string>
     <string name="tools_similar_title">相似照片</string>
     <string name="tools_similar_start_summary">点按开始比对画面内容，每张照片读取一次</string>
     <string name="tools_similar_progress">正在比对 %1$d / %2$d</string>

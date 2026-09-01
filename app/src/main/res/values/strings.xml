@@ -178,6 +178,8 @@
     <string name="tools_analysis_running">Analyzing local media…</string>
     <string name="tools_duplicate_title">Exact duplicates</string>
     <string name="duplicate_empty">No duplicate groups detected.</string>
+    <string name="tools_permission_required">Media access needed</string>
+    <string name="tools_permission_required_summary">Cleanup analysis reads the local library, so it needs photo and video access. The media tools below work without it.</string>
     <string name="tools_similar_title">Similar photos</string>
     <string name="tools_similar_start_summary">Tap to compare picture content; each photo is read once</string>
     <string name="tools_similar_progress">Comparing %1$d of %2$d</string>

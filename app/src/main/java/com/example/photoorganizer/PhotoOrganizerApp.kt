@@ -442,6 +442,7 @@ fun PhotoOrganizerApp() {
                     )
                     AppPage.TOOLS -> ToolsScreen(
                         analysis = toolAnalysis,
+                        hasPermission = hasMediaPermission,
                         indexReady = mediaIndexReady,
                         duplicateAnalysisReady = duplicateAnalysisReady,
                         similar = indexState.similar,
@@ -449,6 +450,7 @@ fun PhotoOrganizerApp() {
                         largestThresholdMb = largestThresholdMb,
                         onLargestThresholdChange = { largestThresholdMb = it },
                         onRefresh = { scanRequest++ },
+                        onRequestPermission = { permissionLauncher.launch(context.photoPermissionRequest()) },
                         onOpenDuplicates = { selectedMode = DetailMode.DUPLICATES },
                         onOpenScreenshots = { selectedMode = DetailMode.SCREENSHOTS },
                         onOpenLargest = { selectedMode = DetailMode.LARGEST },
