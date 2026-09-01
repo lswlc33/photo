@@ -89,6 +89,14 @@ import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
+/**
+ * Bounded decode concurrency. A full grid page composes roughly 30 tiles at
+ * once, and 30 concurrent `loadThumbnail` calls both spike memory and thrash the
+ * media provider, while the user still only sees one screen of results. Four at a
+ * time keeps the visible rows filling in order instead of all at once.
+ */
+private val thumbnailDecodeDispatcher = Dispatchers.IO.limitedParallelism(4)
+
 /** Loads a MediaStore thumbnail off the main thread. */
 @Composable
 fun MediaThumbnail(
@@ -100,13 +108,13 @@ fun MediaThumbnail(
 ) {
     val context = LocalContext.current
     val cacheKey = remember(uri, requestSize) { "$uri@$requestSize" }
-    val cached = remember(cacheKey) { MediaThumbnailCache.get(cacheKey) }
+    val cached = remember(cacheKey) { MediaThumbnailCache.get(cacheKey, requestSize) }
     val bitmap by produceState<Bitmap?>(initialValue = cached, cacheKey) {
         if (value != null) return@produceState
-        value = withContext(Dispatchers.IO) {
+        value = withContext(thumbnailDecodeDispatcher) {
             runCatching {
                 context.contentResolver.loadThumbnail(uri, Size(requestSize, requestSize), null)
-            }.getOrNull()?.also { MediaThumbnailCache.put(cacheKey, it) }
+            }.getOrNull()?.also { MediaThumbnailCache.put(cacheKey, requestSize, it) }
         }
     }
     val thumbnail = bitmap
@@ -570,19 +578,5 @@ private fun PlatformMotionPreview(
             lifecycleOwner.lifecycle.removeObserver(observer)
             player.release()
         }
-    }
-}
-
-private object MediaThumbnailCache {
-    private const val MAX_CACHE_KILOBYTES = 48 * 1024
-
-    private val cache = object : LruCache<String, Bitmap>(MAX_CACHE_KILOBYTES) {
-        override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount / 1024
-    }
-
-    fun get(key: String): Bitmap? = cache.get(key)
-
-    fun put(key: String, bitmap: Bitmap) {
-        cache.put(key, bitmap)
     }
 }
