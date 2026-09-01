@@ -24,6 +24,18 @@ val releaseSigningConfigured = listOf(
     releaseKeyPassword,
 ).all { it != null }
 
+// Declared in gradle.properties so a release bump is a one-line, reviewable
+// commit rather than an edit buried in this file. The environment variables
+// override it for a one-off build without dirtying the working tree.
+val appVersionCode = (
+    providers.environmentVariable("PHOTO_VERSION_CODE").orNull
+        ?: providers.gradleProperty("photoVersionCode").orNull
+        ?: "1"
+    ).toInt()
+val appVersionName = providers.environmentVariable("PHOTO_VERSION_NAME").orNull
+    ?: providers.gradleProperty("photoVersionName").orNull
+    ?: "1.0.0"
+
 android {
     namespace = "com.example.photoorganizer"
     compileSdk = 37
@@ -32,8 +44,8 @@ android {
         applicationId = "com.example.photoorganizer"
         minSdk = 33
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
@@ -52,7 +64,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
-            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"))
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = signingConfigs.findByName("release")
         }
     }
