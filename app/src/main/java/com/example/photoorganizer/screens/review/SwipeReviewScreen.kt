@@ -95,6 +95,7 @@ fun SwipeReviewScreen(
     onBack: () -> Unit,
     onMark: (Long, ReviewState) -> Unit,
     onOpenAlbum: (Long) -> Unit,
+    title: String? = null,
 ) {
     var currentIndex by rememberSaveable { mutableIntStateOf(0) }
     var dragX by remember { mutableFloatStateOf(0f) }
@@ -126,7 +127,7 @@ fun SwipeReviewScreen(
                 modifier = Modifier
                     .background(MiuixTheme.colorScheme.background)
                     .statusBarsPadding(),
-                title = stringResource(R.string.organize_title),
+                title = title ?: stringResource(R.string.organize_title),
                 color = MiuixTheme.colorScheme.background,
                 titleColor = MiuixTheme.colorScheme.onSurface,
                 navigationIcon = {

@@ -66,6 +66,7 @@ import com.example.photoorganizer.media.formatBytes
 import com.example.photoorganizer.media.mediaPermissionState
 import com.example.photoorganizer.media.photoPermissionRequest
 import com.example.photoorganizer.media.reviewPreferenceKey
+import com.example.photoorganizer.media.smartReviewOrder
 import com.example.photoorganizer.media.toUiMedia
 import com.example.photoorganizer.processing.VideoQuality
 import com.example.photoorganizer.screens.dashboard.DashboardScreen
@@ -250,6 +251,7 @@ fun PhotoOrganizerApp() {
     var selectedPage by rememberSaveable { mutableStateOf(AppPage.DASHBOARD) }
     var selectedMode by rememberSaveable { mutableStateOf<DetailMode?>(null) }
     var targetFilters by rememberSaveable(stateSaver = TargetFiltersSaver) { mutableStateOf(TargetFilters()) }
+    var smartQueue by rememberSaveable { mutableStateOf(false) }
     var logicalAlbums by remember {
         mutableStateOf(LogicalAlbumStore.decode(prefs.getStringSet("logical_albums", emptySet())))
     }
@@ -399,10 +401,12 @@ fun PhotoOrganizerApp() {
                         logicalAlbums = logicalAlbums,
                         onOpenSmart = {
                             targetFilters = TargetFilters()
+                            smartQueue = true
                             selectedMode = DetailMode.SWIPE
                         },
                         onOpenTargeted = { filters ->
                             targetFilters = filters
+                            smartQueue = false
                             selectedMode = DetailMode.SWIPE
                         },
                         onOpenManual = { selectedMode = DetailMode.MANUAL },
@@ -472,8 +476,18 @@ fun PhotoOrganizerApp() {
                 ) {
                     when (selectedMode) {
                         DetailMode.SWIPE -> {
-                            val filtered = remember(rawItems, targetFilters) {
-                                applyTargetFilters(rawItems, targetFilters)
+                            val filtered = remember(rawItems, targetFilters, smartQueue, toolAnalysis) {
+                                val scoped = applyTargetFilters(rawItems, targetFilters)
+                                if (!smartQueue) {
+                                    scoped
+                                } else {
+                                    smartReviewOrder(
+                                        items = scoped,
+                                        duplicates = toolAnalysis.duplicates,
+                                        screenshots = toolAnalysis.screenshots,
+                                        largest = toolAnalysis.largest,
+                                    )
+                                }
                             }
                             val queue = filtered
                                 .map { it.toUiMedia(reviewStates[it.id] ?: ReviewState.UNREVIEWED) }
@@ -481,6 +495,9 @@ fun PhotoOrganizerApp() {
                             SwipeReviewScreen(
                                 media = queue,
                                 animationEnabled = animationEnabled,
+                                title = stringResource(
+                                    if (smartQueue) R.string.organize_mode_smart else R.string.organize_mode_targeted,
+                                ),
                                 onBack = { selectedMode = null; detailBackProgress = 0f },
                                 onMark = ::markMedia,
                                 onOpenAlbum = { selectedMediaId = it; showAlbumDialog = true },
