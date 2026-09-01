@@ -29,10 +29,13 @@ import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.PhotoAlbum
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -210,8 +213,9 @@ private fun TargetedFilterSheet(
     onDismiss: () -> Unit,
     onApply: (TargetFilters) -> Unit,
 ) {
-    val context = LocalContext.current
-    var albumPaths by rememberSaveable { mutableStateOf(initial.albumPaths) }
+    var albumPaths by rememberSaveable(stateSaver = AlbumPathsSaver) {
+        mutableStateOf(initial.albumPaths)
+    }
     var startDateMillis by rememberSaveable { mutableStateOf(initial.startDateMillis) }
     var endDateMillis by rememberSaveable { mutableStateOf(initial.endDateMillis) }
     var type by rememberSaveable { mutableStateOf(initial.type) }
@@ -219,6 +223,7 @@ private fun TargetedFilterSheet(
         mutableStateOf(initial.minSizeBytes?.div(MEGABYTE)?.toString().orEmpty())
     }
     var showAlbumPicker by rememberSaveable { mutableStateOf(false) }
+    var editingDate by rememberSaveable { mutableStateOf<DateField?>(null) }
     val reset = {
         albumPaths = emptySet()
         startDateMillis = null
@@ -264,17 +269,13 @@ private fun TargetedFilterSheet(
             FilterValueRow(
                 title = stringResource(R.string.filter_start_date),
                 value = startDateMillis?.let(::scanDate) ?: stringResource(R.string.filter_not_set),
-                onClick = {
-                    showDatePicker(context, startDateMillis, endOfDay = false) { startDateMillis = it }
-                },
+                onClick = { editingDate = DateField.START },
                 onClear = if (startDateMillis != null) ({ startDateMillis = null }) else null,
             )
             FilterValueRow(
                 title = stringResource(R.string.filter_end_date),
                 value = endDateMillis?.let(::scanDate) ?: stringResource(R.string.filter_not_set),
-                onClick = {
-                    showDatePicker(context, endDateMillis, endOfDay = true) { endDateMillis = it }
-                },
+                onClick = { editingDate = DateField.END },
                 onClear = if (endDateMillis != null) ({ endDateMillis = null }) else null,
             )
             SectionTitle(stringResource(R.string.filter_label_type))
@@ -336,7 +337,77 @@ private fun TargetedFilterSheet(
             showAlbumPicker = false
         },
     )
+    editingDate?.let { field ->
+        PlatformDatePicker(
+            initialMillis = if (field == DateField.START) startDateMillis else endDateMillis,
+            endOfDay = field == DateField.END,
+            onSelected = { picked ->
+                if (field == DateField.START) startDateMillis = picked else endDateMillis = picked
+            },
+            onDismiss = { editingDate = null },
+        )
+    }
 }
+
+private enum class DateField { START, END }
+
+/**
+ * The platform date picker, owned by the composition.
+ *
+ * It used to be built and shown straight from a click lambda, which left it
+ * untracked: a configuration change with the picker open leaked the Activity
+ * window (`WindowLeaked`) and dropped whatever was being edited. Holding it in a
+ * `DisposableEffect` means it is dismissed with the composition and - because the
+ * caller's `editingDate` is saveable - shown again after the restore.
+ *
+ * MIUIX has no date picker, so this stays a platform dialog rather than becoming
+ * a hand-rolled Compose one.
+ */
+@Composable
+private fun PlatformDatePicker(
+    initialMillis: Long?,
+    endOfDay: Boolean,
+    onSelected: (Long) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val context = LocalContext.current
+    val currentOnSelected by rememberUpdatedState(onSelected)
+    val currentOnDismiss by rememberUpdatedState(onDismiss)
+    // Not keyed on initialMillis: the picked date changes it, and restarting the
+    // effect there would tear the dialog down and immediately build a new one.
+    DisposableEffect(endOfDay) {
+        val initial = Calendar.getInstance().apply {
+            if (initialMillis != null) timeInMillis = initialMillis
+        }
+        val dialog = DatePickerDialog(
+            context,
+            { _, year, month, day -> currentOnSelected(dayMillis(year, month, day, endOfDay)) },
+            initial.get(Calendar.YEAR),
+            initial.get(Calendar.MONTH),
+            initial.get(Calendar.DAY_OF_MONTH),
+        )
+        dialog.setOnDismissListener { currentOnDismiss() }
+        dialog.show()
+        onDispose {
+            // Cleared first, so tearing the dialog down here does not report itself
+            // back as a user dismissal while the composition is already leaving.
+            dialog.setOnDismissListener(null)
+            dialog.dismiss()
+        }
+    }
+}
+
+private fun dayMillis(year: Int, month: Int, day: Int, endOfDay: Boolean): Long =
+    Calendar.getInstance().apply {
+        clear()
+        set(year, month, day)
+        if (endOfDay) {
+            set(Calendar.HOUR_OF_DAY, 23)
+            set(Calendar.MINUTE, 59)
+            set(Calendar.SECOND, 59)
+            set(Calendar.MILLISECOND, 999)
+        }
+    }.timeInMillis
 
 @Composable
 private fun FilterValueRow(
@@ -488,5 +559,14 @@ private fun showDatePicker(
 }
 
 private const val MEGABYTE = 1024L * 1024L
+
+/**
+ * A parcel writes a String list natively, while a `Set` falls through to Java
+ * serialization inside the saved instance state.
+ */
+private val AlbumPathsSaver = listSaver<Set<String>, String>(
+    save = { paths -> paths.toList() },
+    restore = { paths -> paths.toSet() },
+)
 
 private val AlbumRowMargin = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 10.dp)
