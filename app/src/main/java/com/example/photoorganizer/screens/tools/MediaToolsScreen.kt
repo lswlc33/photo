@@ -110,10 +110,16 @@ fun MediaToolsScreen(
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var imageFormat by rememberSaveable { mutableStateOf(ImageFormat.JPEG) }
     var imageResize by rememberSaveable { mutableStateOf(ImageResizeOption.LONG_EDGE_3840) }
-    var localImageQuality by rememberSaveable { mutableIntStateOf(imageQuality) }
-    var keepExif by rememberSaveable { mutableStateOf(!stripMetadata) }
+    // Keyed on the Settings value they default from, so changing the app-wide
+    // default re-seeds the local override instead of being ignored. Without the
+    // key, a value saved before a process death won every later comparison and the
+    // tool page could disagree with Settings with no way to tell.
+    var localImageQuality by rememberSaveable(imageQuality) { mutableIntStateOf(imageQuality) }
+    var keepExif by rememberSaveable(stripMetadata) { mutableStateOf(!stripMetadata) }
     var keepOnlyIfSmaller by rememberSaveable { mutableStateOf(true) }
-    var videoResolution by rememberSaveable { mutableStateOf(videoQuality.toDefaultResolution()) }
+    var videoResolution by rememberSaveable(videoQuality) {
+        mutableStateOf(videoQuality.toDefaultResolution())
+    }
     var trackMode by rememberSaveable { mutableStateOf(VideoTrackMode.VIDEO_AND_AUDIO) }
     var bitrateMbps by rememberSaveable { mutableFloatStateOf(0f) }
 
@@ -312,7 +318,11 @@ fun MediaToolsScreen(
             }
         },
         actions = {
-            if (results.isNotEmpty() || failedCount > 0 || skippedCount > 0) {
+            // Gated on `!running` like every other action on this screen. Clearing
+            // mid-batch also reset the baseline the completion summary counts from,
+            // so the final snackbar reported the wrong number and the failure and
+            // skip counters came straight back when the batch finished.
+            if (!running && (results.isNotEmpty() || failedCount > 0 || skippedCount > 0)) {
                 OverlayActionPopup(
                     show = showActionsPopup,
                     actions = listOf(
