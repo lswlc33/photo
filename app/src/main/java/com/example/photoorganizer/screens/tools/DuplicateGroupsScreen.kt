@@ -11,12 +11,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalResources
@@ -38,7 +40,7 @@ import com.example.photoorganizer.ui.components.OverlaySpinnerChoicePopup
 import com.example.photoorganizer.ui.components.ScreenColumn
 import com.example.photoorganizer.ui.components.SectionTitle
 import com.example.photoorganizer.ui.components.standardCardColors
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.filter
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -71,16 +73,28 @@ fun DuplicateGroupsScreen(
     var strategy by rememberSaveable { mutableStateOf(DuplicateKeepStrategy.LARGEST) }
     var showStrategyPopup by remember { mutableStateOf(false) }
     val snackbarHostState = remember { SnackbarHostState() }
-    val scope = rememberCoroutineScope()
     val resources = LocalResources.current
-    val announceCleanup: (Int) -> Unit = { discarded ->
-        val message = resources.getQuantityString(
-            R.plurals.tools_duplicate_cleanup_done,
-            discarded,
-            discarded,
-        )
-        scope.launch { snackbarHostState.showSnackbar(message) }
+    // One snackbar at a time. MIUIX keeps a queue behind a mutex, so launching a
+    // message per row meant tapping ten groups lined up ten messages the user had
+    // to sit through. Cleanups fold into a running count that a single collector
+    // drains, which also reports a burst of taps as one total instead of ten
+    // fragments.
+    var pendingDiscarded by remember { mutableIntStateOf(0) }
+    LaunchedEffect(snackbarHostState) {
+        snapshotFlow { pendingDiscarded }
+            .filter { it > 0 }
+            .collect { discarded ->
+                pendingDiscarded = 0
+                snackbarHostState.showSnackbar(
+                    resources.getQuantityString(
+                        R.plurals.tools_duplicate_cleanup_done,
+                        discarded,
+                        discarded,
+                    ),
+                )
+            }
     }
+    val announceCleanup: (Int) -> Unit = { discarded -> pendingDiscarded += discarded }
     val applyPlan: (List<DuplicateGroup>, DuplicateKeepStrategy) -> Int = { target, keep ->
         val plan = ToolAnalyzer.planDuplicateCleanup(target, keep)
         onMark(plan)
