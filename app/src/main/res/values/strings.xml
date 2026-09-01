@@ -292,7 +292,7 @@
         <item quantity="one">%1$d item selected</item>
         <item quantity="other">%1$d items selected</item>
     </plurals>
-    <string name="media_tool_selected_summary">%1$d photos · %2$d videos · %3$s total</string>
+    <string name="media_tool_selected_summary">Photos: %1$d · Videos: %2$d · %3$s total</string>
     <string name="media_tool_process_selected">Compress the selection</string>
     <string name="media_tool_process_selected_summary">Uses the settings above; originals stay untouched</string>
     <string name="media_tool_process_selected_job">Compressing the selection</string>

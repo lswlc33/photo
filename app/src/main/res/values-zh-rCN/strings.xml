@@ -277,7 +277,7 @@
     <plurals name="media_tool_selected_count">
         <item quantity="other">已选择 %1$d 项</item>
     </plurals>
-    <string name="media_tool_selected_summary">照片 %1$d · 视频 %2$d · 共 %3$s</string>
+    <string name="media_tool_selected_summary">照片：%1$d · 视频：%2$d · 共 %3$s</string>
     <string name="media_tool_process_selected">压缩所选项目</string>
     <string name="media_tool_process_selected_summary">使用上方参数处理，原文件保持不变</string>
     <string name="media_tool_process_selected_job">正在压缩所选项目</string>

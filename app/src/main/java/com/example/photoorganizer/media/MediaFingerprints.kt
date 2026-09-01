@@ -4,6 +4,7 @@ import android.content.ContentResolver
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
+import androidx.core.graphics.scale
 import java.io.File
 import kotlinx.coroutines.CancellationException
 
@@ -140,7 +141,7 @@ object PerceptualHasher {
     /** Visible for the instrumented tests, which hash bitmaps they built in memory. */
     fun hashOf(bitmap: Bitmap): Long? {
         if (bitmap.width < PerceptualHash.Width || bitmap.height < PerceptualHash.Height) return null
-        val reduced = Bitmap.createScaledBitmap(bitmap, PerceptualHash.Width, PerceptualHash.Height, true)
+        val reduced = bitmap.scale(PerceptualHash.Width, PerceptualHash.Height)
         return try {
             val pixels = IntArray(PerceptualHash.Width * PerceptualHash.Height)
             reduced.getPixels(pixels, 0, PerceptualHash.Width, 0, 0, PerceptualHash.Width, PerceptualHash.Height)
