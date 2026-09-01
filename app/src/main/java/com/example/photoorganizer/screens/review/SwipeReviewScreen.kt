@@ -32,6 +32,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
@@ -87,6 +88,12 @@ import kotlin.math.abs
 /**
  * Full-screen review: horizontal drags mark an item, while vertical drags
  * move through the queue without changing its review state.
+ *
+ * [media] must be the queue of items still to review. A decision does not
+ * advance [currentIndex] on its own - it marks the item and expects the caller
+ * to drop it from [media], which leaves the same index pointing at the next
+ * item. Handed a list that keeps reviewed items, the screen sits on one item
+ * forever.
  */
 @Composable
 fun SwipeReviewScreen(
@@ -226,8 +233,10 @@ fun SwipeReviewScreen(
                 val commitVertical: (Boolean) -> Unit = { moveNext ->
                     if (!settling) {
                         dragAxis = DragAxis.VERTICAL
+                        // lastIndex is -1 on an empty list, so the upper clamp alone
+                        // could hand back a negative index.
                         val nextIndex = if (moveNext) {
-                            (currentIndex + 1).coerceAtMost(media.lastIndex)
+                            (currentIndex + 1).coerceAtMost(media.lastIndex).coerceAtLeast(0)
                         } else {
                             (currentIndex - 1).coerceAtLeast(0)
                         }
@@ -377,29 +386,58 @@ fun SwipeReviewScreen(
                         },
                     contentAlignment = Alignment.Center,
                 ) {
-                    val horizontal = dragAxis == DragAxis.HORIZONTAL || (settling && dragX != 0f)
-                    val vertical = dragAxis == DragAxis.VERTICAL || (settling && dragY != 0f)
-                    val slideX = if (horizontal) dragX else 0f
-                    val slideY = if (vertical) dragY else 0f
-                    val horizontalProgress = (abs(slideX) / (previewWidthPx * .55f).coerceAtLeast(1f))
-                        .coerceIn(0f, 1f)
-                    val verticalProgress = (abs(slideY) / previewHeightPx.coerceAtLeast(1f)).coerceIn(0f, 1f)
-                    if (animationEnabled && horizontal && slideX != 0f) {
+                    // The drag offsets are read inside the graphicsLayer blocks below,
+                    // never in composition. Reading them here instead recomposed this
+                    // whole subtree on every pointer move - up to three MediaPreview
+                    // trees, their modifier chains, the decision stamp and the
+                    // semantics block - where the render phase alone is enough.
+                    val slideX: () -> Float = {
+                        if (dragAxis == DragAxis.HORIZONTAL || settling) dragX else 0f
+                    }
+                    val slideY: () -> Float = {
+                        if (dragAxis == DragAxis.VERTICAL || settling) dragY else 0f
+                    }
+                    val horizontalProgress: () -> Float = {
+                        (abs(slideX()) / (previewWidthPx * .55f).coerceAtLeast(1f)).coerceIn(0f, 1f)
+                    }
+                    val verticalProgress: () -> Float = {
+                        (abs(slideY()) / previewHeightPx.coerceAtLeast(1f)).coerceIn(0f, 1f)
+                    }
+                    // Whether the neighbouring previews exist at all is a structural
+                    // decision, so it has to stay in composition - but derivedStateOf
+                    // means it only invalidates when the answer flips, not per frame.
+                    val showHorizontalDrag by remember(animationEnabled) {
+                        derivedStateOf {
+                            animationEnabled &&
+                                dragX != 0f &&
+                                (dragAxis == DragAxis.HORIZONTAL || settling)
+                        }
+                    }
+                    val showVerticalDrag by remember {
+                        derivedStateOf {
+                            dragY != 0f &&
+                                previewHeightPx > 0f &&
+                                (dragAxis == DragAxis.VERTICAL || settling)
+                        }
+                    }
+                    val draggingRight by remember { derivedStateOf { dragX > 0f } }
+                    if (showHorizontalDrag) {
                         media.getOrNull(currentIndex + 1)?.let { next ->
                             MediaPreview(
                                 next,
                                 Modifier
                                     .fillMaxSize()
                                     .graphicsLayer {
-                                        alpha = .35f + horizontalProgress * .65f
-                                        val scale = .93f + horizontalProgress * .07f
+                                        val progress = horizontalProgress()
+                                        alpha = .35f + progress * .65f
+                                        val scale = .93f + progress * .07f
                                         scaleX = scale
                                         scaleY = scale
                                     },
                             )
                         }
                     }
-                    if (vertical && dragY != 0f && previewHeightPx > 0f) {
+                    if (showVerticalDrag) {
                         media.getOrNull(currentIndex - 1)?.let { previous ->
                             key("previous:${previous.id}") {
                                 MediaPreview(
@@ -407,8 +445,8 @@ fun SwipeReviewScreen(
                                     Modifier
                                         .fillMaxSize()
                                         .graphicsLayer {
-                                            translationY = slideY - previewHeightPx
-                                            val scale = .96f + verticalProgress * .04f
+                                            translationY = slideY() - previewHeightPx
+                                            val scale = .96f + verticalProgress() * .04f
                                             scaleX = scale
                                             scaleY = scale
                                         },
@@ -422,8 +460,8 @@ fun SwipeReviewScreen(
                                     Modifier
                                         .fillMaxSize()
                                         .graphicsLayer {
-                                            translationY = slideY + previewHeightPx
-                                            val scale = .96f + verticalProgress * .04f
+                                            translationY = slideY() + previewHeightPx
+                                            val scale = .96f + verticalProgress() * .04f
                                             scaleX = scale
                                             scaleY = scale
                                         },
@@ -437,32 +475,34 @@ fun SwipeReviewScreen(
                             Modifier
                                 .fillMaxSize()
                                 .graphicsLayer {
-                                    translationX = slideX
-                                    translationY = slideY
-                                    rotationZ = if (animationEnabled) slideX / 60f else 0f
+                                    val offsetX = slideX()
+                                    translationX = offsetX
+                                    translationY = slideY()
+                                    rotationZ = if (animationEnabled) offsetX / 60f else 0f
+                                    val horizontal = offsetX != 0f
                                     alpha = if (animationEnabled && horizontal) {
-                                        1f - (abs(slideX) / (dragThreshold * 3f)).coerceIn(0f, 0.35f)
+                                        1f - (abs(offsetX) / (dragThreshold * 3f)).coerceIn(0f, 0.35f)
                                     } else {
                                         1f
                                     }
                                     val scale = when {
-                                        animationEnabled && horizontal -> 1f - horizontalProgress * .035f
-                                        animationEnabled && vertical -> 1f - verticalProgress * .018f
-                                        else -> 1f
+                                        !animationEnabled -> 1f
+                                        horizontal -> 1f - horizontalProgress() * .035f
+                                        else -> 1f - verticalProgress() * .018f
                                     }
                                     scaleX = scale
                                     scaleY = scale
                                 },
                         )
                     }
-                    if (animationEnabled && horizontal && slideX != 0f) {
+                    if (showHorizontalDrag) {
                         DecisionStamp(
-                            kept = slideX > 0f,
+                            kept = draggingRight,
                             progress = horizontalProgress,
                             keepLabel = stringResource(R.string.review_action_keep),
                             trashLabel = stringResource(R.string.review_action_trash),
                             modifier = Modifier
-                                .align(if (slideX > 0f) Alignment.TopStart else Alignment.TopEnd)
+                                .align(if (draggingRight) Alignment.TopStart else Alignment.TopEnd)
                                 .padding(28.dp),
                         )
                     }
@@ -584,7 +624,7 @@ private fun RoundAction(
 @Composable
 private fun DecisionStamp(
     kept: Boolean,
-    progress: Float,
+    progress: () -> Float,
     keepLabel: String,
     trashLabel: String,
     modifier: Modifier = Modifier,
@@ -595,8 +635,9 @@ private fun DecisionStamp(
     Row(
         modifier
             .graphicsLayer {
-                alpha = progress
-                val scale = .72f + progress * .28f
+                val amount = progress()
+                alpha = amount
+                val scale = .72f + amount * .28f
                 scaleX = scale
                 scaleY = scale
                 rotationZ = if (kept) -7f else 7f
