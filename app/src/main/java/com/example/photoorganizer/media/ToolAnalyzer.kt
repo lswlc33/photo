@@ -11,21 +11,35 @@ data class DuplicateGroup(
     val hash: String,
     val items: List<IndexedMedia>,
 ) {
-    val sizeBytes: Long get() = items.sumOf { it.sizeBytes }
-    val reclaimableBytes: Long get() = reclaimableBytes(DuplicateKeepStrategy.LARGEST)
+    // Computed once per instance rather than per read. Both are read straight from
+    // composition - once per row and again for the list total - and a `get()` there
+    // re-summed the group and re-ran the keeper search on every recomposition.
+    val sizeBytes: Long = items.sumOf { it.sizeBytes }
+    val reclaimableBytes: Long by lazy { reclaimableBytes(DuplicateKeepStrategy.LARGEST) }
 
     /** The copy kept by [strategy]; ties fall back to the largest, then the lowest id. */
-    fun keeper(strategy: DuplicateKeepStrategy): IndexedMedia? = keeperOf(
-        items = items,
-        strategy = strategy,
-        id = { it.id },
-        sizeBytes = { it.sizeBytes },
-        dateMillis = { it.dateTakenMillis },
-    )
+    fun keeper(strategy: DuplicateKeepStrategy): IndexedMedia? = keepers[strategy]
 
     /** Bytes freed when every copy except the [strategy] keeper is deleted. */
     fun reclaimableBytes(strategy: DuplicateKeepStrategy): Long =
         (sizeBytes - (keeper(strategy)?.sizeBytes ?: 0L)).coerceAtLeast(0L)
+
+    /**
+     * One keeper per strategy, resolved on first use. There are three strategies and
+     * the user switches between them from a spinner, so caching all of them costs
+     * three entries and removes a full scan of the group from every read.
+     */
+    private val keepers: Map<DuplicateKeepStrategy, IndexedMedia?> by lazy {
+        DuplicateKeepStrategy.entries.associateWith { strategy ->
+            keeperOf(
+                items = items,
+                strategy = strategy,
+                id = { it.id },
+                sizeBytes = { it.sizeBytes },
+                dateMillis = { it.dateTakenMillis },
+            )
+        }
+    }
 }
 
 data class ToolAnalysis(
@@ -34,17 +48,24 @@ data class ToolAnalysis(
     val largest: List<IndexedMedia>,
     val largestThresholdBytes: Long = ToolAnalyzer.DefaultLargestThresholdBytes,
 ) {
-    val duplicateReclaimableBytes: Long get() = duplicates.sumOf { it.reclaimableBytes }
-    val screenshotsBytes: Long get() = screenshots.sumOf { it.sizeBytes }
-    val largestBytes: Long get() = largest.sumOf { it.sizeBytes }
+    val duplicateReclaimableBytes: Long by lazy { duplicates.sumOf { it.reclaimableBytes } }
+    val screenshotsBytes: Long by lazy { screenshots.sumOf { it.sizeBytes } }
+    val largestBytes: Long by lazy { largest.sumOf { it.sizeBytes } }
 
-    /** Upper bound of a full cleanup pass, counting media that appears in several tools only once. */
-    val reclaimableBytes: Long get() {
+    /**
+     * Upper bound of a full cleanup pass, counting media that appears in several
+     * tools only once.
+     *
+     * Lazy rather than a `get()`: this is a `flatMap` plus a keeper search per group
+     * plus a de-duplicating sum over three lists, and both the tools page and the
+     * dashboard read it from composition without remembering it.
+     */
+    val reclaimableBytes: Long by lazy {
         val duplicateDeletions = duplicates.flatMap { group ->
             val keeperId = group.keeper(DuplicateKeepStrategy.LARGEST)?.id
             group.items.filterNot { it.id == keeperId }
         }
-        return sumUniqueMediaBytes(duplicateDeletions, screenshots, largest)
+        sumUniqueMediaBytes(duplicateDeletions, screenshots, largest)
     }
 
     val isEmpty: Boolean get() = duplicates.isEmpty() && screenshots.isEmpty() && largest.isEmpty()

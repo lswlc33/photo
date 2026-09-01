@@ -147,8 +147,13 @@ fun DuplicateGroupsScreen(
             return@ScreenColumn
         }
 
+        // Remembered on the strategy, not recomputed per recomposition: the keepers
+        // are cached per group but the sum across every group is not.
+        val totalReclaimable = remember(groups, strategy) {
+            groups.sumOf { it.reclaimableBytes(strategy) }
+        }
         SectionTitle(
-            title = countLabel(groups.size, formatBytes(groups.sumOf { it.reclaimableBytes(strategy) })),
+            title = countLabel(groups.size, formatBytes(totalReclaimable)),
             subtitle = stringResource(strategy.titleRes()),
         )
         Text(

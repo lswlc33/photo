@@ -28,6 +28,9 @@ data class SimilarAnalysisState(
     val isReady: Boolean get() = status == SimilarAnalysisStatus.READY
     val progress: Float
         get() = if (totalCount <= 0) 0f else (hashedCount.toFloat() / totalCount).coerceIn(0f, 1f)
+
+    /** Computed once, because the tools page reads it straight from composition. */
+    val reclaimableBytes: Long by lazy { groups.sumOf { it.reclaimableBytes } }
 }
 
 data class MediaIndexState(

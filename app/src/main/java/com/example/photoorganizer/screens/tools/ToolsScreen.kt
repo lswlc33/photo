@@ -151,7 +151,7 @@ fun ToolsScreen(
                             R.plurals.tools_summary_similar,
                             similar.groups.size,
                             similar.groups.size,
-                            formatBytes(similar.groups.sumOf { it.reclaimableBytes }),
+                            formatBytes(similar.reclaimableBytes),
                         )
                     },
                     enabled = indexReady && !similar.isRunning,
