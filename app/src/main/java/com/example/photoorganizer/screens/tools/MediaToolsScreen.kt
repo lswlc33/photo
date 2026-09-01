@@ -17,13 +17,12 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -35,16 +34,17 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.photoorganizer.R
 import com.example.photoorganizer.media.PendingMedia
 import com.example.photoorganizer.media.formatBytes
+import com.example.photoorganizer.processing.BatchRequest
 import com.example.photoorganizer.processing.GalleryWriter
 import com.example.photoorganizer.processing.ImageFormat
-import com.example.photoorganizer.processing.ImageProcessor
 import com.example.photoorganizer.processing.ImageResizeOption
+import com.example.photoorganizer.processing.MediaBatchViewModel
 import com.example.photoorganizer.processing.ProcessedMedia
 import com.example.photoorganizer.processing.ProcessingException
-import com.example.photoorganizer.processing.VideoProcessor
 import com.example.photoorganizer.processing.VideoQuality
 import com.example.photoorganizer.processing.VideoResolution
 import com.example.photoorganizer.processing.VideoTrackMode
@@ -58,10 +58,6 @@ import com.example.photoorganizer.ui.components.standardCardColors
 import com.example.photoorganizer.ui.systemClearance
 import com.example.photoorganizer.ui.theme.AccentBlue
 import com.example.photoorganizer.ui.theme.AccentGreen
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.launch
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
@@ -103,9 +99,11 @@ fun MediaToolsScreen(
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
-    val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
-    val results = remember { mutableStateListOf<ProcessedMedia>() }
+    val batchViewModel: MediaBatchViewModel = viewModel()
+    val batch by batchViewModel.state.collectAsState()
+    val running = batch.running
+    val results = batch.results
 
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var imageFormat by rememberSaveable { mutableStateOf(ImageFormat.JPEG) }
@@ -125,23 +123,38 @@ fun MediaToolsScreen(
 
     var showActionsPopup by rememberSaveable { mutableStateOf(false) }
 
-    var job by remember { mutableStateOf<Job?>(null) }
-    var running by remember { mutableStateOf(false) }
-    var progress by remember { mutableFloatStateOf(0f) }
-    var queueIndex by remember { mutableIntStateOf(0) }
-    var queueTotal by remember { mutableIntStateOf(0) }
-    var statusLabel by remember { mutableStateOf<String?>(null) }
-    var failedCount by remember { mutableIntStateOf(0) }
-    var skippedCount by remember { mutableIntStateOf(0) }
-    var errorMessage by remember { mutableStateOf<String?>(null) }
-
-    val animatedProgress by animateFloatAsState(progress, label = "mediaQueueProgress")
+    val animatedProgress by animateFloatAsState(batch.progress, label = "mediaQueueProgress")
     val imageJobLabel = stringResource(R.string.media_tool_compress_image_title)
     val videoJobLabel = stringResource(R.string.media_tool_compress_video_title)
     val audioJobLabel = stringResource(R.string.media_tool_extract_audio_title)
     val selectionJobLabel = stringResource(R.string.media_tool_process_selected_job)
     val bitrateCeilingMbps = videoResolution.ceilingBitrate / 1_000_000f
     val bitrateStep = if (bitrateCeilingMbps <= 2f) .2f else 1f
+    val errorMessage = batch.lastFailure?.let { failure ->
+        describeFailure(resources, context, failure.source, failure.error)
+    }
+    // Announced here rather than in the ViewModel: the plural forms need Resources,
+    // and the batch itself has no business phrasing user-visible text.
+    LaunchedEffect(batch.completion) {
+        val completion = batch.completion ?: return@LaunchedEffect
+        val message = if (completion.savedBytes > 0L) {
+            resources.getQuantityString(
+                R.plurals.media_tool_results_total,
+                completion.processed,
+                completion.processed,
+                formatBytes(completion.savedBytes),
+            )
+        } else {
+            resources.getQuantityString(
+                R.plurals.media_tool_results_total_none,
+                completion.processed,
+                completion.processed,
+            )
+        }
+        batchViewModel.consumeCompletion()
+        if (completion.processed > 0) onMediaCreated()
+        snackbarHostState.showSnackbar(message)
+    }
     LaunchedEffect(videoResolution) {
         if (bitrateMbps > bitrateCeilingMbps) bitrateMbps = bitrateCeilingMbps
     }
@@ -188,95 +201,19 @@ fun MediaToolsScreen(
         )
     }
 
-    fun startBatch(
-        label: String,
-        sources: List<Uri>,
-        process: suspend (Uri, (Float) -> Unit) -> ProcessedMedia?,
-    ) {
-        if (sources.isEmpty() || running) return
-        running = true
-        errorMessage = null
-        queueIndex = 1
-        queueTotal = sources.size
-        progress = 0f
-        statusLabel = label
-        job = scope.launch {
-            var created = 0
-            var batchFailures = 0
-            var batchSkipped = 0
-            val previousResultCount = results.size
-            try {
-                sources.forEachIndexed { index, source ->
-                    kotlinx.coroutines.currentCoroutineContext().ensureActive()
-                    queueIndex = index + 1
-                    try {
-                        val processed = process(source) { itemProgress ->
-                            progress = ((index + itemProgress.coerceIn(0f, 1f)) / sources.size)
-                                .coerceIn(0f, 1f)
-                        }
-                        if (processed == null) {
-                            batchSkipped++
-                        } else {
-                            results += processed
-                            created++
-                        }
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (t: Throwable) {
-                        batchFailures++
-                        errorMessage = describeFailure(resources, context, source, t)
-                    }
-                    progress = (index + 1f) / sources.size
-                }
-                val batchResults = results.drop(previousResultCount)
-                val saved = batchResults.sumOf { it.savedBytes }
-                val message = if (saved > 0L) {
-                    resources.getQuantityString(
-                        R.plurals.media_tool_results_total,
-                        batchResults.size,
-                        batchResults.size,
-                        formatBytes(saved),
-                    )
-                } else {
-                    resources.getQuantityString(
-                        R.plurals.media_tool_results_total_none,
-                        batchResults.size,
-                        batchResults.size,
-                    )
-                }
-                scope.launch { snackbarHostState.showSnackbar(message) }
-            } catch (_: CancellationException) {
-                // Cancellation is a normal user action; cleanup happens below.
-            } finally {
-                failedCount += batchFailures
-                skippedCount += batchSkipped
-                if (created > 0) onMediaCreated()
-                running = false
-                statusLabel = null
-                progress = 0f
-                queueIndex = 0
-                queueTotal = 0
-                job = null
-            }
-        }
-    }
-
-    val processImage: suspend (Uri, (Float) -> Unit) -> ProcessedMedia? = { source, report ->
-        ImageProcessor.reencode(
-            context = context,
-            source = source,
+    // The screen only describes the work; running it belongs to the ViewModel, so a
+    // rotation can no longer cancel a transcode that has been going for minutes.
+    val imageRequest = {
+        BatchRequest.Images(
             format = imageFormat,
             quality = localImageQuality,
             resize = imageResize,
             stripMetadata = !keepExif,
             keepOnlyIfSmaller = keepOnlyIfSmaller,
-            onProgress = report,
         )
     }
-    val processVideo: suspend (Uri, (Float) -> Unit) -> ProcessedMedia? = { source, report ->
-        VideoProcessor.transcode(
-            context = context,
-            source = source,
+    val videoRequest = {
+        BatchRequest.Videos(
             resolution = videoResolution,
             trackMode = trackMode,
             bitrateOverride = bitrateMbps
@@ -284,29 +221,31 @@ fun MediaToolsScreen(
                 ?.times(1_000_000f)
                 ?.roundToInt(),
             keepOnlyIfSmaller = keepOnlyIfSmaller,
-            onProgress = report,
         )
     }
 
-    // A library selection can mix photos and videos, so each item is routed to
-    // the processor that matches its own type instead of the active tab.
     fun startSelectionBatch(items: List<PendingMedia>) {
-        val videoSources = items.filter { it.isVideo }.mapTo(hashSetOf()) { it.uri }
-        startBatch(selectionJobLabel, items.map { it.uri }) { source, report ->
-            if (source in videoSources) processVideo(source, report) else processImage(source, report)
-        }
+        batchViewModel.start(
+            label = selectionJobLabel,
+            sources = items.map { it.uri },
+            request = BatchRequest.Mixed(
+                images = imageRequest(),
+                videos = videoRequest(),
+                videoSources = items.filter { it.isVideo }.mapTo(hashSetOf()) { it.uri },
+            ),
+        )
     }
 
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(MaxBatchItems),
     ) { sources ->
-        startBatch(imageJobLabel, sources, processImage)
+        batchViewModel.start(imageJobLabel, sources, imageRequest())
     }
     val videoPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(MaxBatchItems),
     ) { sources ->
         val label = if (trackMode == VideoTrackMode.AUDIO_ONLY) audioJobLabel else videoJobLabel
-        startBatch(label, sources, processVideo)
+        batchViewModel.start(label, sources, videoRequest())
     }
 
     ScreenColumn(
@@ -318,19 +257,16 @@ fun MediaToolsScreen(
             }
         },
         actions = {
-            // Gated on `!running` like every other action on this screen. Clearing
-            // mid-batch also reset the baseline the completion summary counts from,
-            // so the final snackbar reported the wrong number and the failure and
-            // skip counters came straight back when the batch finished.
-            if (!running && (results.isNotEmpty() || failedCount > 0 || skippedCount > 0)) {
+            // Gated on `!running`, like every other action on this screen: clearing
+            // mid-batch moves the baseline the completion summary is measured
+            // against, so the final snackbar would report the wrong number and the
+            // failure and skip counters would come straight back.
+            if (!running && batch.hasReport) {
                 OverlayActionPopup(
                     show = showActionsPopup,
                     actions = listOf(
                         OverlayAction(R.string.media_tool_clear_results) {
-                            results.clear()
-                            failedCount = 0
-                            skippedCount = 0
-                            errorMessage = null
+                            batchViewModel.clearReport()
                         },
                     ),
                     onDismissRequest = { showActionsPopup = false },
@@ -527,13 +463,17 @@ fun MediaToolsScreen(
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            statusLabel ?: stringResource(R.string.processing_running),
+                            batch.label ?: stringResource(R.string.processing_running),
                             modifier = Modifier.weight(1f),
                             color = AccentBlue,
                             fontWeight = FontWeight.SemiBold,
                         )
                         Text(
-                            stringResource(R.string.media_tool_progress_queue, queueIndex, queueTotal),
+                            stringResource(
+                                R.string.media_tool_progress_queue,
+                                batch.queueIndex,
+                                batch.queueTotal,
+                            ),
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                             fontSize = 12.sp,
                         )
@@ -551,14 +491,14 @@ fun MediaToolsScreen(
                         )
                         CompactTextButton(
                             text = stringResource(R.string.processing_cancel),
-                            onClick = { job?.cancel() },
+                            onClick = { batchViewModel.cancel() },
                         )
                     }
                 }
             }
         }
 
-        if (results.isNotEmpty() || failedCount > 0 || skippedCount > 0) {
+        if (batch.hasReport) {
             val totalSaved = results.sumOf { it.savedBytes }
             PreferenceGroup(stringResource(R.string.media_tool_results)) {
                 BasicComponent(
@@ -577,9 +517,9 @@ fun MediaToolsScreen(
                         )
                     },
                     summary = listOfNotNull(
-                        failedCount.takeIf { it > 0 }
+                        batch.failedCount.takeIf { it > 0 }
                             ?.let { pluralStringResource(R.plurals.media_tool_failed_count, it, it) },
-                        skippedCount.takeIf { it > 0 }
+                        batch.skippedCount.takeIf { it > 0 }
                             ?.let { pluralStringResource(R.plurals.media_tool_skipped_count, it, it) },
                     ).joinToString(" · ").takeIf { it.isNotEmpty() },
                 )
