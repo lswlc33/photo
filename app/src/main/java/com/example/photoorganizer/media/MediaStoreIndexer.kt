@@ -131,10 +131,20 @@ fun stableMediaId(rawId: Long, type: IndexedMediaType): Long = when (type) {
 
 fun rawMediaId(stableId: Long): Long = stableId and Long.MAX_VALUE
 
+/**
+ * Reused across rows. Building a factory per image row made motion-photo
+ * detection the most expensive part of a scan; the scan itself runs on a single
+ * IO coroutine, so one shared factory is enough.
+ */
+private val motionPhotoParserFactory: XmlPullParserFactory? by lazy(LazyThreadSafetyMode.PUBLICATION) {
+    runCatching { XmlPullParserFactory.newInstance() }.getOrNull()
+}
+
 private fun isEmbeddedMotionPhoto(xmp: ByteArray?): Boolean {
     if (xmp == null || xmp.isEmpty()) return false
+    val factory = motionPhotoParserFactory ?: return false
     return runCatching {
-        val parser = XmlPullParserFactory.newInstance().newPullParser()
+        val parser = factory.newPullParser()
         parser.setInput(ByteArrayInputStream(xmp), Charsets.UTF_8.name())
         while (parser.eventType != XmlPullParser.END_DOCUMENT) {
             if (parser.eventType == XmlPullParser.START_TAG) {
