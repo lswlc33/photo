@@ -48,9 +48,11 @@ import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /**
- * Duplicate groups detected by content hash. Each group offers a one-tap
- * "keep the largest copy" action that only writes review marks; deletion still
- * goes through the discarded page and the system confirmation.
+ * Groups of interchangeable copies, either byte-identical or visually alike.
+ * Each group offers a one-tap "keep one copy" action that only writes review
+ * marks; deletion still goes through the discarded page and the system
+ * confirmation. The labels are parameters so the same screen serves both the
+ * exact-duplicate and the similar-photo lists.
  */
 @Composable
 fun DuplicateGroupsScreen(
@@ -59,6 +61,12 @@ fun DuplicateGroupsScreen(
     onBack: () -> Unit,
     onMark: (Long, ReviewState) -> Unit,
     onOpenGroup: (DuplicateGroup) -> Unit,
+    title: String = stringResource(R.string.tools_duplicate_title),
+    hint: String = stringResource(R.string.tools_duplicate_hint),
+    emptyTitle: String = stringResource(R.string.duplicate_empty),
+    countLabel: @Composable (Int, String) -> String = { count, saved ->
+        pluralStringResource(R.plurals.tools_summary_duplicate, count, count, saved)
+    },
 ) {
     var strategy by rememberSaveable { mutableStateOf(DuplicateKeepStrategy.LARGEST) }
     var showStrategyPopup by remember { mutableStateOf(false) }
@@ -79,7 +87,7 @@ fun DuplicateGroupsScreen(
         plan.count { it.value == ReviewState.TRASH_MARKED }
     }
     ScreenColumn(
-        title = stringResource(R.string.tools_duplicate_title),
+        title = title,
         navigationIcon = {
             IconButton(onClick = onBack) {
                 Icon(
@@ -116,29 +124,21 @@ fun DuplicateGroupsScreen(
         if (!analysisReady) {
             EmptyState(
                 title = stringResource(R.string.tools_analysis_running),
-                summary = stringResource(R.string.tools_duplicate_hint),
+                summary = hint,
             )
             return@ScreenColumn
         }
         if (groups.isEmpty()) {
-            EmptyState(
-                title = stringResource(R.string.duplicate_empty),
-                summary = stringResource(R.string.tools_duplicate_hint),
-            )
+            EmptyState(title = emptyTitle, summary = hint)
             return@ScreenColumn
         }
 
         SectionTitle(
-            title = pluralStringResource(
-                R.plurals.tools_summary_duplicate,
-                groups.size,
-                groups.size,
-                formatBytes(groups.sumOf { it.reclaimableBytes(strategy) }),
-            ),
+            title = countLabel(groups.size, formatBytes(groups.sumOf { it.reclaimableBytes(strategy) })),
             subtitle = stringResource(strategy.titleRes()),
         )
         Text(
-            text = stringResource(R.string.tools_duplicate_hint),
+            text = hint,
             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             fontSize = 12.sp,
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),

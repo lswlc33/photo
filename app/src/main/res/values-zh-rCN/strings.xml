@@ -173,6 +173,14 @@
     <string name="tools_analysis_running">正在分析本地媒体…</string>
     <string name="tools_duplicate_title">精确重复照片</string>
     <string name="duplicate_empty">未发现重复内容。</string>
+    <string name="tools_similar_title">相似照片</string>
+    <string name="tools_similar_start_summary">点按开始比对画面内容，每张照片读取一次</string>
+    <string name="tools_similar_progress">正在比对 %1$d / %2$d</string>
+    <string name="tools_similar_empty">未发现相似照片。</string>
+    <string name="tools_similar_hint">连拍、重新编码和缩放后的同一画面会归为一组。这些副本并非完全相同，弃置前请先查看。</string>
+    <plurals name="tools_summary_similar">
+        <item quantity="other">%1$d 组相似照片 · 可释放 %2$s</item>
+    </plurals>
     <plurals name="tools_summary_duplicate">
         <item quantity="other">%1$d 组 · 可释放 %2$s</item>
     </plurals>

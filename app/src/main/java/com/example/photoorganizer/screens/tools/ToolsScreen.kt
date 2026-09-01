@@ -16,10 +16,12 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.photoorganizer.R
+import com.example.photoorganizer.media.SimilarAnalysisState
 import com.example.photoorganizer.media.ToolAnalysis
 import com.example.photoorganizer.media.ToolAnalyzer
 import com.example.photoorganizer.media.formatBytes
 import com.example.photoorganizer.ui.PreferenceGroup
+import com.example.photoorganizer.ui.components.CompactTextButton
 import com.example.photoorganizer.ui.components.ScreenColumn
 import com.example.photoorganizer.ui.components.SectionTitle
 import com.example.photoorganizer.ui.components.standardCardColors
@@ -29,6 +31,7 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.SpinnerEntry
 import top.yukonga.miuix.kmp.preference.ArrowPreference
@@ -41,6 +44,7 @@ fun ToolsScreen(
     analysis: ToolAnalysis,
     indexReady: Boolean,
     duplicateAnalysisReady: Boolean,
+    similar: SimilarAnalysisState,
     contentBottomPadding: androidx.compose.ui.unit.Dp,
     largestThresholdMb: Int,
     onLargestThresholdChange: (Int) -> Unit,
@@ -49,6 +53,9 @@ fun ToolsScreen(
     onOpenScreenshots: () -> Unit,
     onOpenLargest: () -> Unit,
     onOpenMediaTools: () -> Unit,
+    onAnalyzeSimilar: () -> Unit,
+    onCancelSimilarAnalysis: () -> Unit,
+    onOpenSimilar: () -> Unit,
 ) {
     val refresh = rememberRefreshBridge(busy = !indexReady, onRefresh = onRefresh)
     val thresholdLabel = formatBytes(ToolAnalyzer.thresholdBytesOf(largestThresholdMb))
@@ -108,6 +115,42 @@ fun ToolsScreen(
                 },
                 onClick = onOpenLargest,
             )
+            ArrowPreference(
+                title = stringResource(R.string.tools_similar_title),
+                summary = when {
+                    !indexReady -> stringResource(R.string.tools_analysis_running)
+                    similar.isRunning -> stringResource(
+                        R.string.tools_similar_progress,
+                        similar.hashedCount,
+                        similar.totalCount,
+                    )
+                    !similar.isReady -> stringResource(R.string.tools_similar_start_summary)
+                    similar.groups.isEmpty() -> stringResource(R.string.tools_similar_empty)
+                    else -> pluralStringResource(
+                        R.plurals.tools_summary_similar,
+                        similar.groups.size,
+                        similar.groups.size,
+                        formatBytes(similar.groups.sumOf { it.reclaimableBytes }),
+                    )
+                },
+                enabled = indexReady && !similar.isRunning,
+                onClick = if (similar.isReady) onOpenSimilar else onAnalyzeSimilar,
+            )
+            if (similar.isRunning) {
+                Column(
+                    Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    LinearProgressIndicator(
+                        progress = similar.progress,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    CompactTextButton(
+                        text = stringResource(R.string.processing_cancel),
+                        onClick = onCancelSimilarAnalysis,
+                    )
+                }
+            }
             OverlaySpinnerPreference(
                 items = thresholdOptions.map { mb ->
                     SpinnerEntry(title = stringResource(R.string.tools_threshold_option, formatBytes(ToolAnalyzer.thresholdBytesOf(mb))))

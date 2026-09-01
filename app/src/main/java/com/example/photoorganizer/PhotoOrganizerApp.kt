@@ -43,6 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.edit
@@ -258,6 +259,9 @@ fun PhotoOrganizerApp() {
         mutableStateOf(LogicalAlbumStore.decode(prefs.getStringSet("logical_albums", emptySet())))
     }
     var duplicateGroup by remember { mutableStateOf<DuplicateGroup?>(null) }
+    // A group grid is reachable from both the exact and the similar list, so the
+    // back target follows whichever list opened it.
+    var groupReturnMode by rememberSaveable { mutableStateOf(DetailMode.DUPLICATES) }
     var selectedLogicalAlbum by remember { mutableStateOf<LogicalAlbum?>(null) }
     var showDiscardDialog by remember { mutableStateOf(false) }
     var pendingDiscardIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
@@ -440,6 +444,7 @@ fun PhotoOrganizerApp() {
                         analysis = toolAnalysis,
                         indexReady = mediaIndexReady,
                         duplicateAnalysisReady = duplicateAnalysisReady,
+                        similar = indexState.similar,
                         contentBottomPadding = contentBottomPadding,
                         largestThresholdMb = largestThresholdMb,
                         onLargestThresholdChange = { largestThresholdMb = it },
@@ -448,6 +453,9 @@ fun PhotoOrganizerApp() {
                         onOpenScreenshots = { selectedMode = DetailMode.SCREENSHOTS },
                         onOpenLargest = { selectedMode = DetailMode.LARGEST },
                         onOpenMediaTools = { selectedMode = DetailMode.MEDIA },
+                        onAnalyzeSimilar = indexViewModel::analyzeSimilar,
+                        onCancelSimilarAnalysis = indexViewModel::cancelSimilarAnalysis,
+                        onOpenSimilar = { selectedMode = DetailMode.SIMILAR },
                     )
                     AppPage.SETTINGS -> SettingsScreen(
                         hasMediaPermission = hasMediaPermission,
@@ -555,7 +563,25 @@ fun PhotoOrganizerApp() {
                             onMark = ::markMedia,
                             onOpenGroup = { group ->
                                 duplicateGroup = group
+                                groupReturnMode = DetailMode.DUPLICATES
                                 selectedMode = DetailMode.DUPLICATE_GROUP
+                            },
+                        )
+                        DetailMode.SIMILAR -> DuplicateGroupsScreen(
+                            groups = indexState.similar.groups,
+                            analysisReady = indexState.similar.isReady,
+                            onBack = { selectedMode = null },
+                            onMark = ::markMedia,
+                            onOpenGroup = { group ->
+                                duplicateGroup = group
+                                groupReturnMode = DetailMode.SIMILAR
+                                selectedMode = DetailMode.DUPLICATE_GROUP
+                            },
+                            title = stringResource(R.string.tools_similar_title),
+                            hint = stringResource(R.string.tools_similar_hint),
+                            emptyTitle = stringResource(R.string.tools_similar_empty),
+                            countLabel = { count, saved ->
+                                pluralStringResource(R.plurals.tools_summary_similar, count, count, saved)
                             },
                         )
                         DetailMode.DUPLICATE_GROUP -> {
@@ -563,7 +589,7 @@ fun PhotoOrganizerApp() {
                             ManualGridScreen(
                                 media = media.filter { it.id in groupIds },
                                 defaultSortBySize = true,
-                                onBack = { selectedMode = DetailMode.DUPLICATES },
+                                onBack = { selectedMode = groupReturnMode },
                                 onMark = ::markMedia,
                                 animationEnabled = animationEnabled,
                                 mode = MediaGridMode.DUPLICATE_GROUP,
@@ -770,6 +796,7 @@ private enum class DetailMode {
     KEPT,
     TRASH,
     DUPLICATES,
+    SIMILAR,
     DUPLICATE_GROUP,
     SCREENSHOTS,
     LARGEST,

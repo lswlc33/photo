@@ -178,6 +178,15 @@
     <string name="tools_analysis_running">Analyzing local media…</string>
     <string name="tools_duplicate_title">Exact duplicates</string>
     <string name="duplicate_empty">No duplicate groups detected.</string>
+    <string name="tools_similar_title">Similar photos</string>
+    <string name="tools_similar_start_summary">Tap to compare picture content; each photo is read once</string>
+    <string name="tools_similar_progress">Comparing %1$d of %2$d</string>
+    <string name="tools_similar_empty">No similar photos detected.</string>
+    <string name="tools_similar_hint">Groups the same shot across bursts, re-encodes and resizes. Review a group before discarding: the copies are not byte-identical.</string>
+    <plurals name="tools_summary_similar">
+        <item quantity="one">%1$d similar group · %2$s could be freed</item>
+        <item quantity="other">%1$d similar groups · %2$s could be freed</item>
+    </plurals>
     <plurals name="tools_summary_duplicate">
         <item quantity="one">%1$d group · %2$s reclaimable</item>
         <item quantity="other">%1$d groups · %2$s reclaimable</item>
