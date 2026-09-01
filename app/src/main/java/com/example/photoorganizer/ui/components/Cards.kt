@@ -27,6 +27,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.photoorganizer.ui.theme.AccentBlue
+import com.example.photoorganizer.ui.theme.DangerRed
 import com.example.photoorganizer.ui.theme.SuccessGreen
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.CardDefaults
@@ -147,7 +148,7 @@ fun EmptyState(title: String, summary: String, actionLabel: String? = null, onAc
 fun ErrorCard(title: String, message: String, actionLabel: String? = null, onAction: (() -> Unit)? = null) {
     Card(modifier = Modifier.fillMaxWidth(), colors = standardCardColors()) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Icon(Icons.Default.WarningAmber, null, tint = Color(0xFFD84A4A), modifier = Modifier.size(34.dp))
+            Icon(Icons.Default.WarningAmber, null, tint = DangerRed, modifier = Modifier.size(34.dp))
             Text(title, fontSize = 20.sp, fontWeight = FontWeight.Bold, color = MiuixTheme.colorScheme.onSurface)
             Text(message, color = MiuixTheme.colorScheme.onSurfaceVariantSummary, fontSize = 12.sp)
             if (actionLabel != null && onAction != null) {
