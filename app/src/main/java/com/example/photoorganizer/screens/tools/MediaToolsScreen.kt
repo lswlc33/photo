@@ -16,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -50,7 +51,6 @@ import com.example.photoorganizer.ui.components.CompactTextButton
 import com.example.photoorganizer.ui.components.ErrorCard
 import com.example.photoorganizer.ui.components.OverlayAction
 import com.example.photoorganizer.ui.components.OverlayActionPopup
-import com.example.photoorganizer.ui.components.OverlaySpinnerChoicePopup
 import com.example.photoorganizer.ui.components.ScreenColumn
 import com.example.photoorganizer.ui.components.standardCardColors
 import com.example.photoorganizer.ui.systemClearance
@@ -69,10 +69,12 @@ import top.yukonga.miuix.kmp.basic.Slider
 import top.yukonga.miuix.kmp.basic.SliderDefaults
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
+import top.yukonga.miuix.kmp.basic.SpinnerEntry
 import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.TabRowDefaults
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.math.roundToInt
@@ -103,17 +105,14 @@ fun MediaToolsScreen(
 
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var imageFormat by rememberSaveable { mutableStateOf(ImageFormat.JPEG) }
-    var imageResize by rememberSaveable { mutableStateOf(ImageResizeOption.ORIGINAL) }
+    var imageResize by rememberSaveable { mutableStateOf(ImageResizeOption.LONG_EDGE_3840) }
     var localImageQuality by rememberSaveable { mutableIntStateOf(imageQuality) }
     var keepExif by rememberSaveable { mutableStateOf(!stripMetadata) }
+    var keepOnlyIfSmaller by rememberSaveable { mutableStateOf(true) }
     var videoResolution by rememberSaveable { mutableStateOf(videoQuality.toDefaultResolution()) }
     var trackMode by rememberSaveable { mutableStateOf(VideoTrackMode.VIDEO_AND_AUDIO) }
-    var bitrateMbps by rememberSaveable { mutableIntStateOf(0) }
+    var bitrateMbps by rememberSaveable { mutableFloatStateOf(0f) }
 
-    var showFormatPopup by rememberSaveable { mutableStateOf(false) }
-    var showResizePopup by rememberSaveable { mutableStateOf(false) }
-    var showResolutionPopup by rememberSaveable { mutableStateOf(false) }
-    var showTrackPopup by rememberSaveable { mutableStateOf(false) }
     var showActionsPopup by rememberSaveable { mutableStateOf(false) }
 
     var job by remember { mutableStateOf<Job?>(null) }
@@ -123,12 +122,18 @@ fun MediaToolsScreen(
     var queueTotal by remember { mutableIntStateOf(0) }
     var statusLabel by remember { mutableStateOf<String?>(null) }
     var failedCount by remember { mutableIntStateOf(0) }
+    var skippedCount by remember { mutableIntStateOf(0) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     val animatedProgress by animateFloatAsState(progress, label = "mediaQueueProgress")
     val imageJobLabel = stringResource(R.string.media_tool_compress_image_title)
     val videoJobLabel = stringResource(R.string.media_tool_compress_video_title)
     val audioJobLabel = stringResource(R.string.media_tool_extract_audio_title)
+    val bitrateCeilingMbps = videoResolution.ceilingBitrate / 1_000_000f
+    val bitrateStep = if (bitrateCeilingMbps <= 2f) .2f else 1f
+    LaunchedEffect(videoResolution) {
+        if (bitrateMbps > bitrateCeilingMbps) bitrateMbps = bitrateCeilingMbps
+    }
 
     val formatOptions = listOf(
         ToolOption(ImageFormat.JPEG, "JPEG", stringResource(R.string.media_tool_format_jpeg_desc)),
@@ -166,7 +171,7 @@ fun MediaToolsScreen(
     fun startBatch(
         label: String,
         sources: List<Uri>,
-        process: suspend (Uri, (Float) -> Unit) -> ProcessedMedia,
+        process: suspend (Uri, (Float) -> Unit) -> ProcessedMedia?,
     ) {
         if (sources.isEmpty() || running) return
         running = true
@@ -178,6 +183,7 @@ fun MediaToolsScreen(
         job = scope.launch {
             var created = 0
             var batchFailures = 0
+            var batchSkipped = 0
             val previousResultCount = results.size
             try {
                 sources.forEachIndexed { index, source ->
@@ -188,8 +194,12 @@ fun MediaToolsScreen(
                             progress = ((index + itemProgress.coerceIn(0f, 1f)) / sources.size)
                                 .coerceIn(0f, 1f)
                         }
-                        results += processed
-                        created++
+                        if (processed == null) {
+                            batchSkipped++
+                        } else {
+                            results += processed
+                            created++
+                        }
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (t: Throwable) {
@@ -198,8 +208,6 @@ fun MediaToolsScreen(
                     }
                     progress = (index + 1f) / sources.size
                 }
-                failedCount += batchFailures
-                if (created > 0) onMediaCreated()
                 val batchResults = results.drop(previousResultCount)
                 val saved = batchResults.sumOf { it.savedBytes }
                 val message = if (saved > 0L) {
@@ -220,6 +228,9 @@ fun MediaToolsScreen(
             } catch (_: CancellationException) {
                 // Cancellation is a normal user action; cleanup happens below.
             } finally {
+                failedCount += batchFailures
+                skippedCount += batchSkipped
+                if (created > 0) onMediaCreated()
                 running = false
                 statusLabel = null
                 progress = 0f
@@ -241,6 +252,7 @@ fun MediaToolsScreen(
                 quality = localImageQuality,
                 resize = imageResize,
                 stripMetadata = !keepExif,
+                keepOnlyIfSmaller = keepOnlyIfSmaller,
                 onProgress = report,
             )
         }
@@ -255,7 +267,11 @@ fun MediaToolsScreen(
                 source = source,
                 resolution = videoResolution,
                 trackMode = trackMode,
-                bitrateOverride = bitrateMbps.takeIf { it > 0 }?.times(1_000_000),
+                bitrateOverride = bitrateMbps
+                    .takeIf { it > 0f && trackMode != VideoTrackMode.AUDIO_ONLY }
+                    ?.times(1_000_000f)
+                    ?.roundToInt(),
+                keepOnlyIfSmaller = keepOnlyIfSmaller,
                 onProgress = report,
             )
         }
@@ -270,13 +286,14 @@ fun MediaToolsScreen(
             }
         },
         actions = {
-            if (results.isNotEmpty() || failedCount > 0) {
+            if (results.isNotEmpty() || failedCount > 0 || skippedCount > 0) {
                 OverlayActionPopup(
                     show = showActionsPopup,
                     actions = listOf(
                         OverlayAction(R.string.media_tool_clear_results) {
                             results.clear()
                             failedCount = 0
+                            skippedCount = 0
                             errorMessage = null
                         },
                     ),
@@ -328,18 +345,14 @@ fun MediaToolsScreen(
                     title = stringResource(R.string.media_tool_output_format),
                     options = formatOptions,
                     selected = imageFormat,
-                    showPopup = showFormatPopup,
                     enabled = !running,
-                    onShowChange = { showFormatPopup = it },
                     onSelect = { imageFormat = it },
                 )
                 ToolSpinnerPreference(
                     title = stringResource(R.string.media_tool_resize),
                     options = resizeOptions,
                     selected = imageResize,
-                    showPopup = showResizePopup,
                     enabled = !running,
-                    onShowChange = { showResizePopup = it },
                     onSelect = { imageResize = it },
                 )
                 SliderPreference(
@@ -358,6 +371,13 @@ fun MediaToolsScreen(
                     title = stringResource(R.string.media_tool_keep_exif),
                     summary = stringResource(R.string.media_tool_keep_exif_summary),
                     enabled = !running && imageFormat == ImageFormat.JPEG,
+                )
+                SwitchPreference(
+                    checked = keepOnlyIfSmaller,
+                    onCheckedChange = { keepOnlyIfSmaller = it },
+                    title = stringResource(R.string.media_tool_keep_smaller),
+                    summary = stringResource(R.string.media_tool_keep_smaller_summary),
+                    enabled = !running,
                 )
             }
             PreferenceGroup(stringResource(R.string.section_media_tool_source)) {
@@ -382,32 +402,28 @@ fun MediaToolsScreen(
                     title = stringResource(R.string.media_tool_resolution),
                     options = resolutionOptions,
                     selected = videoResolution,
-                    showPopup = showResolutionPopup,
                     enabled = !running && trackMode != VideoTrackMode.AUDIO_ONLY,
-                    onShowChange = { showResolutionPopup = it },
                     onSelect = { videoResolution = it },
                 )
                 ToolSpinnerPreference(
                     title = stringResource(R.string.media_tool_tracks),
                     options = trackOptions,
                     selected = trackMode,
-                    showPopup = showTrackPopup,
                     enabled = !running,
-                    onShowChange = { showTrackPopup = it },
                     onSelect = { trackMode = it },
                 )
                 SliderPreference(
                     title = stringResource(R.string.media_tool_bitrate),
-                    valueText = if (bitrateMbps == 0) {
+                    valueText = if (bitrateMbps == 0f) {
                         stringResource(R.string.media_tool_bitrate_auto)
                     } else {
-                        stringResource(R.string.media_tool_bitrate_value, bitrateMbps.toString())
+                        stringResource(R.string.media_tool_bitrate_value, formatBitrateMbps(bitrateMbps))
                     },
                     hint = stringResource(R.string.media_tool_bitrate_hint),
-                    value = bitrateMbps.toFloat(),
-                    onValueChange = { bitrateMbps = it.roundToInt() },
-                    valueRange = 0f..12f,
-                    steps = 11,
+                    value = bitrateMbps,
+                    onValueChange = { bitrateMbps = (it / bitrateStep).roundToInt() * bitrateStep },
+                    valueRange = 0f..bitrateCeilingMbps,
+                    steps = (bitrateCeilingMbps / bitrateStep).roundToInt().minus(1).coerceAtLeast(0),
                     enabled = !running && trackMode != VideoTrackMode.AUDIO_ONLY,
                 )
             }
@@ -475,7 +491,7 @@ fun MediaToolsScreen(
             }
         }
 
-        if (results.isNotEmpty() || failedCount > 0) {
+        if (results.isNotEmpty() || failedCount > 0 || skippedCount > 0) {
             val totalSaved = results.sumOf { it.savedBytes }
             PreferenceGroup(stringResource(R.string.media_tool_results)) {
                 BasicComponent(
@@ -493,8 +509,12 @@ fun MediaToolsScreen(
                             results.size,
                         )
                     },
-                    summary = failedCount.takeIf { it > 0 }
-                        ?.let { pluralStringResource(R.plurals.media_tool_failed_count, it, it) },
+                    summary = listOfNotNull(
+                        failedCount.takeIf { it > 0 }
+                            ?.let { pluralStringResource(R.plurals.media_tool_failed_count, it, it) },
+                        skippedCount.takeIf { it > 0 }
+                            ?.let { pluralStringResource(R.plurals.media_tool_skipped_count, it, it) },
+                    ).joinToString(" · ").takeIf { it.isNotEmpty() },
                 )
                 results.forEach { processed ->
                     ArrowPreference(
@@ -529,28 +549,17 @@ private fun <T> ToolSpinnerPreference(
     title: String,
     options: List<ToolOption<T>>,
     selected: T,
-    showPopup: Boolean,
     enabled: Boolean,
-    onShowChange: (Boolean) -> Unit,
     onSelect: (T) -> Unit,
 ) {
-    val selectedOption = options.first { it.value == selected }
-    OverlaySpinnerChoicePopup(
-        show = showPopup,
-        options = options,
-        selected = selectedOption,
-        title = { it.title },
-        summary = { it.summary },
-        onSelect = { onSelect(it.value) },
-        onDismissRequest = { onShowChange(false) },
-        anchor = {
-            ArrowPreference(
-                title = title,
-                summary = selectedOption.title,
-                enabled = enabled,
-                onClick = { onShowChange(true) },
-            )
-        },
+    val selectedIndex = options.indexOfFirst { it.value == selected }.coerceAtLeast(0)
+    OverlaySpinnerPreference(
+        items = options.map { SpinnerEntry(title = it.title, summary = it.summary) },
+        selectedIndex = selectedIndex,
+        title = title,
+        enabled = enabled,
+        renderInRootScaffold = true,
+        onSelectedIndexChange = { index -> options.getOrNull(index)?.value?.let(onSelect) },
     )
 }
 
@@ -641,6 +650,10 @@ private fun com.example.photoorganizer.ffmpeg.VideoQuality.toDefaultResolution()
     com.example.photoorganizer.ffmpeg.VideoQuality.MEDIUM -> VideoResolution.P720
     com.example.photoorganizer.ffmpeg.VideoQuality.LOW -> VideoResolution.P480
 }
+
+private fun formatBitrateMbps(value: Float): String =
+    if (value % 1f == 0f) value.roundToInt().toString()
+    else "%.1f".format(java.util.Locale.getDefault(), value)
 
 /**
  * Turns a processing failure into a localized, file-scoped message. Pipeline

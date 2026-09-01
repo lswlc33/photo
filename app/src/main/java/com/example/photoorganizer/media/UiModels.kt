@@ -5,7 +5,7 @@ import android.net.Uri
 import android.provider.MediaStore
 
 /** Review decision attached to a media item, persisted per item id. */
-enum class ReviewState { UNREVIEWED, SKIPPED, KEPT, TRASH_MARKED }
+enum class ReviewState { UNREVIEWED, KEPT, TRASH_MARKED }
 
 /** UI-facing media item resolved from [IndexedMedia] plus the current [ReviewState]. */
 data class UiMedia(

@@ -55,8 +55,9 @@ object VideoProcessor {
         resolution: VideoResolution,
         trackMode: VideoTrackMode,
         bitrateOverride: Int? = null,
+        keepOnlyIfSmaller: Boolean = true,
         onProgress: (Float) -> Unit = {},
-    ): ProcessedMedia {
+    ): ProcessedMedia? {
         val originalBytes = GalleryWriter.sourceSize(context, source)
         if (originalBytes <= 0L) {
             throw ProcessingException(R.string.processing_error_empty_source)
@@ -79,6 +80,10 @@ object VideoProcessor {
             val outputBytes = output.length()
             if (outputBytes <= 0L) {
                 throw ProcessingException(R.string.processing_error_empty_output)
+            }
+            if (keepOnlyIfSmaller && trackMode != VideoTrackMode.AUDIO_ONLY && outputBytes >= originalBytes) {
+                onProgress(1f)
+                return null
             }
             val uri = withContext(Dispatchers.IO) {
                 if (audioOnly) {

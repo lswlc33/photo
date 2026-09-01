@@ -61,7 +61,7 @@
     <string name="progress_ring_label">Reviewed</string>
     <string name="progress_start_summary">Continue with smart, targeted or manual review</string>
     <string name="next_steps">Next steps</string>
-    <string name="next_duplicates">Duplicates and similar photos</string>
+    <string name="next_duplicates">Exact duplicates</string>
     <plurals name="dashboard_duplicate_summary">
         <item quantity="one">%1$d group · %2$s reclaimable</item>
         <item quantity="other">%1$d groups · %2$s reclaimable</item>
@@ -69,6 +69,7 @@
     <string name="dashboard_duplicate_pending">Detection has not run yet</string>
     <string name="next_safety">Safety check</string>
     <string name="dashboard_safety_normal">Permissions, index and original-file guard are healthy</string>
+    <string name="dashboard_safety_limited">Only selected media is indexed; review access in Settings</string>
 
     <!-- Organize -->
     <string name="organize_title">Organize</string>
@@ -103,6 +104,7 @@
     <!-- Manual grid -->
     <string name="manual_sort_by_date">By date</string>
     <string name="manual_sort_by_size">By size</string>
+    <string name="manual_sort_title">Sort order</string>
     <plurals name="manual_selected_count">
         <item quantity="one">%1$d selected</item>
         <item quantity="other">%1$d selected</item>
@@ -165,11 +167,15 @@
     <string name="album_new">New album</string>
     <string name="album_name_hint">Album name</string>
     <string name="default_album_name">Current photo</string>
+    <string name="logical_album_title">Logical album</string>
+    <string name="logical_album_remove">Remove</string>
+    <string name="logical_album_delete">Delete logical album</string>
+    <string name="logical_album_section">Logical albums</string>
 
     <!-- Tools -->
     <string name="tools_title">Tools</string>
     <string name="tools_analysis_running">Analyzing local media…</string>
-    <string name="tools_duplicate_title">Duplicates and similar photos</string>
+    <string name="tools_duplicate_title">Exact duplicates</string>
     <string name="duplicate_empty">No duplicate groups detected.</string>
     <plurals name="tools_summary_duplicate">
         <item quantity="one">%1$d group · %2$s reclaimable</item>
@@ -188,16 +194,16 @@
         <item quantity="other">%1$d items · %2$s</item>
     </plurals>
     <string name="tools_largest_threshold_title">Large file threshold</string>
-    <string name="tools_largest_threshold_summary">Only files at or above %1$s are listed</string>
     <string name="tools_threshold_option">Above %1$s</string>
     <string name="section_tools_media">Media processing</string>
     <string name="section_tools_cleanup">Cleanup analysis</string>
-    <string name="tools_duplicate_hint">Marks are applied here; deletion still happens from Discarded with the system dialog.</string>
+    <string name="tools_duplicate_hint">Compares the full file with SHA-256. Different names can match; visually similar re-encodes are not auto-deleted.</string>
     <plurals name="tools_duplicate_group_detail">
         <item quantity="one">%1$d copy · %2$s reclaimable</item>
         <item quantity="other">%1$d copies · %2$s reclaimable</item>
     </plurals>
     <string name="tools_duplicate_keep_one">Keep one</string>
+    <string name="tools_duplicate_apply_all">Apply strategy to all groups</string>
     <string name="tools_open_group">View group</string>
     <string name="tools_reclaimable_title">Reclaimable space</string>
     <string name="tools_reclaimable_summary">Upper bound across duplicates, screenshots and large files; overlaps are counted once per category.</string>
@@ -252,6 +258,12 @@
     <string name="media_tool_quality_hint">Lower values shrink the file further at the cost of detail.</string>
     <string name="media_tool_keep_exif">Keep capture info</string>
     <string name="media_tool_keep_exif_summary">Copy date, camera and GPS tags into the result (JPEG only)</string>
+    <string name="media_tool_keep_smaller">Keep only smaller results</string>
+    <string name="media_tool_keep_smaller_summary">Discard a result that would be larger than the source file</string>
+    <plurals name="media_tool_skipped_count">
+        <item quantity="one">%1$d skipped because the result was larger</item>
+        <item quantity="other">%1$d skipped because the result was larger</item>
+    </plurals>
     <string name="media_tool_bitrate">Target bitrate</string>
     <string name="media_tool_bitrate_auto">Auto</string>
     <string name="media_tool_bitrate_value">%1$s Mbps</string>
@@ -286,7 +298,7 @@
     <string name="processing_error_empty_source">The selected file has no content (0 bytes).</string>
     <string name="processing_error_open_source">The selected file could not be opened.</string>
     <string name="processing_error_decode_image">This image could not be decoded; the file may be damaged or unsupported.</string>
-    <string name="processing_error_original_too_large">The original image is %1$d x %2$d pixels, which is too large to process safely. Choose 3840 px or a smaller size.</string>
+    <string name="processing_error_original_too_large">The original image is %1$s x %2$s pixels, which is too large to process safely. Choose 3840 px or a smaller size.</string>
     <string name="processing_error_encode_image">Encoding to %1$s failed.</string>
     <string name="processing_error_copy_metadata">The image was encoded, but its metadata could not be preserved.</string>
     <string name="processing_error_gallery_insert">The gallery entry could not be created; check storage space.</string>
@@ -313,7 +325,6 @@
     <string name="settings_help_cd">Help</string>
     <string name="settings_appearance">Appearance</string>
     <string name="settings_theme_title">Theme</string>
-    <string name="settings_theme_summary">%1$s</string>
     <string name="settings_theme_auto">Follow system</string>
     <string name="settings_theme_light">Light</string>
     <string name="settings_theme_dark">Dark</string>

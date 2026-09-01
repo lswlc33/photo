@@ -6,7 +6,6 @@ import android.database.Cursor
 import android.net.Uri
 import android.provider.MediaStore
 import java.io.ByteArrayInputStream
-import kotlin.math.abs
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 
@@ -21,8 +20,7 @@ class MediaStoreIndexer(
     ): MediaIndexSnapshot {
         val images = if (includeImages) queryImages() else emptyList()
         val videos = if (includeVideos) queryVideos() else emptyList()
-        val (resolvedImages, standaloneVideos) = pairLivePhotos(images, videos)
-        val allItems = (resolvedImages + standaloneVideos)
+        val allItems = (images + videos)
             .sortedByDescending { it.dateTakenMillis ?: 0L }
         val availableAlbums = allItems.mapNotNull { it.relativePath }
             .map { it.trimEnd('/') }
@@ -91,30 +89,6 @@ class MediaStoreIndexer(
         )
     }
 
-    private fun pairLivePhotos(
-        images: List<IndexedMedia>,
-        videos: List<IndexedMedia>,
-    ): Pair<List<IndexedMedia>, List<IndexedMedia>> {
-        val videosByKey = videos.groupBy(::pairingKey)
-        val pairedVideoIds = hashSetOf<Long>()
-        val resolvedImages = images.map { image ->
-            if (image.motionVideoUri != null || !image.mimeType.isLivePhotoStillType()) return@map image
-            val companion = videosByKey[pairingKey(image)]
-                ?.filter { video -> isLikelyLivePhotoCompanion(image, video) }
-                ?.minByOrNull { video ->
-                    abs((image.dateTakenMillis ?: 0L) - (video.dateTakenMillis ?: 0L))
-                }
-            if (companion == null) image else {
-                pairedVideoIds += companion.id
-                image.copy(
-                    durationMillis = companion.durationMillis,
-                    motionVideoUri = companion.uri,
-                )
-            }
-        }
-        return resolvedImages to videos.filterNot { it.id in pairedVideoIds }
-    }
-
     private fun <T> query(collection: Uri, projection: Array<String>, mapper: (Cursor) -> T): List<T> =
         resolver.query(collection, projection, null, null, null)?.use { cursor ->
             buildList {
@@ -157,44 +131,6 @@ fun stableMediaId(rawId: Long, type: IndexedMediaType): Long = when (type) {
 
 fun rawMediaId(stableId: Long): Long = stableId and Long.MAX_VALUE
 
-private fun pairingKey(item: IndexedMedia): String =
-    "${normalizeAlbumPath(item.relativePath)}/${item.displayName.substringBeforeLast('.').lowercase()}"
-
-private fun String.isLivePhotoStillType(): Boolean =
-    equals("image/heic", ignoreCase = true) ||
-        equals("image/heif", ignoreCase = true) ||
-        equals("image/jpeg", ignoreCase = true)
-
-internal fun isLikelyLivePhotoCompanion(
-    image: IndexedMedia,
-    video: IndexedMedia,
-): Boolean = isLikelyLivePhotoCompanion(
-    imageMimeType = image.mimeType,
-    imageDateMillis = image.dateTakenMillis,
-    videoName = video.displayName,
-    videoMimeType = video.mimeType,
-    videoDateMillis = video.dateTakenMillis,
-    videoDurationMillis = video.durationMillis,
-)
-
-internal fun isLikelyLivePhotoCompanion(
-    imageMimeType: String,
-    imageDateMillis: Long?,
-    videoName: String,
-    videoMimeType: String,
-    videoDateMillis: Long?,
-    videoDurationMillis: Long?,
-): Boolean {
-    if (!imageMimeType.isLivePhotoStillType()) return false
-    if (!videoMimeType.startsWith("video/", ignoreCase = true)) return false
-    if (videoName.substringAfterLast('.', missingDelimiterValue = "").lowercase() !in livePhotoVideoExtensions) {
-        return false
-    }
-    if (videoDurationMillis == null || videoDurationMillis !in 1L..MAX_LIVE_PHOTO_DURATION_MILLIS) return false
-    if (imageDateMillis == null || videoDateMillis == null) return false
-    return abs(imageDateMillis - videoDateMillis) <= MAX_LIVE_PHOTO_TIME_DELTA_MILLIS
-}
-
 private fun isEmbeddedMotionPhoto(xmp: ByteArray?): Boolean {
     if (xmp == null || xmp.isEmpty()) return false
     return runCatching {
@@ -223,10 +159,6 @@ private val motionPhotoAttributes = setOf(
     "MicroVideoVersion",
     "MicroVideoOffset",
 )
-
-private val livePhotoVideoExtensions = setOf("mov", "mp4")
-private const val MAX_LIVE_PHOTO_DURATION_MILLIS = 15_000L
-private const val MAX_LIVE_PHOTO_TIME_DELTA_MILLIS = 15_000L
 
 private fun isScreenshot(displayName: String, relativePath: String?): Boolean {
     val value = "$displayName ${relativePath.orEmpty()}".lowercase()

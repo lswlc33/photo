@@ -5,18 +5,24 @@ import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyGridState
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
@@ -37,17 +43,27 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,37 +71,39 @@ import com.example.photoorganizer.R
 import com.example.photoorganizer.media.ReviewState
 import com.example.photoorganizer.media.UiMedia
 import com.example.photoorganizer.media.scanDate
-import com.example.photoorganizer.ui.components.CompactTextButton
 import com.example.photoorganizer.ui.components.EmptyState
 import com.example.photoorganizer.ui.components.FullScreenMediaPreview
 import com.example.photoorganizer.ui.components.MediaTile
 import com.example.photoorganizer.ui.components.OverlayAction
 import com.example.photoorganizer.ui.components.OverlayActionPopup
-import com.example.photoorganizer.ui.components.OverlayChoicePopup
+import com.example.photoorganizer.ui.components.standardCardColors
 import com.example.photoorganizer.ui.systemClearance
 import com.example.photoorganizer.ui.theme.AccentOrange
 import com.example.photoorganizer.ui.theme.DangerRed
 import com.example.photoorganizer.ui.theme.SuccessGreen
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
+import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.FloatingToolbar
 import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.ToolbarPosition
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
-import top.yukonga.miuix.kmp.basic.ScrollBarDefaults
+import top.yukonga.miuix.kmp.basic.SpinnerEntry
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
-import top.yukonga.miuix.kmp.basic.VerticalScrollBar
-import top.yukonga.miuix.kmp.basic.rememberScrollBarAdapter
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
+import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
-enum class MediaGridMode { MANUAL, KEPT, TRASH, SCREENSHOTS, LARGEST, DUPLICATE_GROUP }
+enum class MediaGridMode { MANUAL, KEPT, TRASH, SCREENSHOTS, LARGEST, DUPLICATE_GROUP, LOGICAL_ALBUM }
 
 /** Extra scroll clearance so the floating selection toolbar never covers the last row. */
 private val SelectionToolbarClearance = 84.dp
@@ -101,7 +119,6 @@ private val MediaGridMode.supportsMarking: Boolean
         this == MediaGridMode.DUPLICATE_GROUP
 
 /** Gallery grid grouped by capture date, with full-screen hold previews. */
-@OptIn(top.yukonga.miuix.kmp.interfaces.ExperimentalScrollBarApi::class)
 @Composable
 fun ManualGridScreen(
     media: List<UiMedia>,
@@ -111,6 +128,8 @@ fun ManualGridScreen(
     animationEnabled: Boolean = true,
     mode: MediaGridMode = MediaGridMode.MANUAL,
     onDeleteRequest: (Set<Long>) -> Unit = {},
+    onRemoveFromCollection: (Set<Long>) -> Unit = {},
+    onDeleteCollection: () -> Unit = {},
     titleOverride: String? = null,
 ) {
     var sortBySize by rememberSaveable { mutableStateOf(defaultSortBySize) }
@@ -125,7 +144,7 @@ fun ManualGridScreen(
     val scrollBehavior = MiuixScrollBehavior(topAppBarState, canScroll = { true })
     val gridState = rememberLazyGridState()
     var showDeleteMenu by remember { mutableStateOf(false) }
-    var showSortPopup by remember { mutableStateOf(false) }
+    var scrubbing by remember { mutableStateOf(false) }
     // The bin icon on the discarded page arms on the first tap and only fires the
     // delete request on the second, so a stray tap cannot wipe the list.
     var deleteAllArmed by remember { mutableStateOf(false) }
@@ -216,6 +235,7 @@ fun ManualGridScreen(
                         MediaGridMode.SCREENSHOTS -> R.string.tools_screenshots_title
                         MediaGridMode.LARGEST -> R.string.tools_largest_title
                         MediaGridMode.DUPLICATE_GROUP -> R.string.tools_duplicate_title
+                        MediaGridMode.LOGICAL_ALBUM -> R.string.logical_album_title
                     },
                 ),
                 color = MiuixTheme.colorScheme.background,
@@ -274,28 +294,6 @@ fun ManualGridScreen(
                                 contentDescription = stringResource(R.string.manual_select_mode_cd),
                             )
                         }
-                        if (mode.supportsMarking) {
-                            OverlayChoicePopup(
-                                show = showSortPopup,
-                                options = sortOptions,
-                                selected = sortBySize,
-                                label = { bySize ->
-                                    if (bySize) R.string.manual_sort_by_size else R.string.manual_sort_by_date
-                                },
-                                onSelect = { sortBySize = it },
-                                onDismissRequest = { showSortPopup = false },
-                                minWidth = 180.dp,
-                            ) {
-                                CompactTextButton(
-                                    text = if (sortBySize) {
-                                        stringResource(R.string.manual_sort_by_size)
-                                    } else {
-                                        stringResource(R.string.manual_sort_by_date)
-                                    },
-                                    onClick = { showSortPopup = true },
-                                )
-                            }
-                        }
                         if (overflowActions.isNotEmpty() && media.isNotEmpty()) {
                             OverlayActionPopup(
                                 show = showDeleteMenu,
@@ -320,6 +318,15 @@ fun ManualGridScreen(
                                     onDeleteRequest(allMediaIds)
                                 },
                             )
+                        }
+                        if (mode == MediaGridMode.LOGICAL_ALBUM) {
+                            IconButton(onClick = onDeleteCollection) {
+                                Icon(
+                                    Icons.Default.DeleteOutline,
+                                    contentDescription = stringResource(R.string.logical_album_delete),
+                                    tint = DangerRed,
+                                )
+                            }
                         }
                     }
                 },
@@ -355,6 +362,12 @@ fun ManualGridScreen(
                         selected.clear()
                         onDeleteRequest(ids)
                     },
+                    onRemoveFromCollection = {
+                        val ids = selected.keys.toSet()
+                        selectionMode = false
+                        selected.clear()
+                        onRemoveFromCollection(ids)
+                    },
                 )
             }
         },
@@ -385,6 +398,28 @@ fun ManualGridScreen(
                     onExpandedChange = {},
                     modifier = Modifier.padding(bottom = 4.dp),
                 ) {}
+            }
+            if (mode.supportsMarking) {
+                Card(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                    colors = standardCardColors(),
+                ) {
+                    OverlaySpinnerPreference(
+                        items = sortOptions.map { bySize ->
+                            SpinnerEntry(
+                                title = stringResource(
+                                    if (bySize) R.string.manual_sort_by_size else R.string.manual_sort_by_date,
+                                ),
+                            )
+                        },
+                        selectedIndex = sortOptions.indexOf(sortBySize),
+                        title = stringResource(R.string.manual_sort_title),
+                        renderInRootScaffold = true,
+                        onSelectedIndexChange = { index ->
+                            sortOptions.getOrNull(index)?.let { sortBySize = it }
+                        },
+                    )
+                }
             }
             if (entries.isEmpty()) {
                 EmptyState(
@@ -425,7 +460,7 @@ fun ManualGridScreen(
                         columns = GridCells.Adaptive(96.dp),
                         contentPadding = PaddingValues(
                             start = 12.dp,
-                            end = 18.dp,
+                            end = 50.dp,
                             top = 8.dp,
                             bottom = 12.dp + clearance.bottom +
                                 if (selectionMode) SelectionToolbarClearance else 0.dp,
@@ -476,20 +511,14 @@ fun ManualGridScreen(
                     val totalItems = scrollMetrics.totalItems
                     val visibleItems = scrollMetrics.visibleItems
                     if (totalItems > visibleItems) {
-                        VerticalScrollBar(
-                            adapter = rememberScrollBarAdapter(gridState),
+                        ManualGridScrubber(
+                            state = gridState,
+                            totalItems = totalItems,
+                            visibleItems = visibleItems,
                             modifier = Modifier.align(Alignment.CenterEnd),
-                            trackPadding = PaddingValues(
-                                top = 8.dp,
-                                bottom = 12.dp + clearance.bottom +
-                                    if (selectionMode) SelectionToolbarClearance else 0.dp,
-                            ),
-                            colors = ScrollBarDefaults.scrollBarColors(
-                                thumbColor = MiuixTheme.colorScheme.primary,
-                                trackColor = MiuixTheme.colorScheme.dividerLine.copy(alpha = .7f),
-                            ),
+                            onScrubbingChange = { scrubbing = it },
                         )
-                        if (gridState.isScrollInProgress) {
+                        if (gridState.isScrollInProgress || scrubbing) {
                             Text(
                                 text = currentDate,
                                 color = MiuixTheme.colorScheme.onSurfaceContainer,
@@ -497,7 +526,7 @@ fun ManualGridScreen(
                                 fontWeight = FontWeight.SemiBold,
                                 modifier = Modifier
                                     .align(Alignment.CenterEnd)
-                                    .padding(end = 24.dp)
+                                    .padding(end = 48.dp)
                                     .background(
                                         MiuixTheme.colorScheme.surfaceContainer.copy(alpha = .96f),
                                         RoundedCornerShape(8.dp),
@@ -522,6 +551,94 @@ fun ManualGridScreen(
                 previewItem = null
                 temporaryPreview = false
             },
+        )
+    }
+}
+
+/**
+ * Grid-aware scrubber. MIUIX's generic scrollbar adapter maps one lazy item to
+ * one row, which is incorrect here because date headers span every column.
+ */
+@Composable
+private fun ManualGridScrubber(
+    state: LazyGridState,
+    totalItems: Int,
+    visibleItems: Int,
+    onScrubbingChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val scope = rememberCoroutineScope()
+    val density = LocalDensity.current
+    val thumbHeight = 48.dp
+    val thumbHeightPx = with(density) { thumbHeight.toPx() }
+    var trackHeightPx by remember { mutableFloatStateOf(0f) }
+    var scrollJob by remember { mutableStateOf<Job?>(null) }
+    val maxIndex = (totalItems - visibleItems).coerceAtLeast(1)
+    val progress by remember(state, maxIndex) {
+        derivedStateOf { (state.firstVisibleItemIndex.toFloat() / maxIndex).coerceIn(0f, 1f) }
+    }
+
+    fun scrubTo(positionY: Float) {
+        if (trackHeightPx <= 0f) return
+        val targetIndex = scrubberTargetIndex(
+            positionY = positionY,
+            trackHeight = trackHeightPx,
+            thumbHeight = thumbHeightPx,
+            totalItems = totalItems,
+            visibleItems = visibleItems,
+        )
+        scrollJob?.cancel()
+        scrollJob = scope.launch { state.scrollToItem(targetIndex) }
+    }
+
+    Box(
+        modifier
+            .width(44.dp)
+            .fillMaxHeight()
+            .padding(vertical = 8.dp)
+            .onSizeChanged { trackHeightPx = it.height.toFloat() }
+            .semantics {
+                progressBarRangeInfo = ProgressBarRangeInfo(progress, 0f..1f)
+                setProgress { requested ->
+                    scrubTo(requested.coerceIn(0f, 1f) * trackHeightPx)
+                    true
+                }
+            }
+            .pointerInput(totalItems, visibleItems) {
+                awaitEachGesture {
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    onScrubbingChange(true)
+                    scrubTo(down.position.y)
+                    try {
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val pointer = event.changes.firstOrNull { it.id == down.id } ?: break
+                            scrubTo(pointer.position.y)
+                            pointer.consume()
+                            if (!pointer.pressed) break
+                        }
+                    } finally {
+                        onScrubbingChange(false)
+                    }
+                }
+            },
+    ) {
+        Box(
+            Modifier
+                .align(Alignment.TopCenter)
+                .width(3.dp)
+                .fillMaxHeight()
+                .background(MiuixTheme.colorScheme.dividerLine.copy(alpha = .7f), RoundedCornerShape(2.dp)),
+        )
+        Box(
+            Modifier
+                .align(Alignment.TopCenter)
+                .width(6.dp)
+                .height(thumbHeight)
+                .graphicsLayer {
+                    translationY = progress * (trackHeightPx - thumbHeightPx).coerceAtLeast(0f)
+                }
+                .background(MiuixTheme.colorScheme.primary, RoundedCornerShape(3.dp)),
         )
     }
 }
@@ -575,6 +692,7 @@ private fun SelectionToolbar(
     onTrash: () -> Unit,
     onClear: () -> Unit,
     onDeleteSelected: () -> Unit,
+    onRemoveFromCollection: () -> Unit,
 ) {
     FloatingToolbar(
         outSidePadding = PaddingValues(
@@ -614,6 +732,13 @@ private fun SelectionToolbar(
                     label = stringResource(R.string.manual_clear),
                     enabled = hasSelection,
                     onClick = onClear,
+                )
+            } else if (mode == MediaGridMode.LOGICAL_ALBUM) {
+                ToolbarAction(
+                    icon = Icons.Default.LayersClear,
+                    label = stringResource(R.string.logical_album_remove),
+                    enabled = hasSelection,
+                    onClick = onRemoveFromCollection,
                 )
             } else {
                 ToolbarAction(
@@ -728,3 +853,17 @@ private data class ScrollMetrics(
     val totalItems: Int,
     val visibleItems: Int,
 )
+
+internal fun scrubberTargetIndex(
+    positionY: Float,
+    trackHeight: Float,
+    thumbHeight: Float,
+    totalItems: Int,
+    visibleItems: Int,
+): Int {
+    if (totalItems <= 1 || trackHeight <= 0f) return 0
+    val available = (trackHeight - thumbHeight).coerceAtLeast(1f)
+    val progress = ((positionY - thumbHeight / 2f) / available).coerceIn(0f, 1f)
+    val maxIndex = (totalItems - visibleItems).coerceAtLeast(0)
+    return (progress * maxIndex).roundToInt().coerceIn(0, totalItems - 1)
+}

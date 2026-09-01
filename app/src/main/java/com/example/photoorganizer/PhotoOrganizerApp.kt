@@ -213,6 +213,7 @@ fun PhotoOrganizerApp() {
     }
     val rawItems = indexState.snapshot?.items ?: emptyList()
     val mediaIndexReady = dashboardState is DashboardState.Ready
+    val duplicateAnalysisReady = mediaIndexReady && !indexState.analyzingDuplicates
     val availableAlbums = indexState.snapshot?.availableAlbums ?: emptyList()
     LaunchedEffect(indexState.snapshot, indexScope) {
         val snapshot = indexState.snapshot ?: return@LaunchedEffect
@@ -236,7 +237,7 @@ fun PhotoOrganizerApp() {
         }
     }
     val media = rawItems.map { it.toUiMedia(reviewStates[it.id] ?: ReviewState.UNREVIEWED) }
-    val toolAnalysisReady = mediaIndexReady && !indexState.analyzingDuplicates
+    val toolAnalysisReady = duplicateAnalysisReady
     val toolAnalysis = remember(indexState.duplicateGroups, rawItems, largestThresholdMb) {
         val thresholdBytes = ToolAnalyzer.thresholdBytesOf(largestThresholdMb)
         ToolAnalysis(
@@ -254,6 +255,7 @@ fun PhotoOrganizerApp() {
         mutableStateOf(LogicalAlbumStore.decode(prefs.getStringSet("logical_albums", emptySet())))
     }
     var duplicateGroup by remember { mutableStateOf<DuplicateGroup?>(null) }
+    var selectedLogicalAlbum by remember { mutableStateOf<LogicalAlbum?>(null) }
     var showDiscardDialog by remember { mutableStateOf(false) }
     var pendingDiscardIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var showAlbumDialog by remember { mutableStateOf(false) }
@@ -272,6 +274,13 @@ fun PhotoOrganizerApp() {
     fun saveLogicalAlbums(albums: List<LogicalAlbum>) {
         logicalAlbums = albums.sortedBy { it.name.lowercase() }
         prefs.edit { putStringSet("logical_albums", LogicalAlbumStore.encode(logicalAlbums)) }
+    }
+
+    LaunchedEffect(rawItems, mediaIndexReady, indexScope) {
+        if (!mediaIndexReady || indexScope.mode != IndexScopeMode.ALL || permissionState.isLimited) return@LaunchedEffect
+        val activeIds = rawItems.mapTo(hashSetOf()) { it.id }
+        val pruned = logicalAlbums.map { album -> album.copy(mediaIds = album.mediaIds intersect activeIds) }
+        if (pruned != logicalAlbums) saveLogicalAlbums(pruned)
     }
 
     fun beginSystemDelete(markIds: Set<Long>) {
@@ -391,12 +400,14 @@ fun PhotoOrganizerApp() {
                         onRequestPermission = { permissionLauncher.launch(context.photoPermissionRequest()) },
                         onOpenOrganize = { selectedPage = AppPage.ORGANIZE },
                         onOpenTools = { selectedPage = AppPage.TOOLS },
+                        onOpenSafety = { selectedPage = AppPage.SETTINGS },
                     )
                     AppPage.ORGANIZE -> OrganizeScreen(
                         contentBottomPadding = contentBottomPadding,
                         availableAlbums = availableAlbums,
                         keptCount = media.count { it.state == ReviewState.KEPT },
                         trashCount = media.count { it.state == ReviewState.TRASH_MARKED },
+                        logicalAlbums = logicalAlbums,
                         onOpenSmart = {
                             targetFilters = TargetFilters()
                             selectedMode = DetailMode.SWIPE
@@ -408,10 +419,15 @@ fun PhotoOrganizerApp() {
                         onOpenManual = { selectedMode = DetailMode.MANUAL },
                         onOpenKept = { selectedMode = DetailMode.KEPT },
                         onOpenTrash = { selectedMode = DetailMode.TRASH },
+                        onOpenLogicalAlbum = { album ->
+                            selectedLogicalAlbum = album
+                            selectedMode = DetailMode.LOGICAL_ALBUM
+                        },
                     )
                     AppPage.TOOLS -> ToolsScreen(
                         analysis = toolAnalysis,
-                        analysisReady = toolAnalysisReady,
+                        indexReady = mediaIndexReady,
+                        duplicateAnalysisReady = duplicateAnalysisReady,
                         contentBottomPadding = contentBottomPadding,
                         largestThresholdMb = largestThresholdMb,
                         onLargestThresholdChange = { largestThresholdMb = it },
@@ -557,6 +573,31 @@ fun PhotoOrganizerApp() {
                             onMediaCreated = { scanRequest++ },
                             onOpenResult = { uri -> openMediaViewer(context, uri) },
                         )
+                        DetailMode.LOGICAL_ALBUM -> {
+                            val album = selectedLogicalAlbum
+                            val ids = album?.mediaIds.orEmpty()
+                            ManualGridScreen(
+                                media = media.filter { it.id in ids },
+                                defaultSortBySize = false,
+                                onBack = { selectedMode = null },
+                                onMark = ::markMedia,
+                                animationEnabled = animationEnabled,
+                                mode = MediaGridMode.LOGICAL_ALBUM,
+                                titleOverride = album?.name,
+                                onRemoveFromCollection = { removedIds ->
+                                    if (album != null) {
+                                        val updated = album.copy(mediaIds = album.mediaIds - removedIds)
+                                        selectedLogicalAlbum = updated
+                                        saveLogicalAlbums(logicalAlbums.map { if (it.name == album.name) updated else it })
+                                    }
+                                },
+                                onDeleteCollection = {
+                                    if (album != null) saveLogicalAlbums(logicalAlbums.filterNot { it.name == album.name })
+                                    selectedLogicalAlbum = null
+                                    selectedMode = null
+                                },
+                            )
+                        }
                         DetailMode.ABOUT -> AboutScreen(
                             onBack = { selectedMode = null },
                         )
@@ -701,6 +742,7 @@ private enum class DetailMode {
     SCREENSHOTS,
     LARGEST,
     MEDIA,
+    LOGICAL_ALBUM,
     ABOUT,
 }
 

@@ -16,37 +16,4 @@ class IndexFiltersTest {
         assertFalse(IndexScope(IndexScopeMode.ONLY, setOf(screenshots)).includes(camera))
     }
 
-    @Test
-    fun livePhotoCompanionRequiresNearbyShortVideo() {
-        assertTrue(
-            isLikelyLivePhotoCompanion(
-                imageMimeType = "image/heic",
-                imageDateMillis = 1_000_000L,
-                videoName = "IMG_0001.MOV",
-                videoMimeType = "video/quicktime",
-                videoDateMillis = 1_006_000L,
-                videoDurationMillis = 3_200L,
-            ),
-        )
-        assertFalse(
-            isLikelyLivePhotoCompanion(
-                imageMimeType = "image/jpeg",
-                imageDateMillis = 1_000_000L,
-                videoName = "IMG_0001.mp4",
-                videoMimeType = "video/mp4",
-                videoDateMillis = 1_120_000L,
-                videoDurationMillis = 3_200L,
-            ),
-        )
-        assertFalse(
-            isLikelyLivePhotoCompanion(
-                imageMimeType = "image/heic",
-                imageDateMillis = 1_000_000L,
-                videoName = "IMG_0001.MOV",
-                videoMimeType = "video/quicktime",
-                videoDateMillis = 1_006_000L,
-                videoDurationMillis = 60_000L,
-            ),
-        )
-    }
 }

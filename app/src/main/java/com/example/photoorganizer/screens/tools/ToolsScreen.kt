@@ -9,10 +9,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.res.pluralStringResource
@@ -24,7 +20,6 @@ import com.example.photoorganizer.media.ToolAnalysis
 import com.example.photoorganizer.media.ToolAnalyzer
 import com.example.photoorganizer.media.formatBytes
 import com.example.photoorganizer.ui.PreferenceGroup
-import com.example.photoorganizer.ui.components.OverlaySpinnerChoicePopup
 import com.example.photoorganizer.ui.components.ScreenColumn
 import com.example.photoorganizer.ui.components.SectionTitle
 import com.example.photoorganizer.ui.components.standardCardColors
@@ -35,14 +30,17 @@ import top.yukonga.miuix.kmp.basic.CardDefaults
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
+import top.yukonga.miuix.kmp.basic.SpinnerEntry
 import top.yukonga.miuix.kmp.preference.ArrowPreference
+import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 /** Local analysis tools: duplicates, screenshots, largest files, media processing. */
 @Composable
 fun ToolsScreen(
     analysis: ToolAnalysis,
-    analysisReady: Boolean,
+    indexReady: Boolean,
+    duplicateAnalysisReady: Boolean,
     contentBottomPadding: androidx.compose.ui.unit.Dp,
     largestThresholdMb: Int,
     onLargestThresholdChange: (Int) -> Unit,
@@ -52,9 +50,9 @@ fun ToolsScreen(
     onOpenLargest: () -> Unit,
     onOpenMediaTools: () -> Unit,
 ) {
-    val refresh = rememberRefreshBridge(busy = !analysisReady, onRefresh = onRefresh)
-    var showThresholdPopup by remember { mutableStateOf(false) }
+    val refresh = rememberRefreshBridge(busy = !indexReady, onRefresh = onRefresh)
     val thresholdLabel = formatBytes(ToolAnalyzer.thresholdBytesOf(largestThresholdMb))
+    val thresholdOptions = ToolAnalyzer.LargestThresholdOptionsMb
     ScreenColumn(
         title = stringResource(R.string.tools_title),
         contentBottomPadding = contentBottomPadding,
@@ -66,12 +64,12 @@ fun ToolsScreen(
             }
         },
     ) {
-        ReclaimableCard(analysis = analysis, analysisReady = analysisReady)
+        ReclaimableCard(analysis = analysis, analysisReady = indexReady && duplicateAnalysisReady)
         PreferenceGroup(stringResource(R.string.section_tools_cleanup)) {
             ArrowPreference(
                 title = stringResource(R.string.tools_duplicate_title),
                 summary = when {
-                    !analysisReady -> stringResource(R.string.tools_analysis_running)
+                    !duplicateAnalysisReady -> stringResource(R.string.tools_analysis_running)
                     analysis.duplicates.isEmpty() -> stringResource(R.string.duplicate_empty)
                     else -> pluralStringResource(
                         R.plurals.tools_summary_duplicate,
@@ -85,7 +83,7 @@ fun ToolsScreen(
             ArrowPreference(
                 title = stringResource(R.string.tools_screenshots_title),
                 summary = when {
-                    !analysisReady -> stringResource(R.string.tools_analysis_running)
+                    !indexReady -> stringResource(R.string.tools_analysis_running)
                     analysis.screenshots.isEmpty() -> stringResource(R.string.screenshot_empty)
                     else -> pluralStringResource(
                         R.plurals.tools_summary_screenshots,
@@ -99,7 +97,7 @@ fun ToolsScreen(
             ArrowPreference(
                 title = stringResource(R.string.tools_largest_title),
                 summary = when {
-                    !analysisReady -> stringResource(R.string.tools_analysis_running)
+                    !indexReady -> stringResource(R.string.tools_analysis_running)
                     analysis.largest.isEmpty() -> stringResource(R.string.largest_empty, thresholdLabel)
                     else -> pluralStringResource(
                         R.plurals.tools_summary_largest,
@@ -110,23 +108,15 @@ fun ToolsScreen(
                 },
                 onClick = onOpenLargest,
             )
-            // The threshold picker sits directly under the large-file entry it
-            // controls, so the popup is anchored to its own row.
-            OverlaySpinnerChoicePopup(
-                show = showThresholdPopup,
-                options = ToolAnalyzer.LargestThresholdOptionsMb,
-                selected = largestThresholdMb,
-                title = { mb -> stringResource(R.string.tools_threshold_option, formatBytes(ToolAnalyzer.thresholdBytesOf(mb))) },
-                onSelect = onLargestThresholdChange,
-                onDismissRequest = { showThresholdPopup = false },
-            ) {
-                ArrowPreference(
-                    title = stringResource(R.string.tools_largest_threshold_title),
-                    summary = stringResource(R.string.tools_largest_threshold_summary, thresholdLabel),
-                    holdDownState = showThresholdPopup,
-                    onClick = { showThresholdPopup = true },
-                )
-            }
+            OverlaySpinnerPreference(
+                items = thresholdOptions.map { mb ->
+                    SpinnerEntry(title = stringResource(R.string.tools_threshold_option, formatBytes(ToolAnalyzer.thresholdBytesOf(mb))))
+                },
+                selectedIndex = thresholdOptions.indexOf(largestThresholdMb).coerceAtLeast(0),
+                title = stringResource(R.string.tools_largest_threshold_title),
+                renderInRootScaffold = true,
+                onSelectedIndexChange = { index -> thresholdOptions.getOrNull(index)?.let(onLargestThresholdChange) },
+            )
         }
         PreferenceGroup(stringResource(R.string.section_tools_media)) {
             ArrowPreference(

@@ -98,7 +98,6 @@ fun DuplicateGroupsScreen(
                     summary = { option -> stringResource(option.summaryRes()) },
                     onSelect = { option ->
                         strategy = option
-                        announceCleanup(applyPlan(groups, option))
                     },
                     onDismissRequest = { showStrategyPopup = false },
                 ) {
@@ -143,6 +142,10 @@ fun DuplicateGroupsScreen(
             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             fontSize = 12.sp,
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+        )
+        CompactTextButton(
+            text = stringResource(R.string.tools_duplicate_apply_all),
+            onClick = { announceCleanup(applyPlan(groups, strategy)) },
         )
         Card(modifier = Modifier.fillMaxWidth(), colors = standardCardColors()) {
             Column(

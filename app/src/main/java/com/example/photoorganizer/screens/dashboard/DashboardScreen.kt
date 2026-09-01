@@ -83,6 +83,7 @@ fun DashboardScreen(
     onRequestPermission: () -> Unit,
     onOpenOrganize: () -> Unit,
     onOpenTools: () -> Unit,
+    onOpenSafety: () -> Unit,
 ) {
     val refresh = rememberRefreshBridge(busy = state is DashboardState.Scanning, onRefresh = onRefresh)
     ScreenColumn(
@@ -113,6 +114,7 @@ fun DashboardScreen(
                 toolAnalysisReady = toolAnalysisReady,
                 onOpenOrganize = onOpenOrganize,
                 onOpenTools = onOpenTools,
+                onOpenSafety = onOpenSafety,
             )
         }
     }
@@ -180,6 +182,7 @@ private fun ReadyDashboard(
     toolAnalysisReady: Boolean,
     onOpenOrganize: () -> Unit,
     onOpenTools: () -> Unit,
+    onOpenSafety: () -> Unit,
 ) {
     val stats = state.statistics
     val reviewedProgress = if (total == 0) 0f else reviewed.toFloat() / total
@@ -303,7 +306,10 @@ private fun ReadyDashboard(
         ArrowPreference(title = stringResource(R.string.next_duplicates), summary = dupeSummary, onClick = onOpenTools)
         ArrowPreference(
             title = stringResource(R.string.next_safety),
-            summary = stringResource(R.string.dashboard_safety_normal),
+            summary = stringResource(
+                if (state.permissionLimited) R.string.dashboard_safety_limited else R.string.dashboard_safety_normal,
+            ),
+            onClick = onOpenSafety,
         )
     }
 }

@@ -49,8 +49,9 @@ object ImageProcessor {
         quality: Int,
         resize: ImageResizeOption,
         stripMetadata: Boolean,
+        keepOnlyIfSmaller: Boolean = true,
         onProgress: (Float) -> Unit = {},
-    ): ProcessedMedia = withContext(Dispatchers.IO) {
+    ): ProcessedMedia? = withContext(Dispatchers.IO) {
         val originalBytes = GalleryWriter.sourceSize(context, source)
         val input = GalleryWriter.copyToCache(context, source, "img_in")
         val output = GalleryWriter.cacheFile(context, "img", format.extension)
@@ -82,6 +83,10 @@ object ImageProcessor {
                 copyExif(input, output)
             }
             val outputBytes = output.length()
+            if (keepOnlyIfSmaller && originalBytes > 0L && outputBytes >= originalBytes) {
+                onProgress(1f)
+                return@withContext null
+            }
             val uri = GalleryWriter.publishImage(context, output, format.mimeType)
             onProgress(1f)
             ProcessedMedia(
@@ -110,7 +115,7 @@ object ImageProcessor {
             if (!originalSizeIsSupported(bounds.outWidth, bounds.outHeight)) {
                 throw ProcessingException(
                     R.string.processing_error_original_too_large,
-                    listOf(bounds.outWidth, bounds.outHeight),
+                    listOf(bounds.outWidth.toString(), bounds.outHeight.toString()),
                 )
             }
             1

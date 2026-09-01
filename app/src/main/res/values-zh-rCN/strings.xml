@@ -61,13 +61,14 @@
     <string name="progress_ring_label">已整理</string>
     <string name="progress_start_summary">继续智能、定向或手动整理</string>
     <string name="next_steps">下一步</string>
-    <string name="next_duplicates">重复与相似照片</string>
+    <string name="next_duplicates">精确重复照片</string>
     <plurals name="dashboard_duplicate_summary">
         <item quantity="other">%1$d 组 · 可释放 %2$s</item>
     </plurals>
     <string name="dashboard_duplicate_pending">尚未运行检测</string>
     <string name="next_safety">安全检查</string>
     <string name="dashboard_safety_normal">权限、索引与原图保护均正常</string>
+    <string name="dashboard_safety_limited">当前仅索引已选择的媒体，请在设置中检查访问权限</string>
 
     <!-- 整理 -->
     <string name="organize_title">整理</string>
@@ -101,6 +102,7 @@
     <!-- 手动网格 -->
     <string name="manual_sort_by_date">按日期</string>
     <string name="manual_sort_by_size">按大小</string>
+    <string name="manual_sort_title">排序方式</string>
     <plurals name="manual_selected_count">
         <item quantity="other">已选 %1$d 项</item>
     </plurals>
@@ -160,11 +162,15 @@
     <string name="album_new">新建相册</string>
     <string name="album_name_hint">相册名称</string>
     <string name="default_album_name">当前照片</string>
+    <string name="logical_album_title">逻辑相册</string>
+    <string name="logical_album_remove">移出相册</string>
+    <string name="logical_album_delete">删除逻辑相册</string>
+    <string name="logical_album_section">逻辑相册</string>
 
     <!-- 工具 -->
     <string name="tools_title">工具</string>
     <string name="tools_analysis_running">正在分析本地媒体…</string>
-    <string name="tools_duplicate_title">重复与相似照片</string>
+    <string name="tools_duplicate_title">精确重复照片</string>
     <string name="duplicate_empty">未发现重复内容。</string>
     <plurals name="tools_summary_duplicate">
         <item quantity="other">%1$d 组 · 可释放 %2$s</item>
@@ -180,15 +186,15 @@
         <item quantity="other">%1$d 个 · %2$s</item>
     </plurals>
     <string name="tools_largest_threshold_title">大文件阈值</string>
-    <string name="tools_largest_threshold_summary">仅列出不小于 %1$s 的文件</string>
     <string name="tools_threshold_option">大于 %1$s</string>
     <string name="section_tools_media">媒体处理</string>
     <string name="section_tools_cleanup">清理分析</string>
-    <string name="tools_duplicate_hint">此处只写入标记，删除仍需在“已弃置”中通过系统确认完成。</string>
+    <string name="tools_duplicate_hint">读取完整文件并计算 SHA-256；文件名不同也能识别，重新编码的相似照片不会自动删除。</string>
     <plurals name="tools_duplicate_group_detail">
         <item quantity="other">%1$d 个副本 · 可释放 %2$s</item>
     </plurals>
     <string name="tools_duplicate_keep_one">只保留一张</string>
+    <string name="tools_duplicate_apply_all">将策略应用到全部分组</string>
     <string name="tools_open_group">查看该组</string>
     <string name="tools_reclaimable_title">可释放空间</string>
     <string name="tools_reclaimable_summary">重复内容、截屏与大文件的合计上限，同一类别内不会重复计算。</string>
@@ -242,6 +248,11 @@
     <string name="media_tool_quality_hint">数值越低体积越小，细节损失越多。</string>
     <string name="media_tool_keep_exif">保留拍摄信息</string>
     <string name="media_tool_keep_exif_summary">将日期、相机与 GPS 信息复制到结果（仅 JPEG）</string>
+    <string name="media_tool_keep_smaller">仅保留更小的结果</string>
+    <string name="media_tool_keep_smaller_summary">当结果比原文件更大时直接放弃，避免浪费空间</string>
+    <plurals name="media_tool_skipped_count">
+        <item quantity="other">%1$d 项已跳过（结果更大）</item>
+    </plurals>
     <string name="media_tool_bitrate">目标码率</string>
     <string name="media_tool_bitrate_auto">自动</string>
     <string name="media_tool_bitrate_value">%1$s Mbps</string>
@@ -271,7 +282,7 @@
     <string name="processing_error_empty_source">所选文件内容为空（0 字节）。</string>
     <string name="processing_error_open_source">无法打开所选文件。</string>
     <string name="processing_error_decode_image">无法解码这张图片，文件可能已损坏或格式不受支持。</string>
-    <string name="processing_error_original_too_large">原图尺寸为 %1$d × %2$d 像素，直接处理可能耗尽内存。请选择 3840 像素或更小尺寸。</string>
+    <string name="processing_error_original_too_large">原图尺寸为 %1$s × %2$s 像素，直接处理可能耗尽内存。请选择 3840 像素或更小尺寸。</string>
     <string name="processing_error_encode_image">编码为 %1$s 失败。</string>
     <string name="processing_error_copy_metadata">图片已编码，但无法保留其元数据。</string>
     <string name="processing_error_gallery_insert">无法创建图库条目，请检查存储空间。</string>
@@ -298,7 +309,6 @@
     <string name="settings_help_cd">帮助</string>
     <string name="settings_appearance">外观</string>
     <string name="settings_theme_title">主题</string>
-    <string name="settings_theme_summary">%1$s</string>
     <string name="settings_theme_auto">跟随系统</string>
     <string name="settings_theme_light">浅色</string>
     <string name="settings_theme_dark">深色</string>

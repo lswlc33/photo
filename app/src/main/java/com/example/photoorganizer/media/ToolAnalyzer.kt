@@ -38,8 +38,14 @@ data class ToolAnalysis(
     val screenshotsBytes: Long get() = screenshots.sumOf { it.sizeBytes }
     val largestBytes: Long get() = largest.sumOf { it.sizeBytes }
 
-    /** Upper bound of what a full cleanup pass could free, ignoring overlaps. */
-    val reclaimableBytes: Long get() = duplicateReclaimableBytes + screenshotsBytes + largestBytes
+    /** Upper bound of a full cleanup pass, counting media that appears in several tools only once. */
+    val reclaimableBytes: Long get() {
+        val duplicateDeletions = duplicates.flatMap { group ->
+            val keeperId = group.keeper(DuplicateKeepStrategy.LARGEST)?.id
+            group.items.filterNot { it.id == keeperId }
+        }
+        return sumUniqueMediaBytes(duplicateDeletions, screenshots, largest)
+    }
 
     val isEmpty: Boolean get() = duplicates.isEmpty() && screenshots.isEmpty() && largest.isEmpty()
 
@@ -114,7 +120,7 @@ object ToolAnalyzer {
     ): List<DuplicateGroup> {
         return findExactDuplicateGroups(
             items = items,
-            isEligible = { true },
+            isEligible = { it.type == IndexedMediaType.IMAGE },
             sizeBytes = { it.sizeBytes },
             contentHash = { item -> contentHashOf?.invoke(item) },
         ).map { (hash, group) ->
@@ -151,6 +157,12 @@ object ToolAnalyzer {
     }
 
 }
+
+internal fun sumUniqueMediaBytes(vararg groups: Iterable<IndexedMedia>): Long = groups
+    .asSequence()
+    .flatMap { it.asSequence() }
+    .distinctBy { it.id }
+    .sumOf { it.sizeBytes }
 
 internal fun <T> findExactDuplicateGroups(
     items: List<T>,

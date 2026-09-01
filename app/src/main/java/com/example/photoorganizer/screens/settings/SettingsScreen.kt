@@ -34,12 +34,13 @@ import com.example.photoorganizer.ui.PreferenceGroup
 import com.example.photoorganizer.ui.ThemeMode
 import com.example.photoorganizer.ui.components.DialogActions
 import com.example.photoorganizer.ui.components.MessageDialog
-import com.example.photoorganizer.ui.components.OverlayChoicePopup
 import com.example.photoorganizer.ui.components.ScreenColumn
+import top.yukonga.miuix.kmp.basic.SpinnerEntry
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.CheckboxPreference
+import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
 import top.yukonga.miuix.kmp.preference.RadioButtonPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -75,11 +76,6 @@ fun SettingsScreen(
     contentBottomPadding: androidx.compose.ui.unit.Dp,
 ) {
     val context = LocalContext.current
-    var showThemePopup by rememberSaveable { mutableStateOf(false) }
-    var showSortPopup by rememberSaveable { mutableStateOf(false) }
-    var showImageQualityPopup by rememberSaveable { mutableStateOf(false) }
-    var showVideoQualityPopup by rememberSaveable { mutableStateOf(false) }
-    var showMetadataPopup by rememberSaveable { mutableStateOf(false) }
     var showCapabilitiesDialog by rememberSaveable { mutableStateOf(false) }
     var showHelpDialog by rememberSaveable { mutableStateOf(false) }
     var showIndexScopeDialog by rememberSaveable { mutableStateOf(false) }
@@ -113,6 +109,9 @@ fun SettingsScreen(
     val metadataLabel: (Boolean) -> Int = {
         if (it) R.string.settings_metadata_strip else R.string.settings_metadata_keep
     }
+    val themeOptions = ThemeMode.entries.toList()
+    val sortOptions = SortOrder.entries.toList()
+    val videoQualityOptions = VideoQuality.entries.toList()
 
     ScreenColumn(
         title = stringResource(R.string.settings_title),
@@ -127,20 +126,13 @@ fun SettingsScreen(
         },
     ) {
         PreferenceGroup(stringResource(R.string.settings_appearance)) {
-            OverlayChoicePopup(
-                show = showThemePopup,
-                options = ThemeMode.entries.toList(),
-                selected = themeMode,
-                label = themeLabel,
-                onSelect = onThemeModeChange,
-                onDismissRequest = { showThemePopup = false },
-            ) {
-                ArrowPreference(
-                    title = stringResource(R.string.settings_theme_title),
-                    summary = stringResource(R.string.settings_theme_summary, stringResource(themeLabel(themeMode))),
-                    onClick = { showThemePopup = true },
-                )
-            }
+            OverlaySpinnerPreference(
+                items = themeOptions.map { SpinnerEntry(title = stringResource(themeLabel(it))) },
+                selectedIndex = themeOptions.indexOf(themeMode),
+                title = stringResource(R.string.settings_theme_title),
+                renderInRootScaffold = true,
+                onSelectedIndexChange = { index -> themeOptions.getOrNull(index)?.let(onThemeModeChange) },
+            )
         }
         PreferenceGroup(stringResource(R.string.settings_state_safety)) {
             ArrowPreference(
@@ -168,20 +160,13 @@ fun SettingsScreen(
             )
         }
         PreferenceGroup(stringResource(R.string.settings_organize_behavior)) {
-            OverlayChoicePopup(
-                show = showSortPopup,
-                options = SortOrder.entries.toList(),
-                selected = defaultSortOrder,
-                label = sortLabel,
-                onSelect = onDefaultSortChange,
-                onDismissRequest = { showSortPopup = false },
-            ) {
-                ArrowPreference(
-                    title = stringResource(R.string.settings_default_sort),
-                    summary = stringResource(sortLabel(defaultSortOrder)),
-                    onClick = { showSortPopup = true },
-                )
-            }
+            OverlaySpinnerPreference(
+                items = sortOptions.map { SpinnerEntry(title = stringResource(sortLabel(it))) },
+                selectedIndex = sortOptions.indexOf(defaultSortOrder),
+                title = stringResource(R.string.settings_default_sort),
+                renderInRootScaffold = true,
+                onSelectedIndexChange = { index -> sortOptions.getOrNull(index)?.let(onDefaultSortChange) },
+            )
             SwitchPreference(
                 checked = animationEnabled,
                 onCheckedChange = onAnimationChange,
@@ -196,48 +181,27 @@ fun SettingsScreen(
             )
         }
         PreferenceGroup(stringResource(R.string.settings_compression_defaults)) {
-            OverlayChoicePopup(
-                show = showImageQualityPopup,
-                options = imageQualityOptions,
-                selected = imageQuality,
-                label = imageQualityLabel,
-                onSelect = onImageQualityChange,
-                onDismissRequest = { showImageQualityPopup = false },
-            ) {
-                ArrowPreference(
-                    title = stringResource(R.string.settings_image_quality),
-                    summary = stringResource(imageQualityLabel(imageQuality)),
-                    onClick = { showImageQualityPopup = true },
-                )
-            }
-            OverlayChoicePopup(
-                show = showVideoQualityPopup,
-                options = VideoQuality.entries.toList(),
-                selected = videoQuality,
-                label = videoQualityLabel,
-                onSelect = onVideoQualityChange,
-                onDismissRequest = { showVideoQualityPopup = false },
-            ) {
-                ArrowPreference(
-                    title = stringResource(R.string.settings_video_quality),
-                    summary = stringResource(videoQualityLabel(videoQuality)),
-                    onClick = { showVideoQualityPopup = true },
-                )
-            }
-            OverlayChoicePopup(
-                show = showMetadataPopup,
-                options = metadataOptions,
-                selected = stripMetadata,
-                label = metadataLabel,
-                onSelect = onStripMetadataChange,
-                onDismissRequest = { showMetadataPopup = false },
-            ) {
-                ArrowPreference(
-                    title = stringResource(R.string.settings_metadata),
-                    summary = stringResource(metadataLabel(stripMetadata)),
-                    onClick = { showMetadataPopup = true },
-                )
-            }
+            OverlaySpinnerPreference(
+                items = imageQualityOptions.map { SpinnerEntry(title = stringResource(imageQualityLabel(it))) },
+                selectedIndex = imageQualityOptions.indexOf(imageQuality).coerceAtLeast(0),
+                title = stringResource(R.string.settings_image_quality),
+                renderInRootScaffold = true,
+                onSelectedIndexChange = { index -> imageQualityOptions.getOrNull(index)?.let(onImageQualityChange) },
+            )
+            OverlaySpinnerPreference(
+                items = videoQualityOptions.map { SpinnerEntry(title = stringResource(videoQualityLabel(it))) },
+                selectedIndex = videoQualityOptions.indexOf(videoQuality),
+                title = stringResource(R.string.settings_video_quality),
+                renderInRootScaffold = true,
+                onSelectedIndexChange = { index -> videoQualityOptions.getOrNull(index)?.let(onVideoQualityChange) },
+            )
+            OverlaySpinnerPreference(
+                items = metadataOptions.map { SpinnerEntry(title = stringResource(metadataLabel(it))) },
+                selectedIndex = metadataOptions.indexOf(stripMetadata),
+                title = stringResource(R.string.settings_metadata),
+                renderInRootScaffold = true,
+                onSelectedIndexChange = { index -> metadataOptions.getOrNull(index)?.let(onStripMetadataChange) },
+            )
         }
         PreferenceGroup(stringResource(R.string.settings_about)) {
             ArrowPreference(

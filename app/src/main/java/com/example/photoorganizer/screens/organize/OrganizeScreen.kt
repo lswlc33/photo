@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Filter
 import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.PhotoAlbum
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -48,6 +49,7 @@ import androidx.compose.ui.unit.sp
 import com.example.photoorganizer.R
 import com.example.photoorganizer.media.TargetFilters
 import com.example.photoorganizer.media.TypeFilter
+import com.example.photoorganizer.media.LogicalAlbum
 import com.example.photoorganizer.media.albumDisplayName
 import com.example.photoorganizer.media.scanDate
 import com.example.photoorganizer.ui.components.DialogActions
@@ -76,11 +78,13 @@ fun OrganizeScreen(
     availableAlbums: List<String>,
     keptCount: Int,
     trashCount: Int,
+    logicalAlbums: List<LogicalAlbum>,
     onOpenSmart: () -> Unit,
     onOpenTargeted: (TargetFilters) -> Unit,
     onOpenManual: () -> Unit,
     onOpenKept: () -> Unit,
     onOpenTrash: () -> Unit,
+    onOpenLogicalAlbum: (LogicalAlbum) -> Unit,
 ) {
     var showTargetedSheet by rememberSaveable { mutableStateOf(false) }
     ScreenColumn(
@@ -108,6 +112,25 @@ fun OrganizeScreen(
                     summary = stringResource(R.string.organize_mode_manual_summary),
                     onClick = onOpenManual,
                 )
+            }
+        }
+        if (logicalAlbums.isNotEmpty()) {
+            SectionTitle(stringResource(R.string.logical_album_section))
+            Card(modifier = Modifier.fillMaxWidth(), colors = standardCardColors()) {
+                Column(Modifier.padding(6.dp)) {
+                    logicalAlbums.forEach { album ->
+                        ModeRow(
+                            icon = Icons.Default.PhotoAlbum,
+                            title = album.name,
+                            summary = pluralStringResource(
+                                R.plurals.organize_marked_count,
+                                album.mediaIds.size,
+                                album.mediaIds.size,
+                            ),
+                            onClick = { onOpenLogicalAlbum(album) },
+                        )
+                    }
+                }
             }
         }
         SectionTitle(stringResource(R.string.organize_marked_title))
