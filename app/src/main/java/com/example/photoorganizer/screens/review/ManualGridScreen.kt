@@ -45,10 +45,10 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -113,6 +113,16 @@ private val SelectionToolbarClearance = 84.dp
 /** How long the discarded page's bin button stays armed before it reverts. */
 private const val ArmedTimeoutMillis = 3_000L
 
+/**
+ * Selection survives a configuration change like the sort and search state next
+ * to it does. A `LongArray` is written to the parcel natively, unlike a boxed
+ * collection, which would fall back to Java serialization.
+ */
+private val SelectionSaver = Saver<Set<Long>, LongArray>(
+    save = { ids -> ids.toLongArray() },
+    restore = { ids -> ids.toHashSet() },
+)
+
 /** Whether a grid mode lets the user attach keep/discard marks. */
 private val MediaGridMode.supportsMarking: Boolean
     get() = this == MediaGridMode.MANUAL ||
@@ -126,7 +136,7 @@ fun ManualGridScreen(
     media: List<UiMedia>,
     defaultSortBySize: Boolean,
     onBack: () -> Unit,
-    onMark: (Long, ReviewState) -> Unit,
+    onMark: (Map<Long, ReviewState>) -> Unit,
     animationEnabled: Boolean = true,
     mode: MediaGridMode = MediaGridMode.MANUAL,
     onDeleteRequest: (Set<Long>) -> Unit = {},
@@ -136,13 +146,16 @@ fun ManualGridScreen(
     titleOverride: String? = null,
 ) {
     var sortBySize by rememberSaveable { mutableStateOf(defaultSortBySize) }
-    var selectionMode by remember { mutableStateOf(false) }
+    var selectionMode by rememberSaveable { mutableStateOf(false) }
     var searchActive by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var previewItem by remember { mutableStateOf<UiMedia?>(null) }
     var temporaryPreview by remember { mutableStateOf(false) }
     var previewVisible by remember { mutableStateOf(false) }
-    val selected = remember { mutableStateMapOf<Long, ReviewState>() }
+    // Ids only: the review state at selection time was never read and goes stale
+    // the moment a mark lands, so storing it only invited a reader to trust it.
+    var selected by rememberSaveable(stateSaver = SelectionSaver) { mutableStateOf(emptySet<Long>()) }
+
     val topAppBarState = rememberTopAppBarState()
     val scrollBehavior = MiuixScrollBehavior(topAppBarState, canScroll = { true })
     val gridState = rememberLazyGridState()
@@ -165,13 +178,13 @@ fun ManualGridScreen(
                 add(
                     OverlayAction(
                         labelRes = R.string.manual_mark_all_trash,
-                        onClick = { allMediaIds.forEach { onMark(it, ReviewState.TRASH_MARKED) } },
+                        onClick = { onMark(allMediaIds.associateWith { ReviewState.TRASH_MARKED }) },
                     ),
                 )
                 add(
                     OverlayAction(
                         labelRes = R.string.manual_clear_all_marks,
-                        onClick = { allMediaIds.forEach { onMark(it, ReviewState.UNREVIEWED) } },
+                        onClick = { onMark(allMediaIds.associateWith { ReviewState.UNREVIEWED }) },
                     ),
                 )
             }
@@ -183,11 +196,18 @@ fun ManualGridScreen(
         val needle = searchQuery.trim()
         if (needle.isEmpty()) media else media.filter { it.displayName.contains(needle, ignoreCase = true) }
     }
+    val visibleIds = remember(visibleMedia) { visibleMedia.mapTo(HashSet(visibleMedia.size)) { it.id } }
+    // Selection is scoped to what the grid currently shows. Without this, typing a
+    // search term - or an item leaving the list because it was marked or deleted -
+    // leaves ids selected that the user can no longer see, so the header count
+    // disagrees with the grid and a bulk action marks invisible media.
+    LaunchedEffect(visibleIds) {
+        if (selected.any { it !in visibleIds }) {
+            selected = selected.filterTo(HashSet(selected.size)) { it in visibleIds }
+        }
+    }
     val entries = remember(visibleMedia, sortBySize, unknownDate) {
         buildManualGridEntries(visibleMedia, sortBySize, unknownDate)
-    }
-    val orderedMedia = remember(entries) {
-        entries.mapNotNull { (it as? ManualGridEntry.Media)?.item }
     }
     val dateAtIndex = remember(entries) {
         var currentDate = unknownDate
@@ -215,7 +235,7 @@ fun ManualGridScreen(
     BackHandler(enabled = selectionMode || searchActive) {
         if (selectionMode) {
             selectionMode = false
-            selected.clear()
+            selected = emptySet()
         } else {
             searchActive = false
             searchQuery = ""
@@ -247,7 +267,7 @@ fun ManualGridScreen(
                     IconButton(onClick = {
                         if (selectionMode) {
                             selectionMode = false
-                            selected.clear()
+                            selected = emptySet()
                         } else if (searchActive) {
                             searchActive = false
                             searchQuery = ""
@@ -343,39 +363,39 @@ fun ManualGridScreen(
                     mode = mode,
                     hasSelection = selected.isNotEmpty(),
                     bottomClearance = clearance.bottom,
-                    onSelectAll = { orderedMedia.forEach { selected[it.id] = it.state } },
+                    onSelectAll = { selected = visibleIds },
                     onKeep = {
-                        selected.keys.toList().forEach { onMark(it, ReviewState.KEPT) }
+                        onMark(selected.associateWith { ReviewState.KEPT })
                         selectionMode = false
-                        selected.clear()
+                        selected = emptySet()
                     },
                     onTrash = {
-                        selected.keys.toList().forEach { onMark(it, ReviewState.TRASH_MARKED) }
+                        onMark(selected.associateWith { ReviewState.TRASH_MARKED })
                         selectionMode = false
-                        selected.clear()
+                        selected = emptySet()
                     },
                     onClear = {
-                        selected.keys.toList().forEach { onMark(it, ReviewState.UNREVIEWED) }
+                        onMark(selected.associateWith { ReviewState.UNREVIEWED })
                         selectionMode = false
-                        selected.clear()
+                        selected = emptySet()
                     },
                     onDeleteSelected = {
-                        val ids = selected.keys.toSet()
+                        val ids = selected
                         selectionMode = false
-                        selected.clear()
+                        selected = emptySet()
                         onDeleteRequest(ids)
                     },
                     onRemoveFromCollection = {
-                        val ids = selected.keys.toSet()
+                        val ids = selected
                         selectionMode = false
-                        selected.clear()
+                        selected = emptySet()
                         onRemoveFromCollection(ids)
                     },
                     onCompressSelected = onCompressSelected?.let { compress ->
                         {
-                            val ids = selected.keys.toSet()
+                            val ids = selected
                             selectionMode = false
-                            selected.clear()
+                            selected = emptySet()
                             compress(ids)
                         }
                     },
@@ -490,7 +510,13 @@ fun ManualGridScreen(
                                 is ManualGridEntry.DateHeader -> DateHeader(entry.label)
                                 is ManualGridEntry.Media -> {
                                     val item = entry.item
-                                    val isSelected = selected.containsKey(item.id)
+                                    // A plain `item.id in selected` read would record a
+                                    // dependency on the whole selection, so toggling one
+                                    // tile recomposed every composed tile. derivedStateOf
+                                    // only notifies when this item's own answer flips.
+                                    val isSelected by remember(item.id) {
+                                        derivedStateOf { item.id in selected }
+                                    }
                                     MediaTile(
                                         item = item,
                                         onClick = {
@@ -511,7 +537,11 @@ fun ManualGridScreen(
                                         selected = isSelected,
                                         selectionMode = selectionMode,
                                         onSelectionToggle = {
-                                            if (isSelected) selected.remove(item.id) else selected[item.id] = item.state
+                                            selected = if (item.id in selected) {
+                                                selected - item.id
+                                            } else {
+                                                selected + item.id
+                                            }
                                         },
                                     )
                                 }

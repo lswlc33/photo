@@ -59,7 +59,7 @@ fun DuplicateGroupsScreen(
     groups: List<DuplicateGroup>,
     analysisReady: Boolean,
     onBack: () -> Unit,
-    onMark: (Long, ReviewState) -> Unit,
+    onMark: (Map<Long, ReviewState>) -> Unit,
     onOpenGroup: (DuplicateGroup) -> Unit,
     title: String = stringResource(R.string.tools_duplicate_title),
     hint: String = stringResource(R.string.tools_duplicate_hint),
@@ -83,7 +83,7 @@ fun DuplicateGroupsScreen(
     }
     val applyPlan: (List<DuplicateGroup>, DuplicateKeepStrategy) -> Int = { target, keep ->
         val plan = ToolAnalyzer.planDuplicateCleanup(target, keep)
-        plan.forEach { (id, state) -> onMark(id, state) }
+        onMark(plan)
         plan.count { it.value == ReviewState.TRASH_MARKED }
     }
     ScreenColumn(

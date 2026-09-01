@@ -93,7 +93,7 @@ fun SwipeReviewScreen(
     media: List<UiMedia>,
     animationEnabled: Boolean,
     onBack: () -> Unit,
-    onMark: (Long, ReviewState) -> Unit,
+    onMark: (Map<Long, ReviewState>) -> Unit,
     onOpenAlbum: (Long) -> Unit,
     title: String? = null,
 ) {
@@ -215,7 +215,7 @@ fun SwipeReviewScreen(
                                     animationSpec = tween(260, easing = FastOutSlowInEasing),
                                 ) { value, _ -> dragX = value }
                             }
-                            onMark(current.id, decision)
+                            onMark(mapOf(current.id to decision))
                             dragX = 0f
                             dragY = 0f
                             dragAxis = null

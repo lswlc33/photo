@@ -314,11 +314,21 @@ fun PhotoOrganizerApp() {
         }.onFailure { deleteError = it.message ?: deleteLaunchFailedText }
     }
 
-    fun markMedia(id: Long, state: ReviewState) {
-        reviewStates = reviewStates + (id to state)
-        itemsById[id]?.let { item ->
-            prefs.edit {
-                putString(item.reviewPreferenceKey(), state.name)
+    /**
+     * Applies a whole batch of review decisions at once.
+     *
+     * Batch-shaped rather than per-item because every bulk action in the grid -
+     * select-all plus discard, "mark all discarded", a duplicate cleanup plan -
+     * used to call a single-item callback in a loop. That cost one full copy of
+     * [reviewStates] and one rewrite of the preference file per item, so
+     * discarding a 20k-item selection was quadratic work on the main thread.
+     */
+    fun markMedia(decisions: Map<Long, ReviewState>) {
+        if (decisions.isEmpty()) return
+        reviewStates = reviewStates + decisions
+        prefs.edit {
+            decisions.forEach { (id, state) ->
+                itemsById[id]?.let { item -> putString(item.reviewPreferenceKey(), state.name) }
                 remove("review_$id")
             }
         }
