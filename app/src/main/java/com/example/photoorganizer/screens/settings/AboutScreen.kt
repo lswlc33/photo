@@ -111,11 +111,6 @@ fun AboutScreen(onBack: () -> Unit) {
                 summary = "Apache-2.0",
                 url = "https://source.android.com/docs/setup/about/licenses",
             )
-            OpenSourcePreference(
-                title = "FFmpeg",
-                summary = "LGPL-2.1-or-later",
-                url = "https://ffmpeg.org/legal.html",
-            )
         }
 
         Text(

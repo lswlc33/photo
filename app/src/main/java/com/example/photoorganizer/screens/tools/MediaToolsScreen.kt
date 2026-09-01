@@ -44,6 +44,7 @@ import com.example.photoorganizer.processing.ImageResizeOption
 import com.example.photoorganizer.processing.ProcessedMedia
 import com.example.photoorganizer.processing.ProcessingException
 import com.example.photoorganizer.processing.VideoProcessor
+import com.example.photoorganizer.processing.VideoQuality
 import com.example.photoorganizer.processing.VideoResolution
 import com.example.photoorganizer.processing.VideoTrackMode
 import com.example.photoorganizer.ui.PreferenceGroup
@@ -91,7 +92,7 @@ private data class ToolOption<T>(
 @Composable
 fun MediaToolsScreen(
     imageQuality: Int,
-    videoQuality: com.example.photoorganizer.ffmpeg.VideoQuality,
+    videoQuality: VideoQuality,
     stripMetadata: Boolean,
     onBack: () -> Unit,
     onMediaCreated: () -> Unit,
@@ -456,11 +457,11 @@ fun MediaToolsScreen(
         }
 
         if (running) {
-            PreferenceGroup(stringResource(R.string.ffmpeg_running)) {
+            PreferenceGroup(stringResource(R.string.processing_running)) {
                 Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            statusLabel ?: stringResource(R.string.ffmpeg_running),
+                            statusLabel ?: stringResource(R.string.processing_running),
                             modifier = Modifier.weight(1f),
                             color = AccentBlue,
                             fontWeight = FontWeight.SemiBold,
@@ -483,7 +484,7 @@ fun MediaToolsScreen(
                             fontSize = 12.sp,
                         )
                         CompactTextButton(
-                            text = stringResource(R.string.ffmpeg_cancel),
+                            text = stringResource(R.string.processing_cancel),
                             onClick = { job?.cancel() },
                         )
                     }
@@ -526,7 +527,7 @@ fun MediaToolsScreen(
             }
         }
 
-        errorMessage?.let { ErrorCard(stringResource(R.string.ffmpeg_failed), it) }
+        errorMessage?.let { ErrorCard(stringResource(R.string.processing_failed), it) }
 
         Text(
             text = stringResource(
@@ -645,10 +646,10 @@ private fun VideoResolution.descriptionRes(): Int = when (this) {
     VideoResolution.P480 -> R.string.media_tool_resolution_480_desc
 }
 
-private fun com.example.photoorganizer.ffmpeg.VideoQuality.toDefaultResolution(): VideoResolution = when (this) {
-    com.example.photoorganizer.ffmpeg.VideoQuality.HIGH -> VideoResolution.P1080
-    com.example.photoorganizer.ffmpeg.VideoQuality.MEDIUM -> VideoResolution.P720
-    com.example.photoorganizer.ffmpeg.VideoQuality.LOW -> VideoResolution.P480
+private fun VideoQuality.toDefaultResolution(): VideoResolution = when (this) {
+    VideoQuality.HIGH -> VideoResolution.P1080
+    VideoQuality.MEDIUM -> VideoResolution.P720
+    VideoQuality.LOW -> VideoResolution.P480
 }
 
 private fun formatBitrateMbps(value: Float): String =

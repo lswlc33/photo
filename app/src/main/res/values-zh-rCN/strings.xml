@@ -231,15 +231,14 @@
     <string name="tools_refresh_cd">刷新分析</string>
     <string name="tools_about_summary">分析与处理均在本机完成。结果会作为新文件保存到「照片整理」目录，原文件不会被修改。</string>
 
-    <!-- 媒体处理（FFmpeg） -->
+    <!-- 媒体处理 -->
     <string name="media_tools_title">媒体处理</string>
     <string name="media_tools_intro">照片使用系统图像编码器重新编码，视频使用设备硬件编解码器转码。全部在本机完成，不会修改原文件。</string>
-    <string name="ffmpeg_status_unavailable">当前设备不支持 FFmpeg</string>
     <string name="media_tool_compress_image_title">图片压缩</string>
     <string name="media_tool_compress_video_title">视频压缩</string>
-    <string name="ffmpeg_running">处理中…</string>
-    <string name="ffmpeg_failed">处理失败</string>
-    <string name="ffmpeg_cancel">取消</string>
+    <string name="processing_running">处理中…</string>
+    <string name="processing_failed">处理失败</string>
+    <string name="processing_cancel">取消</string>
     <string name="media_tool_tab_image">照片</string>
     <string name="media_tool_tab_video">视频</string>
     <string name="section_media_tool_output">输出设置</string>
@@ -360,7 +359,7 @@
     <string name="settings_metadata_strip">移除</string>
     <string name="settings_device_capabilities">设备能力</string>
     <string name="settings_api_summary">Android API %1$d</string>
-    <string name="device_capabilities_detail">API %1$d · %2$s · 处理引擎：系统图像编码器 + 硬件视频编解码器 · 内置 FFmpeg：%3$s</string>
+    <string name="device_capabilities_detail">API %1$d · %2$s · 处理引擎：系统图像编码器 + 硬件视频编解码器</string>
     <string name="settings_about">关于</string>
     <string name="settings_about_version">照片整理</string>
     <string name="settings_about_summary">应用信息、隐私、源代码与许可</string>
@@ -370,7 +369,7 @@
     <string name="about_application_description">照片整理会在本机索引照片和视频，并通过保留与弃置标记帮助你逐项检查。只有在 Android 显示系统确认后，已弃置内容才会被真正删除。</string>
     <string name="about_privacy_description">索引、整理标记和媒体工具均在设备本地运行。媒体工具会创建新文件，不会覆盖原文件。</string>
     <string name="about_open_source_section">源代码与开源许可</string>
-    <string name="about_license_note">所列项目保留各自的版权声明和许可条款。FFmpeg 是否可用取决于设备架构。</string>
+    <string name="about_license_note">所列项目保留各自的版权声明和许可条款。</string>
     <string name="help_dialog_title">使用帮助</string>
-    <string name="help_dialog_message">仪表盘展示数量、空间与整理进度；整理页提供智能、定向、手动三种整理方式；工具页可查找重复、截屏与大文件，并基于内置 FFmpeg 处理图片与视频；设置页管理主题与处理默认项。所有功能均在本地完成。</string>
+    <string name="help_dialog_message">仪表盘展示数量、空间与整理进度；整理页提供智能、定向、手动三种整理方式；工具页可查找重复、截屏与大文件，并使用系统编解码器重新编码图片与视频；设置页管理主题与处理默认项。所有功能均在本地完成。</string>
 </resources>

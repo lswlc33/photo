@@ -50,8 +50,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.photoorganizer.ffmpeg.FfmpegEngine
-import com.example.photoorganizer.ffmpeg.VideoQuality
 import com.example.photoorganizer.media.LogicalAlbum
 import com.example.photoorganizer.media.LogicalAlbumStore
 import com.example.photoorganizer.media.IndexScope
@@ -69,6 +67,7 @@ import com.example.photoorganizer.media.mediaPermissionState
 import com.example.photoorganizer.media.photoPermissionRequest
 import com.example.photoorganizer.media.reviewPreferenceKey
 import com.example.photoorganizer.media.toUiMedia
+import com.example.photoorganizer.processing.VideoQuality
 import com.example.photoorganizer.screens.dashboard.DashboardScreen
 import com.example.photoorganizer.screens.dashboard.DashboardState
 import com.example.photoorganizer.screens.organize.OrganizeScreen
@@ -261,16 +260,6 @@ fun PhotoOrganizerApp() {
     var showAlbumDialog by remember { mutableStateOf(false) }
     var selectedMediaId by remember { mutableStateOf<Long?>(null) }
 
-    val ffmpegInstallable = remember(context) { FfmpegEngine.isAvailable(context) }
-    var ffmpegProbing by remember { mutableStateOf(ffmpegInstallable) }
-    var ffmpegVersion by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(ffmpegInstallable) {
-        if (!ffmpegInstallable) return@LaunchedEffect
-        val version = withContext(Dispatchers.IO) { FfmpegEngine.probeVersion(context) }
-        ffmpegVersion = version?.takeIf { it.isNotBlank() }
-        ffmpegProbing = false
-    }
-
     fun saveLogicalAlbums(albums: List<LogicalAlbum>) {
         logicalAlbums = albums.sortedBy { it.name.lowercase() }
         prefs.edit { putStringSet("logical_albums", LogicalAlbumStore.encode(logicalAlbums)) }
@@ -441,7 +430,6 @@ fun PhotoOrganizerApp() {
                         hasMediaPermission = hasMediaPermission,
                         permissionLimited = permissionState.isLimited,
                         indexedCount = (dashboardState as? DashboardState.Ready)?.statistics?.totalCount ?: 0,
-                        ffmpegVersion = ffmpegVersion,
                         themeMode = themeMode,
                         animationEnabled = animationEnabled,
                         confirmDelete = confirmDelete,

@@ -241,15 +241,14 @@
     <string name="tools_refresh_cd">Refresh analysis</string>
     <string name="tools_about_summary">Analysis and processing both run on device. Results are saved as new files in Photo Organizer folders, and originals are never modified.</string>
 
-    <!-- Media tools (FFmpeg) -->
+    <!-- Media tools -->
     <string name="media_tools_title">Media tools</string>
     <string name="media_tools_intro">Photos are re-encoded by the platform image encoder and videos by the device hardware codecs. Everything runs locally and originals stay untouched.</string>
-    <string name="ffmpeg_status_unavailable">FFmpeg unavailable</string>
     <string name="media_tool_compress_image_title">Image compression</string>
     <string name="media_tool_compress_video_title">Video compression</string>
-    <string name="ffmpeg_running">Processing…</string>
-    <string name="ffmpeg_failed">Processing failed</string>
-    <string name="ffmpeg_cancel">Cancel</string>
+    <string name="processing_running">Processing…</string>
+    <string name="processing_failed">Processing failed</string>
+    <string name="processing_cancel">Cancel</string>
     <string name="media_tool_tab_image">Photos</string>
     <string name="media_tool_tab_video">Videos</string>
     <string name="section_media_tool_output">Output settings</string>
@@ -379,7 +378,7 @@
     <string name="settings_metadata_strip">Remove</string>
     <string name="settings_device_capabilities">Device capabilities</string>
     <string name="settings_api_summary">Android API %1$d</string>
-    <string name="device_capabilities_detail">API %1$d · %2$s · processing engine: platform image encoder + hardware video codecs · bundled FFmpeg: %3$s</string>
+    <string name="device_capabilities_detail">API %1$d · %2$s · processing engine: platform image encoder + hardware video codecs</string>
     <string name="settings_about">About</string>
     <string name="settings_about_version">Photo Organizer</string>
     <string name="settings_about_summary">App information, privacy, source code and licenses</string>
@@ -389,7 +388,7 @@
     <string name="about_application_description">Photo Organizer indexes photos and videos on this device, then helps you review them with keep and discard marks. Discarded items are only removed after Android displays its system confirmation.</string>
     <string name="about_privacy_description">Indexing, review marks and media tools stay on the device. Media tools create a new file and do not overwrite the original.</string>
     <string name="about_open_source_section">Source code and licenses</string>
-    <string name="about_license_note">The listed projects retain their own copyright notices and license terms. FFmpeg availability depends on the device architecture.</string>
+    <string name="about_license_note">The listed projects retain their own copyright notices and license terms.</string>
     <string name="help_dialog_title">Photo Organizer help</string>
-    <string name="help_dialog_message">Dashboard shows counts, space and review progress. Organize offers smart, targeted and manual review. Tools finds duplicates, screenshots and large files, and processes images or videos with bundled FFmpeg. Settings controls theme and processing defaults. Everything runs locally.</string>
+    <string name="help_dialog_message">Dashboard shows counts, space and review progress. Organize offers smart, targeted and manual review. Tools finds duplicates, screenshots and large files, and re-encodes images or videos with platform codecs. Settings controls theme and processing defaults. Everything runs locally.</string>
 </resources>

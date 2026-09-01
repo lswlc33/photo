@@ -26,10 +26,10 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.photoorganizer.R
-import com.example.photoorganizer.ffmpeg.VideoQuality
 import com.example.photoorganizer.media.IndexScope
 import com.example.photoorganizer.media.IndexScopeMode
 import com.example.photoorganizer.media.albumDisplayName
+import com.example.photoorganizer.processing.VideoQuality
 import com.example.photoorganizer.ui.PreferenceGroup
 import com.example.photoorganizer.ui.ThemeMode
 import com.example.photoorganizer.ui.components.DialogActions
@@ -53,7 +53,6 @@ fun SettingsScreen(
     hasMediaPermission: Boolean,
     permissionLimited: Boolean,
     indexedCount: Int,
-    ffmpegVersion: String?,
     themeMode: ThemeMode,
     animationEnabled: Boolean,
     confirmDelete: Boolean,
@@ -229,7 +228,6 @@ fun SettingsScreen(
             R.string.device_capabilities_detail,
             Build.VERSION.SDK_INT,
             Build.SUPPORTED_ABIS.firstOrNull() ?: "?",
-            ffmpegVersion ?: stringResource(R.string.ffmpeg_status_unavailable),
         ),
         onDismiss = { showCapabilitiesDialog = false },
     )

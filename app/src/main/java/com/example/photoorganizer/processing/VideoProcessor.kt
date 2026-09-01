@@ -40,8 +40,8 @@ enum class VideoTrackMode { VIDEO_AND_AUDIO, VIDEO_ONLY, AUDIO_ONLY }
 
 /**
  * Video transcoding built on Media3 [Transformer], which uses the device's
- * hardware codecs. This runs on every ABI, so it replaces the arm64-only
- * FFmpeg path for the features the app actually needs.
+ * hardware codecs, so transcoding works on every supported ABI without any
+ * bundled native binary.
  */
 object VideoProcessor {
 
