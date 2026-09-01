@@ -277,9 +277,13 @@ fun FullScreenMediaPreview(
     onRequestDismiss: () -> Unit,
     onDismissed: () -> Unit,
 ) {
+    // Keyed on the item as well as visibility. The animatable was rebuilt per item
+    // while the effect that drives it only restarted on a visibility change, so an
+    // item swapped under a still-visible preview left a fresh Animatable at 0 with
+    // nothing to animate it - a black scrim over an invisible photo.
     val reveal = remember(item.id) { Animatable(0f) }
     val clearance = systemClearance()
-    LaunchedEffect(visible) {
+    LaunchedEffect(item.id, visible) {
         if (visible) {
             if (animationEnabled) {
                 reveal.animateTo(
@@ -527,6 +531,7 @@ private fun PlatformMotionPreview(
         label = "motion-preview-alpha",
     )
     LaunchedEffect(player, muted) { player.volume = if (muted) 0f else 1f }
+    var playerView by remember(playbackUri) { mutableStateOf<PlayerView?>(null) }
     Box(modifier) {
         MediaThumbnail(
             uri = stillUri,
@@ -541,15 +546,19 @@ private fun PlatformMotionPreview(
                     PlayerView(viewContext).apply {
                         useController = showControls
                         this.player = player
-                    }
+                    }.also { playerView = it }
                 },
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer { alpha = playerAlpha },
+                // View configuration only. This used to call `player.play()` on
+                // every update pass, so with the controller visible the user's
+                // pause was undone by the next recomposition. Playback starts from
+                // `playWhenReady` and is driven by the lifecycle observer below.
                 update = { view ->
                     view.useController = showControls
                     view.player = player
-                    if (lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) player.play()
+                    playerView = view
                 },
             )
         }
@@ -576,6 +585,9 @@ private fun PlatformMotionPreview(
         onDispose {
             player.removeListener(playerListener)
             lifecycleOwner.lifecycle.removeObserver(observer)
+            // Detached first: a PlayerView that outlives this composition by a
+            // frame would otherwise still be pointed at a released player.
+            playerView?.player = null
             player.release()
         }
     }
