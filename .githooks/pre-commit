@@ -1,0 +1,33 @@
+#!/bin/sh
+# Pre-commit gate. Enable once with:
+#
+#     git config core.hooksPath .githooks
+#
+# Why this exists: master is the only history and has no remote, so a commit
+# that does not compile can only ever be found by bisecting into it. AGENTS.md
+# declares that every commit must build on its own; this makes that declaration
+# machine-checked instead of remembered.
+#
+# `:app:test` compiles the debug sources and the unit tests, so it catches
+# compile errors as well as test failures. Lint is deliberately not run here
+# (~50 s); use tools/verify.sh before a release instead.
+#
+# Escape hatch for a deliberate work-in-progress commit:
+#
+#     SKIP_VERIFY=1 git commit ...
+set -e
+
+if [ -n "$SKIP_VERIFY" ]; then
+    echo "pre-commit: skipped (SKIP_VERIFY is set)"
+    exit 0
+fi
+
+cd "$(git rev-parse --show-toplevel)"
+
+echo "pre-commit: ./gradlew :app:test"
+if ! ./gradlew :app:test --console=plain --quiet; then
+    echo
+    echo "pre-commit: :app:test failed - commit aborted."
+    echo "            Fix it, or use SKIP_VERIFY=1 to commit anyway."
+    exit 1
+fi
