@@ -1,7 +1,9 @@
 package com.example.photoorganizer.media
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MediaHashCacheTest {
@@ -50,6 +52,44 @@ class MediaHashCacheTest {
         cache.getOrCompute(second) { calls++; "second-evicted" }
 
         assertEquals(4, calls)
+    }
+
+    @Test
+    fun claimingTheDirtyFlagIsAnAtomicTestAndClear() {
+        val cache = MediaHashCache()
+        assertFalse(cache.isDirty)
+        assertFalse(cache.consumeDirty())
+
+        cache.getOrCompute(key(size = 1L, modified = 1L)) { "hash" }
+        assertTrue(cache.isDirty)
+
+        assertTrue(cache.consumeDirty())
+        assertFalse(cache.isDirty)
+        assertFalse(cache.consumeDirty())
+    }
+
+    @Test
+    fun seedingFromTheStoreDoesNotArmTheDirtyFlagButPruningDoes() {
+        val cache = MediaHashCache()
+        val persisted = key(size = 1L, modified = 1L)
+
+        cache.putAll(mapOf(persisted to MediaFingerprint(contentHash = "loaded")))
+        assertFalse("a load must not schedule a write-back", cache.isDirty)
+
+        cache.retain(emptyList())
+        assertTrue("dropping entries changes what should be persisted", cache.isDirty)
+    }
+
+    @Test
+    fun retainKeepsTheFlagDownWhenNothingIsDropped() {
+        val cache = MediaHashCache()
+        cache.putAll(mapOf(key(size = 1L, modified = 1L) to MediaFingerprint(contentHash = "loaded")))
+
+        cache.retain(emptyList())
+        assertTrue(cache.consumeDirty())
+
+        cache.retain(emptyList())
+        assertFalse("an empty cache has nothing left to drop", cache.isDirty)
     }
 
     private fun key(size: Long, modified: Long): MediaHashKey = MediaHashKey(

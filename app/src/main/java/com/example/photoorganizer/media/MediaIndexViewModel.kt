@@ -218,9 +218,8 @@ class MediaIndexViewModel(application: Application) : AndroidViewModel(applicati
      */
     private fun persistFingerprints() {
         synchronized(fingerprintStore) {
-            if (!hashCache.isDirty) return
+            if (!hashCache.consumeDirty()) return
             fingerprintStore.save(hashCache.snapshot())
-            hashCache.markPersisted()
         }
     }
 
