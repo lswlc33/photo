@@ -31,7 +31,6 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -53,9 +52,11 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.photoorganizer.media.LogicalAlbum
 import com.example.photoorganizer.media.LogicalAlbumStore
+import com.example.photoorganizer.media.IndexedMedia
 import com.example.photoorganizer.media.IndexScope
 import com.example.photoorganizer.media.IndexScopeMode
 import com.example.photoorganizer.media.MediaIndexViewModel
+import com.example.photoorganizer.media.MediaStatistics
 import com.example.photoorganizer.media.PendingMedia
 import com.example.photoorganizer.media.ReviewState
 import com.example.photoorganizer.media.TargetFilters
@@ -152,7 +153,11 @@ fun PhotoOrganizerApp() {
     val indexViewModel: MediaIndexViewModel = viewModel()
     val indexState by indexViewModel.state.collectAsState()
     var scanRequest by remember { mutableIntStateOf(0) }
-    val reviewStates = remember { mutableStateMapOf<Long, ReviewState>() }
+    // An immutable map rather than a SnapshotStateMap: a state map has no
+    // per-key observability, so reading it in this scope invalidated the whole
+    // root - and re-derived every list below - on every single mark. Swapping the
+    // instance instead makes the `remember` keys further down a real cache.
+    var reviewStates by remember { mutableStateOf<Map<Long, ReviewState>>(emptyMap()) }
     var pendingDeleteIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var pendingDeleteReviewKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
     var deleteError by remember { mutableStateOf<String?>(null) }
@@ -161,12 +166,12 @@ fun PhotoOrganizerApp() {
 
     val deleteLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            pendingDeleteIds.forEach { id ->
-                reviewStates.remove(id)
-                prefs.edit { remove("review_$id") }
-            }
-            if (pendingDeleteReviewKeys.isNotEmpty()) {
-                prefs.edit { pendingDeleteReviewKeys.forEach(::remove) }
+            reviewStates = reviewStates - pendingDeleteIds
+            // One commit for the whole batch: the per-item form rewrote the
+            // entire preference file once per deleted item.
+            prefs.edit {
+                pendingDeleteIds.forEach { id -> remove("review_$id") }
+                pendingDeleteReviewKeys.forEach(::remove)
             }
             scanRequest++
         }
@@ -201,13 +206,16 @@ fun PhotoOrganizerApp() {
         indexViewModel.refresh(permissionState, indexScope)
     }
 
+    val statistics = remember(indexState.snapshot) {
+        indexState.snapshot?.let { snapshot -> MediaStatistics.from(snapshot) }
+    }
     val dashboardState: DashboardState = when {
         !permissionState.hasAccess -> DashboardState.NoPermission
         indexState.scanning || indexState.snapshot == null && indexState.error == null -> DashboardState.Scanning
         indexState.error != null -> DashboardState.Error(indexState.error?.message ?: scanFailedText)
         else -> indexState.snapshot!!.let { snapshot ->
             DashboardState.Ready(
-                statistics = com.example.photoorganizer.media.MediaStatistics.from(snapshot),
+                statistics = statistics ?: MediaStatistics(),
                 scannedAtMillis = snapshot.scannedAtMillis,
                 permissionLimited = snapshot.permissionLimited,
                 items = snapshot.items,
@@ -220,26 +228,24 @@ fun PhotoOrganizerApp() {
     val availableAlbums = indexState.snapshot?.availableAlbums ?: emptyList()
     LaunchedEffect(indexState.snapshot, indexScope) {
         val snapshot = indexState.snapshot ?: return@LaunchedEffect
-        val activeReviewKeys = snapshot.items.mapTo(hashSetOf()) { it.reviewPreferenceKey() }
-        val activeIds = snapshot.items.mapTo(hashSetOf()) { it.id }
-        reviewStates.keys.retainAll(activeIds)
-        snapshot.items.forEach { item ->
-            val savedValue = prefs.getString(item.reviewPreferenceKey(), null)
-                ?: prefs.getString("review_${item.id}", null)?.also { legacy ->
-                    prefs.edit {
-                        putString(item.reviewPreferenceKey(), legacy)
-                        remove("review_${item.id}")
-                    }
-                }
-            reviewStates[item.id] = savedValue?.let { value ->
-                ReviewState.entries.firstOrNull { it.name == value }
-            } ?: ReviewState.UNREVIEWED
+        // Reading one preference per item, with a migration write behind it, is
+        // O(library) work: it stays off the main thread and lands as a single
+        // commit plus a single state assignment.
+        val hydrated = withContext(Dispatchers.Default) {
+            hydrateReviewStates(
+                prefs = prefs,
+                items = snapshot.items,
+                pruneStaleKeys = indexScope.mode == IndexScopeMode.ALL && !snapshot.permissionLimited,
+            )
         }
-        if (indexScope.mode == IndexScopeMode.ALL && !snapshot.permissionLimited) {
-            cleanupReviewPreferences(prefs, activeReviewKeys)
-        }
+        reviewStates = hydrated
     }
-    val media = rawItems.map { it.toUiMedia(reviewStates[it.id] ?: ReviewState.UNREVIEWED) }
+    val media = remember(rawItems, reviewStates) {
+        rawItems.map { it.toUiMedia(reviewStates[it.id] ?: ReviewState.UNREVIEWED) }
+    }
+    val itemsById = remember(rawItems) { rawItems.associateBy { it.id } }
+    val keptCount = remember(media) { media.count { it.state == ReviewState.KEPT } }
+    val trashCount = remember(media) { media.count { it.state == ReviewState.TRASH_MARKED } }
     val toolAnalysisReady = duplicateAnalysisReady
     val toolAnalysis = remember(indexState.duplicateGroups, rawItems, largestThresholdMb) {
         val thresholdBytes = ToolAnalyzer.thresholdBytesOf(largestThresholdMb)
@@ -262,7 +268,13 @@ fun PhotoOrganizerApp() {
     // A group grid is reachable from both the exact and the similar list, so the
     // back target follows whichever list opened it.
     var groupReturnMode by rememberSaveable { mutableStateOf(DetailMode.DUPLICATES) }
-    var selectedLogicalAlbum by remember { mutableStateOf<LogicalAlbum?>(null) }
+    // Only the name is held, and the album is derived from `logicalAlbums`: that
+    // keeps a single source of truth and lets the selection survive a
+    // process-death restore, which `selectedMode` already does.
+    var selectedAlbumName by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedLogicalAlbum = remember(logicalAlbums, selectedAlbumName) {
+        selectedAlbumName?.let { name -> logicalAlbums.firstOrNull { it.name == name } }
+    }
     var showDiscardDialog by remember { mutableStateOf(false) }
     var pendingDiscardIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var showAlbumDialog by remember { mutableStateOf(false) }
@@ -303,8 +315,8 @@ fun PhotoOrganizerApp() {
     }
 
     fun markMedia(id: Long, state: ReviewState) {
-        reviewStates[id] = state
-        rawItems.firstOrNull { it.id == id }?.let { item ->
+        reviewStates = reviewStates + (id to state)
+        itemsById[id]?.let { item ->
             prefs.edit {
                 putString(item.reviewPreferenceKey(), state.name)
                 remove("review_$id")
@@ -405,7 +417,7 @@ fun PhotoOrganizerApp() {
                 when (page) {
                     AppPage.DASHBOARD -> DashboardScreen(
                         state = dashboardState,
-                        reviewedCount = media.count { it.state == ReviewState.KEPT || it.state == ReviewState.TRASH_MARKED },
+                        reviewedCount = keptCount + trashCount,
                         totalCount = (dashboardState as? DashboardState.Ready)?.statistics?.totalCount ?: 0,
                         toolAnalysis = toolAnalysis,
                         toolAnalysisReady = toolAnalysisReady,
@@ -419,8 +431,8 @@ fun PhotoOrganizerApp() {
                     AppPage.ORGANIZE -> OrganizeScreen(
                         contentBottomPadding = contentBottomPadding,
                         availableAlbums = availableAlbums,
-                        keptCount = media.count { it.state == ReviewState.KEPT },
-                        trashCount = media.count { it.state == ReviewState.TRASH_MARKED },
+                        keptCount = keptCount,
+                        trashCount = trashCount,
                         logicalAlbums = logicalAlbums,
                         onOpenSmart = {
                             targetFilters = TargetFilters()
@@ -436,7 +448,7 @@ fun PhotoOrganizerApp() {
                         onOpenKept = { selectedMode = DetailMode.KEPT },
                         onOpenTrash = { selectedMode = DetailMode.TRASH },
                         onOpenLogicalAlbum = { album ->
-                            selectedLogicalAlbum = album
+                            selectedAlbumName = album.name
                             selectedMode = DetailMode.LOGICAL_ALBUM
                         },
                     )
@@ -518,9 +530,11 @@ fun PhotoOrganizerApp() {
                                     )
                                 }
                             }
-                            val queue = filtered
-                                .map { it.toUiMedia(reviewStates[it.id] ?: ReviewState.UNREVIEWED) }
-                                .filter { it.state == ReviewState.UNREVIEWED }
+                            val queue = remember(filtered, reviewStates) {
+                                filtered
+                                    .map { it.toUiMedia(reviewStates[it.id] ?: ReviewState.UNREVIEWED) }
+                                    .filter { it.state == ReviewState.UNREVIEWED }
+                            }
                             SwipeReviewScreen(
                                 media = queue,
                                 animationEnabled = animationEnabled,
@@ -541,7 +555,7 @@ fun PhotoOrganizerApp() {
                             onCompressSelected = ::compressSelection,
                         )
                         DetailMode.KEPT -> ManualGridScreen(
-                            media = media.filter { it.state == ReviewState.KEPT },
+                            media = remember(media) { media.filter { it.state == ReviewState.KEPT } },
                             defaultSortBySize = false,
                             onBack = { selectedMode = null },
                             onMark = ::markMedia,
@@ -550,7 +564,7 @@ fun PhotoOrganizerApp() {
                             onCompressSelected = ::compressSelection,
                         )
                         DetailMode.TRASH -> ManualGridScreen(
-                            media = media.filter { it.state == ReviewState.TRASH_MARKED },
+                            media = remember(media) { media.filter { it.state == ReviewState.TRASH_MARKED } },
                             defaultSortBySize = false,
                             onBack = { selectedMode = null },
                             onMark = ::markMedia,
@@ -587,21 +601,31 @@ fun PhotoOrganizerApp() {
                             },
                         )
                         DetailMode.DUPLICATE_GROUP -> {
-                            val groupIds = duplicateGroup?.items?.map { it.id }?.toSet().orEmpty()
-                            ManualGridScreen(
-                                media = media.filter { it.id in groupIds },
-                                defaultSortBySize = true,
-                                onBack = { selectedMode = groupReturnMode },
-                                onMark = ::markMedia,
-                                animationEnabled = animationEnabled,
-                                mode = MediaGridMode.DUPLICATE_GROUP,
-                                onCompressSelected = ::compressSelection,
-                            )
+                            val group = duplicateGroup
+                            if (group == null) {
+                                // `selectedMode` is saveable but the group it points at is
+                                // not, so a process-death restore would land on an empty,
+                                // untitled grid. Fall back to the list that opened it.
+                                LaunchedEffect(Unit) { selectedMode = groupReturnMode }
+                            } else {
+                                val groupIds = remember(group) { group.items.mapTo(hashSetOf()) { it.id } }
+                                ManualGridScreen(
+                                    media = remember(media, groupIds) { media.filter { it.id in groupIds } },
+                                    defaultSortBySize = true,
+                                    onBack = { selectedMode = groupReturnMode },
+                                    onMark = ::markMedia,
+                                    animationEnabled = animationEnabled,
+                                    mode = MediaGridMode.DUPLICATE_GROUP,
+                                    onCompressSelected = ::compressSelection,
+                                )
+                            }
                         }
                         DetailMode.SCREENSHOTS -> {
-                            val screenshotIds = toolAnalysis.screenshots.map { it.id }.toSet()
+                            val screenshotIds = remember(toolAnalysis) {
+                                toolAnalysis.screenshots.mapTo(hashSetOf()) { it.id }
+                            }
                             ManualGridScreen(
-                                media = media.filter { it.id in screenshotIds },
+                                media = remember(media, screenshotIds) { media.filter { it.id in screenshotIds } },
                                 defaultSortBySize = true,
                                 onBack = { selectedMode = null },
                                 onMark = ::markMedia,
@@ -611,9 +635,11 @@ fun PhotoOrganizerApp() {
                             )
                         }
                         DetailMode.LARGEST -> {
-                            val largestIds = toolAnalysis.largest.map { it.id }.toSet()
+                            val largestIds = remember(toolAnalysis) {
+                                toolAnalysis.largest.mapTo(hashSetOf()) { it.id }
+                            }
                             ManualGridScreen(
-                                media = media.filter { it.id in largestIds },
+                                media = remember(media, largestIds) { media.filter { it.id in largestIds } },
                                 defaultSortBySize = true,
                                 onBack = { selectedMode = null },
                                 onMark = ::markMedia,
@@ -633,30 +659,37 @@ fun PhotoOrganizerApp() {
                             onClearPreselected = { pendingProcessing = emptyList() },
                         )
                         DetailMode.LOGICAL_ALBUM -> {
-                            val album = selectedLogicalAlbum
-                            val ids = album?.mediaIds.orEmpty()
-                            ManualGridScreen(
-                                media = media.filter { it.id in ids },
-                                defaultSortBySize = false,
-                                onBack = { selectedMode = null },
-                                onMark = ::markMedia,
-                                animationEnabled = animationEnabled,
-                                mode = MediaGridMode.LOGICAL_ALBUM,
-                                titleOverride = album?.name,
-                                onCompressSelected = ::compressSelection,
-                                onRemoveFromCollection = { removedIds ->
-                                    if (album != null) {
+                            if (selectedLogicalAlbum == null) {
+                                // The album was deleted, or a process-death restore brought
+                                // back the mode without a resolvable album name.
+                                LaunchedEffect(Unit) { selectedMode = null }
+                            } else {
+                                val album = selectedLogicalAlbum
+                                val ids = album.mediaIds
+                                ManualGridScreen(
+                                    media = remember(media, ids) { media.filter { it.id in ids } },
+                                    defaultSortBySize = false,
+                                    onBack = { selectedMode = null },
+                                    onMark = ::markMedia,
+                                    animationEnabled = animationEnabled,
+                                    mode = MediaGridMode.LOGICAL_ALBUM,
+                                    titleOverride = album.name,
+                                    onCompressSelected = ::compressSelection,
+                                    // No local copy of the album is kept: saving updates
+                                    // `logicalAlbums`, which the selection derives from.
+                                    onRemoveFromCollection = { removedIds ->
                                         val updated = album.copy(mediaIds = album.mediaIds - removedIds)
-                                        selectedLogicalAlbum = updated
-                                        saveLogicalAlbums(logicalAlbums.map { if (it.name == album.name) updated else it })
-                                    }
-                                },
-                                onDeleteCollection = {
-                                    if (album != null) saveLogicalAlbums(logicalAlbums.filterNot { it.name == album.name })
-                                    selectedLogicalAlbum = null
-                                    selectedMode = null
-                                },
-                            )
+                                        saveLogicalAlbums(
+                                            logicalAlbums.map { if (it.name == album.name) updated else it },
+                                        )
+                                    },
+                                    onDeleteCollection = {
+                                        saveLogicalAlbums(logicalAlbums.filterNot { it.name == album.name })
+                                        selectedAlbumName = null
+                                        selectedMode = null
+                                    },
+                                )
+                            }
                         }
                         DetailMode.ABOUT -> AboutScreen(
                             onBack = { selectedMode = null },
@@ -684,8 +717,8 @@ fun PhotoOrganizerApp() {
             // App-level dialogs. They render through the root Scaffold's popup
             // host, so they layer above the page content and the glass bar.
             run {
-                val pending = media.filter {
-                    it.state == ReviewState.TRASH_MARKED && it.id in pendingDiscardIds
+                val pending = remember(media, pendingDiscardIds) {
+                    media.filter { it.state == ReviewState.TRASH_MARKED && it.id in pendingDiscardIds }
                 }
                 // The dialog stays composed through its exit animation, so the
                 // summary keeps rendering the last known selection after the
@@ -716,7 +749,7 @@ fun PhotoOrganizerApp() {
                 )
                 AlbumDialog(
                     show = showAlbumDialog,
-                    mediaName = media.firstOrNull { it.id == selectedMediaId }?.displayName
+                    mediaName = selectedMediaId?.let { itemsById[it] }?.displayName
                         ?: stringResource(R.string.default_album_name),
                     albums = logicalAlbums,
                     onAssign = { album ->
@@ -784,12 +817,50 @@ private fun writePreference(prefs: SharedPreferences, key: String, value: Any?) 
     }
 }
 
-private fun cleanupReviewPreferences(prefs: SharedPreferences, activeKeys: Set<String>) {
-    val staleKeys = prefs.all.keys
-        .filter { it.startsWith("review_") && it !in activeKeys }
-    if (staleKeys.isNotEmpty()) {
-        prefs.edit { staleKeys.forEach(::remove) }
+/**
+ * Reads every item's persisted review decision, migrating legacy `review_<id>`
+ * keys and dropping keys whose media is gone. Every preference mutation is
+ * batched into a single commit, because the per-item form rewrote the whole
+ * preference file once per item.
+ *
+ * Runs off the main thread; the caller assigns the result in one state write.
+ */
+private fun hydrateReviewStates(
+    prefs: SharedPreferences,
+    items: List<IndexedMedia>,
+    pruneStaleKeys: Boolean,
+): Map<Long, ReviewState> {
+    val statesByName = ReviewState.entries.associateBy { it.name }
+    val states = HashMap<Long, ReviewState>(items.size)
+    val activeKeys = HashSet<String>(items.size)
+    val migrated = LinkedHashMap<String, String>()
+    val legacyKeys = ArrayList<String>()
+    items.forEach { item ->
+        val key = item.reviewPreferenceKey()
+        activeKeys += key
+        val saved = prefs.getString(key, null) ?: run {
+            val legacyKey = "review_${item.id}"
+            prefs.getString(legacyKey, null)?.also { legacy ->
+                migrated[key] = legacy
+                legacyKeys += legacyKey
+            }
+        }
+        states[item.id] = saved?.let { value -> statesByName[value] } ?: ReviewState.UNREVIEWED
     }
+    // Read before the edit, so freshly migrated keys are never seen as stale.
+    val staleKeys = if (pruneStaleKeys) {
+        prefs.all.keys.filter { it.startsWith("review_") && it !in activeKeys && it !in legacyKeys }
+    } else {
+        emptyList()
+    }
+    if (migrated.isNotEmpty() || legacyKeys.isNotEmpty() || staleKeys.isNotEmpty()) {
+        prefs.edit {
+            migrated.forEach { (key, value) -> putString(key, value) }
+            legacyKeys.forEach(::remove)
+            staleKeys.forEach(::remove)
+        }
+    }
+    return states
 }
 
 private enum class DetailMode {
