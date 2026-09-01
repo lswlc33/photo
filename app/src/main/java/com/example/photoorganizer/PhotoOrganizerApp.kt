@@ -55,6 +55,7 @@ import com.example.photoorganizer.media.LogicalAlbumStore
 import com.example.photoorganizer.media.IndexScope
 import com.example.photoorganizer.media.IndexScopeMode
 import com.example.photoorganizer.media.MediaIndexViewModel
+import com.example.photoorganizer.media.PendingMedia
 import com.example.photoorganizer.media.ReviewState
 import com.example.photoorganizer.media.TargetFilters
 import com.example.photoorganizer.media.DuplicateGroup
@@ -67,6 +68,7 @@ import com.example.photoorganizer.media.mediaPermissionState
 import com.example.photoorganizer.media.photoPermissionRequest
 import com.example.photoorganizer.media.reviewPreferenceKey
 import com.example.photoorganizer.media.smartReviewOrder
+import com.example.photoorganizer.media.toPendingMedia
 import com.example.photoorganizer.media.toUiMedia
 import com.example.photoorganizer.processing.VideoQuality
 import com.example.photoorganizer.screens.dashboard.DashboardScreen
@@ -261,10 +263,19 @@ fun PhotoOrganizerApp() {
     var pendingDiscardIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var showAlbumDialog by remember { mutableStateOf(false) }
     var selectedMediaId by remember { mutableStateOf<Long?>(null) }
+    // Items handed from a gallery grid to the processing tools, so an analysis
+    // result can be compressed without re-picking it through the system picker.
+    var pendingProcessing by remember { mutableStateOf<List<PendingMedia>>(emptyList()) }
 
     fun saveLogicalAlbums(albums: List<LogicalAlbum>) {
         logicalAlbums = albums.sortedBy { it.name.lowercase() }
         prefs.edit { putStringSet("logical_albums", LogicalAlbumStore.encode(logicalAlbums)) }
+    }
+
+    // A hand-off only lives as long as the tools page is open, so leaving it by
+    // any route - button, system back or the predictive back gesture - drops it.
+    LaunchedEffect(selectedMode) {
+        if (selectedMode != DetailMode.MEDIA) pendingProcessing = emptyList()
     }
 
     LaunchedEffect(rawItems, mediaIndexReady, indexScope) {
@@ -309,6 +320,14 @@ fun PhotoOrganizerApp() {
         } else {
             beginSystemDelete(pendingIds)
         }
+    }
+
+    /** Hands a grid selection to the processing tools instead of the system picker. */
+    fun compressSelection(ids: Set<Long>) {
+        val items = media.filter { it.id in ids }.mapNotNull { it.toPendingMedia() }
+        if (items.isEmpty()) return
+        pendingProcessing = items
+        selectedMode = DetailMode.MEDIA
     }
 
     val contentBottomPadding = floatingBottomBarContentPadding()
@@ -509,6 +528,7 @@ fun PhotoOrganizerApp() {
                             onBack = { selectedMode = null },
                             onMark = ::markMedia,
                             animationEnabled = animationEnabled,
+                            onCompressSelected = ::compressSelection,
                         )
                         DetailMode.KEPT -> ManualGridScreen(
                             media = media.filter { it.state == ReviewState.KEPT },
@@ -517,6 +537,7 @@ fun PhotoOrganizerApp() {
                             onMark = ::markMedia,
                             animationEnabled = animationEnabled,
                             mode = MediaGridMode.KEPT,
+                            onCompressSelected = ::compressSelection,
                         )
                         DetailMode.TRASH -> ManualGridScreen(
                             media = media.filter { it.state == ReviewState.TRASH_MARKED },
@@ -546,6 +567,7 @@ fun PhotoOrganizerApp() {
                                 onMark = ::markMedia,
                                 animationEnabled = animationEnabled,
                                 mode = MediaGridMode.DUPLICATE_GROUP,
+                                onCompressSelected = ::compressSelection,
                             )
                         }
                         DetailMode.SCREENSHOTS -> {
@@ -557,6 +579,7 @@ fun PhotoOrganizerApp() {
                                 onMark = ::markMedia,
                                 animationEnabled = animationEnabled,
                                 mode = MediaGridMode.SCREENSHOTS,
+                                onCompressSelected = ::compressSelection,
                             )
                         }
                         DetailMode.LARGEST -> {
@@ -568,6 +591,7 @@ fun PhotoOrganizerApp() {
                                 onMark = ::markMedia,
                                 animationEnabled = animationEnabled,
                                 mode = MediaGridMode.LARGEST,
+                                onCompressSelected = ::compressSelection,
                             )
                         }
                         DetailMode.MEDIA -> MediaToolsScreen(
@@ -577,6 +601,8 @@ fun PhotoOrganizerApp() {
                             onBack = { selectedMode = null },
                             onMediaCreated = { scanRequest++ },
                             onOpenResult = { uri -> openMediaViewer(context, uri) },
+                            preselected = pendingProcessing,
+                            onClearPreselected = { pendingProcessing = emptyList() },
                         )
                         DetailMode.LOGICAL_ALBUM -> {
                             val album = selectedLogicalAlbum
@@ -589,6 +615,7 @@ fun PhotoOrganizerApp() {
                                 animationEnabled = animationEnabled,
                                 mode = MediaGridMode.LOGICAL_ALBUM,
                                 titleOverride = album?.name,
+                                onCompressSelected = ::compressSelection,
                                 onRemoveFromCollection = { removedIds ->
                                     if (album != null) {
                                         val updated = album.copy(mediaIds = album.mediaIds - removedIds)

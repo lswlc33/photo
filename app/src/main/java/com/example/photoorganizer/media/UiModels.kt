@@ -42,6 +42,28 @@ fun IndexedMedia.toUiMedia(state: ReviewState): UiMedia = UiMedia(
     state = state,
 )
 
+/**
+ * A library item handed from a gallery grid to the processing tools, so the user
+ * can compress what an analysis just surfaced instead of re-picking it through
+ * the system picker.
+ */
+data class PendingMedia(
+    val uri: Uri,
+    val displayName: String,
+    val isVideo: Boolean,
+    val sizeBytes: Long,
+)
+
+/** Null when the item has no resolvable content [Uri] and cannot be processed. */
+fun UiMedia.toPendingMedia(): PendingMedia? = uri?.let { source ->
+    PendingMedia(
+        uri = source,
+        displayName = displayName,
+        isVideo = isVideo,
+        sizeBytes = sizeBytes,
+    )
+}
+
 fun IndexedMedia.contentUri(): Uri {
     val collection = if (type == IndexedMediaType.VIDEO) {
         MediaStore.Video.Media.EXTERNAL_CONTENT_URI

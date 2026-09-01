@@ -33,6 +33,7 @@ import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CheckCircleOutline
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.LayersClear
@@ -78,6 +79,7 @@ import com.example.photoorganizer.ui.components.OverlayAction
 import com.example.photoorganizer.ui.components.OverlayActionPopup
 import com.example.photoorganizer.ui.components.standardCardColors
 import com.example.photoorganizer.ui.systemClearance
+import com.example.photoorganizer.ui.theme.AccentBlue
 import com.example.photoorganizer.ui.theme.AccentOrange
 import com.example.photoorganizer.ui.theme.DangerRed
 import com.example.photoorganizer.ui.theme.SuccessGreen
@@ -130,6 +132,7 @@ fun ManualGridScreen(
     onDeleteRequest: (Set<Long>) -> Unit = {},
     onRemoveFromCollection: (Set<Long>) -> Unit = {},
     onDeleteCollection: () -> Unit = {},
+    onCompressSelected: ((Set<Long>) -> Unit)? = null,
     titleOverride: String? = null,
 ) {
     var sortBySize by rememberSaveable { mutableStateOf(defaultSortBySize) }
@@ -367,6 +370,14 @@ fun ManualGridScreen(
                         selectionMode = false
                         selected.clear()
                         onRemoveFromCollection(ids)
+                    },
+                    onCompressSelected = onCompressSelected?.let { compress ->
+                        {
+                            val ids = selected.keys.toSet()
+                            selectionMode = false
+                            selected.clear()
+                            compress(ids)
+                        }
                     },
                 )
             }
@@ -693,6 +704,7 @@ private fun SelectionToolbar(
     onClear: () -> Unit,
     onDeleteSelected: () -> Unit,
     onRemoveFromCollection: () -> Unit,
+    onCompressSelected: (() -> Unit)?,
 ) {
     FloatingToolbar(
         outSidePadding = PaddingValues(
@@ -756,6 +768,15 @@ private fun SelectionToolbar(
                     tint = DangerRed,
                     enabled = hasSelection,
                     onClick = onDeleteSelected,
+                )
+            }
+            if (onCompressSelected != null) {
+                ToolbarAction(
+                    icon = Icons.Default.Compress,
+                    label = stringResource(R.string.manual_compress),
+                    tint = AccentBlue,
+                    enabled = hasSelection,
+                    onClick = onCompressSelected,
                 )
             }
         }

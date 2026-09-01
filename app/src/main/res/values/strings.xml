@@ -113,6 +113,7 @@
     <string name="manual_keep">Keep</string>
     <string name="manual_trash">Discard</string>
     <string name="manual_clear">Clear marks</string>
+    <string name="manual_compress">Compress</string>
     <string name="manual_unknown_date">Date unknown</string>
     <string name="manual_select_mode_cd">Select media</string>
     <string name="manual_search_cd">Search by file name</string>
@@ -277,6 +278,16 @@
         <item quantity="one">Up to %1$d video, audio saved as M4A</item>
         <item quantity="other">Up to %1$d videos, audio saved as M4A</item>
     </plurals>
+    <string name="section_media_tool_selection">From your library</string>
+    <plurals name="media_tool_selected_count">
+        <item quantity="one">%1$d item selected</item>
+        <item quantity="other">%1$d items selected</item>
+    </plurals>
+    <string name="media_tool_selected_summary">%1$d photos · %2$d videos · %3$s total</string>
+    <string name="media_tool_process_selected">Compress the selection</string>
+    <string name="media_tool_process_selected_summary">Uses the settings above; originals stay untouched</string>
+    <string name="media_tool_process_selected_job">Compressing the selection</string>
+    <string name="media_tool_clear_selection">Drop the selection</string>
     <string name="media_tool_progress_queue">Item %1$d of %2$d</string>
     <string name="media_tool_results">Results</string>
     <plurals name="media_tool_results_total">

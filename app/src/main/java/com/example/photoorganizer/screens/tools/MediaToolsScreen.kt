@@ -36,6 +36,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.photoorganizer.R
+import com.example.photoorganizer.media.PendingMedia
 import com.example.photoorganizer.media.formatBytes
 import com.example.photoorganizer.processing.GalleryWriter
 import com.example.photoorganizer.processing.ImageFormat
@@ -97,6 +98,8 @@ fun MediaToolsScreen(
     onBack: () -> Unit,
     onMediaCreated: () -> Unit,
     onOpenResult: (Uri) -> Unit,
+    preselected: List<PendingMedia> = emptyList(),
+    onClearPreselected: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
@@ -130,10 +133,20 @@ fun MediaToolsScreen(
     val imageJobLabel = stringResource(R.string.media_tool_compress_image_title)
     val videoJobLabel = stringResource(R.string.media_tool_compress_video_title)
     val audioJobLabel = stringResource(R.string.media_tool_extract_audio_title)
+    val selectionJobLabel = stringResource(R.string.media_tool_process_selected_job)
     val bitrateCeilingMbps = videoResolution.ceilingBitrate / 1_000_000f
     val bitrateStep = if (bitrateCeilingMbps <= 2f) .2f else 1f
     LaunchedEffect(videoResolution) {
         if (bitrateMbps > bitrateCeilingMbps) bitrateMbps = bitrateCeilingMbps
+    }
+    // A selection handed over from a gallery grid decides which settings matter,
+    // so a video-only or photo-only batch opens on the tab that configures it.
+    LaunchedEffect(preselected) {
+        if (preselected.isEmpty() || running) return@LaunchedEffect
+        when {
+            preselected.all { it.isVideo } -> selectedTab = 1
+            preselected.none { it.isVideo } -> selectedTab = 0
+        }
     }
 
     val formatOptions = listOf(
@@ -242,40 +255,52 @@ fun MediaToolsScreen(
         }
     }
 
+    val processImage: suspend (Uri, (Float) -> Unit) -> ProcessedMedia? = { source, report ->
+        ImageProcessor.reencode(
+            context = context,
+            source = source,
+            format = imageFormat,
+            quality = localImageQuality,
+            resize = imageResize,
+            stripMetadata = !keepExif,
+            keepOnlyIfSmaller = keepOnlyIfSmaller,
+            onProgress = report,
+        )
+    }
+    val processVideo: suspend (Uri, (Float) -> Unit) -> ProcessedMedia? = { source, report ->
+        VideoProcessor.transcode(
+            context = context,
+            source = source,
+            resolution = videoResolution,
+            trackMode = trackMode,
+            bitrateOverride = bitrateMbps
+                .takeIf { it > 0f && trackMode != VideoTrackMode.AUDIO_ONLY }
+                ?.times(1_000_000f)
+                ?.roundToInt(),
+            keepOnlyIfSmaller = keepOnlyIfSmaller,
+            onProgress = report,
+        )
+    }
+
+    // A library selection can mix photos and videos, so each item is routed to
+    // the processor that matches its own type instead of the active tab.
+    fun startSelectionBatch(items: List<PendingMedia>) {
+        val videoSources = items.filter { it.isVideo }.mapTo(hashSetOf()) { it.uri }
+        startBatch(selectionJobLabel, items.map { it.uri }) { source, report ->
+            if (source in videoSources) processVideo(source, report) else processImage(source, report)
+        }
+    }
+
     val imagePicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(MaxBatchItems),
     ) { sources ->
-        startBatch(imageJobLabel, sources) { source, report ->
-            ImageProcessor.reencode(
-                context = context,
-                source = source,
-                format = imageFormat,
-                quality = localImageQuality,
-                resize = imageResize,
-                stripMetadata = !keepExif,
-                keepOnlyIfSmaller = keepOnlyIfSmaller,
-                onProgress = report,
-            )
-        }
+        startBatch(imageJobLabel, sources, processImage)
     }
     val videoPicker = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(MaxBatchItems),
     ) { sources ->
         val label = if (trackMode == VideoTrackMode.AUDIO_ONLY) audioJobLabel else videoJobLabel
-        startBatch(label, sources) { source, report ->
-            VideoProcessor.transcode(
-                context = context,
-                source = source,
-                resolution = videoResolution,
-                trackMode = trackMode,
-                bitrateOverride = bitrateMbps
-                    .takeIf { it > 0f && trackMode != VideoTrackMode.AUDIO_ONLY }
-                    ?.times(1_000_000f)
-                    ?.roundToInt(),
-                keepOnlyIfSmaller = keepOnlyIfSmaller,
-                onProgress = report,
-            )
-        }
+        startBatch(label, sources, processVideo)
     }
 
     ScreenColumn(
@@ -452,6 +477,37 @@ fun MediaToolsScreen(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly),
                         )
                     },
+                )
+            }
+        }
+
+        if (preselected.isNotEmpty()) {
+            val photoCount = preselected.count { !it.isVideo }
+            val videoCount = preselected.size - photoCount
+            PreferenceGroup(stringResource(R.string.section_media_tool_selection)) {
+                BasicComponent(
+                    title = pluralStringResource(
+                        R.plurals.media_tool_selected_count,
+                        preselected.size,
+                        preselected.size,
+                    ),
+                    summary = stringResource(
+                        R.string.media_tool_selected_summary,
+                        photoCount,
+                        videoCount,
+                        formatBytes(preselected.sumOf { it.sizeBytes }),
+                    ),
+                )
+                ArrowPreference(
+                    title = stringResource(R.string.media_tool_process_selected),
+                    summary = stringResource(R.string.media_tool_process_selected_summary),
+                    enabled = !running,
+                    onClick = { startSelectionBatch(preselected.toList()) },
+                )
+                ArrowPreference(
+                    title = stringResource(R.string.media_tool_clear_selection),
+                    enabled = !running,
+                    onClick = onClearPreselected,
                 )
             }
         }
