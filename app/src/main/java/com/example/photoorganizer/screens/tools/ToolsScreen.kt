@@ -26,6 +26,7 @@ import com.example.photoorganizer.ui.PreferenceGroup
 import com.example.photoorganizer.ui.components.CompactTextButton
 import com.example.photoorganizer.ui.components.ScreenColumn
 import com.example.photoorganizer.ui.components.SectionTitle
+import com.example.photoorganizer.ui.components.analysisSummary
 import com.example.photoorganizer.ui.components.standardCardColors
 import com.example.photoorganizer.ui.components.rememberRefreshBridge
 import com.example.photoorganizer.ui.theme.AccentBlue
@@ -109,12 +110,16 @@ fun ToolsScreen(
             }
         } else {
             PreferenceGroup(stringResource(R.string.section_tools_cleanup)) {
+                val pendingText = stringResource(R.string.tools_analysis_running)
                 ArrowPreference(
                     title = stringResource(R.string.tools_duplicate_title),
-                    summary = when {
-                        !duplicateAnalysisReady -> stringResource(R.string.tools_analysis_running)
-                        analysis.duplicates.isEmpty() -> stringResource(R.string.duplicate_empty)
-                        else -> pluralStringResource(
+                    summary = analysisSummary(
+                        ready = duplicateAnalysisReady,
+                        isEmpty = analysis.duplicates.isEmpty(),
+                        pendingText = pendingText,
+                        emptyText = stringResource(R.string.duplicate_empty),
+                    ) {
+                        pluralStringResource(
                             R.plurals.tools_summary_duplicate,
                             analysis.duplicates.size,
                             analysis.duplicates.size,
@@ -125,10 +130,13 @@ fun ToolsScreen(
                 )
                 ArrowPreference(
                     title = stringResource(R.string.tools_screenshots_title),
-                    summary = when {
-                        !indexReady -> stringResource(R.string.tools_analysis_running)
-                        analysis.screenshots.isEmpty() -> stringResource(R.string.screenshot_empty)
-                        else -> pluralStringResource(
+                    summary = analysisSummary(
+                        ready = indexReady,
+                        isEmpty = analysis.screenshots.isEmpty(),
+                        pendingText = pendingText,
+                        emptyText = stringResource(R.string.screenshot_empty),
+                    ) {
+                        pluralStringResource(
                             R.plurals.tools_summary_screenshots,
                             analysis.screenshots.size,
                             analysis.screenshots.size,
@@ -139,10 +147,13 @@ fun ToolsScreen(
                 )
                 ArrowPreference(
                     title = stringResource(R.string.tools_largest_title),
-                    summary = when {
-                        !indexReady -> stringResource(R.string.tools_analysis_running)
-                        analysis.largest.isEmpty() -> stringResource(R.string.largest_empty, thresholdLabel)
-                        else -> pluralStringResource(
+                    summary = analysisSummary(
+                        ready = indexReady,
+                        isEmpty = analysis.largest.isEmpty(),
+                        pendingText = pendingText,
+                        emptyText = stringResource(R.string.largest_empty, thresholdLabel),
+                    ) {
+                        pluralStringResource(
                             R.plurals.tools_summary_largest,
                             analysis.largest.size,
                             analysis.largest.size,
@@ -153,8 +164,10 @@ fun ToolsScreen(
                 )
                 ArrowPreference(
                     title = stringResource(R.string.tools_similar_title),
+                    // The odd one out: this pass is opt-in, so it has two more states
+                    // than the others - not started, and running with progress.
                     summary = when {
-                        !indexReady -> stringResource(R.string.tools_analysis_running)
+                        !indexReady -> pendingText
                         similar.isRunning -> stringResource(
                             R.string.tools_similar_progress,
                             similar.hashedCount,

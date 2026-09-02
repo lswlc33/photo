@@ -50,6 +50,7 @@ import com.example.photoorganizer.ui.components.HintRow
 import com.example.photoorganizer.ui.components.MetricCard
 import com.example.photoorganizer.ui.components.ScreenColumn
 import com.example.photoorganizer.ui.components.SectionTitle
+import com.example.photoorganizer.ui.components.analysisSummary
 import com.example.photoorganizer.ui.components.rememberRefreshBridge
 import com.example.photoorganizer.ui.components.standardCardColors
 import com.example.photoorganizer.ui.theme.AccentBlue
@@ -305,15 +306,18 @@ private fun ReadyDashboard(
             onClick = onOpenOrganize,
         )
     }
-    val dupeSummary = when {
-        !toolAnalysisReady -> stringResource(R.string.dashboard_duplicate_pending)
-        toolAnalysis.duplicates.isEmpty() -> stringResource(R.string.duplicate_empty)
-        else -> pluralStringResource(
-                R.plurals.dashboard_duplicate_summary,
-                toolAnalysis.duplicates.size,
-                toolAnalysis.duplicates.size,
-                formatBytes(toolAnalysis.duplicateReclaimableBytes),
-            )
+    val dupeSummary = analysisSummary(
+        ready = toolAnalysisReady,
+        isEmpty = toolAnalysis.duplicates.isEmpty(),
+        pendingText = stringResource(R.string.dashboard_duplicate_pending),
+        emptyText = stringResource(R.string.duplicate_empty),
+    ) {
+        pluralStringResource(
+            R.plurals.dashboard_duplicate_summary,
+            toolAnalysis.duplicates.size,
+            toolAnalysis.duplicates.size,
+            formatBytes(toolAnalysis.duplicateReclaimableBytes),
+        )
     }
     PreferenceGroup(stringResource(R.string.next_steps)) {
         ArrowPreference(title = stringResource(R.string.next_duplicates), summary = dupeSummary, onClick = onOpenTools)
