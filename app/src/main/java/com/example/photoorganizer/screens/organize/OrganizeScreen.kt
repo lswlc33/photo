@@ -4,6 +4,7 @@ import android.app.DatePickerDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -46,6 +47,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -56,6 +60,7 @@ import com.example.photoorganizer.media.TypeFilter
 import com.example.photoorganizer.media.LogicalAlbum
 import com.example.photoorganizer.media.scanDate
 import com.example.photoorganizer.ui.components.DialogActions
+import com.example.photoorganizer.ui.components.MinimumTouchTarget
 import com.example.photoorganizer.ui.components.OverlayScrollMaxHeight
 import com.example.photoorganizer.ui.components.ScreenColumn
 import com.example.photoorganizer.ui.components.SectionTitle
@@ -447,14 +452,27 @@ private fun FilterValueRow(
 
 @Composable
 private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    val selectedLabel = stringResource(R.string.filter_chip_state_selected)
+    val unselectedLabel = stringResource(R.string.filter_chip_state_unselected)
     Box(
         Modifier
+            .heightIn(min = MinimumTouchTarget)
             .clip(RoundedCornerShape(50))
             .background(
                 if (selected) AccentBlue.copy(alpha = .14f)
                 else MiuixTheme.colorScheme.surfaceContainerHighest,
             )
-            .clickable(onClick = onClick)
+            // Selection was conveyed by colour and weight only, so a screen-reader
+            // user had no way to tell which type filter was active. These are
+            // mutually exclusive, hence RadioButton rather than Checkbox.
+            .selectable(
+                selected = selected,
+                role = Role.RadioButton,
+                onClick = onClick,
+            )
+            .semantics {
+                stateDescription = if (selected) selectedLabel else unselectedLabel
+            }
             .padding(horizontal = 14.dp, vertical = 9.dp),
         contentAlignment = Alignment.Center,
     ) {

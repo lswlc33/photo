@@ -25,6 +25,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -196,13 +199,27 @@ private fun DuplicateGroupRow(
     onOpen: () -> Unit,
     onKeepOne: () -> Unit,
 ) {
+    val groupName = group.items.firstOrNull()?.displayName.orEmpty()
+    val detail = pluralStringResource(
+        R.plurals.tools_duplicate_group_detail,
+        group.items.size,
+        group.items.size,
+        formatBytes(group.reclaimableBytes(strategy)),
+    )
     Column(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        // The row's own actions repeat once per group, so without a name on the
+        // row a screen reader read back N identical pairs of buttons with nothing
+        // to tell them apart. The thumbnails stay decorative and are cleared so
+        // they do not add four more stops per row.
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.clearAndSetSemantics {},
+        ) {
             group.items.take(4).forEach { item ->
                 MediaThumbnail(
                     uri = item.uri,
@@ -214,30 +231,30 @@ private fun DuplicateGroupRow(
             }
         }
         Text(
-            text = group.items.firstOrNull()?.displayName.orEmpty(),
+            text = groupName,
             color = MiuixTheme.colorScheme.onSurface,
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
         )
         Text(
-            text = pluralStringResource(
-                R.plurals.tools_duplicate_group_detail,
-                group.items.size,
-                group.items.size,
-                formatBytes(group.reclaimableBytes(strategy)),
-            ),
+            text = detail,
             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
             fontSize = 12.sp,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            val keepOneDescription =
+                stringResource(R.string.tools_duplicate_keep_one_cd, groupName)
+            val openDescription = stringResource(R.string.tools_open_group_cd, groupName)
             CompactTextButton(
                 text = stringResource(R.string.tools_duplicate_keep_one),
                 onClick = onKeepOne,
+                modifier = Modifier.semantics { contentDescription = keepOneDescription },
             )
             CompactTextButton(
                 text = stringResource(R.string.tools_open_group),
                 onClick = onOpen,
+                modifier = Modifier.semantics { contentDescription = openDescription },
             )
         }
     }

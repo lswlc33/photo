@@ -147,6 +147,10 @@
     <string name="filter_end_date">End date</string>
     <string name="filter_not_set">Any</string>
     <string name="filter_clear_value">Clear this filter</string>
+    <string name="filter_chip_state_selected">Selected</string>
+    <string name="filter_chip_state_unselected">Not selected</string>
+    <string name="media_tile_state_selected">Selected</string>
+    <string name="media_tile_state_unselected">Not selected</string>
     <plurals name="filter_album_selected_count">
         <item quantity="one">%1$d album selected</item>
         <item quantity="other">%1$d albums selected</item>
@@ -215,8 +219,10 @@
         <item quantity="other">%1$d copies · %2$s reclaimable</item>
     </plurals>
     <string name="tools_duplicate_keep_one">Keep one</string>
+    <string name="tools_duplicate_keep_one_cd">Keep only one copy in the group containing %1$s</string>
     <string name="tools_duplicate_apply_all">Apply strategy to all groups</string>
     <string name="tools_open_group">View group</string>
+    <string name="tools_open_group_cd">View the group containing %1$s</string>
     <string name="tools_reclaimable_title">Reclaimable space</string>
     <string name="tools_reclaimable_summary">Upper bound across duplicates, screenshots and large files; overlaps are counted once per category.</string>
     <string name="tools_reclaimable_none">Nothing to clean up right now.</string>

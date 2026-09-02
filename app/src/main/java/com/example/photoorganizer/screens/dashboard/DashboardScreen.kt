@@ -20,6 +20,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -237,8 +241,17 @@ private fun ReadyDashboard(
             horizontalArrangement = Arrangement.spacedBy(20.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            val ringLabel = stringResource(R.string.progress_ring_label)
             Box(
-                modifier = Modifier.size(ProgressRingSize),
+                // Merged and given range info so the ring reads as one progress
+                // node. Without it the percentage and its caption were two bare
+                // text stops and nothing exposed the value as progress.
+                modifier = Modifier
+                    .size(ProgressRingSize)
+                    .semantics(mergeDescendants = true) {
+                        contentDescription = ringLabel
+                        progressBarRangeInfo = ProgressBarRangeInfo(reviewedProgress, 0f..1f)
+                    },
                 contentAlignment = Alignment.Center,
             ) {
                 CircularProgressIndicator(

@@ -144,6 +144,10 @@
     <string name="filter_end_date">结束日期</string>
     <string name="filter_not_set">不限</string>
     <string name="filter_clear_value">清除该条件</string>
+    <string name="filter_chip_state_selected">已选中</string>
+    <string name="filter_chip_state_unselected">未选中</string>
+    <string name="media_tile_state_selected">已选中</string>
+    <string name="media_tile_state_unselected">未选中</string>
     <plurals name="filter_album_selected_count">
         <item quantity="other">已选择 %1$d 个相册</item>
     </plurals>
@@ -205,8 +209,10 @@
         <item quantity="other">%1$d 个副本 · 可释放 %2$s</item>
     </plurals>
     <string name="tools_duplicate_keep_one">只保留一张</string>
+    <string name="tools_duplicate_keep_one_cd">在包含 %1$s 的这一组里只保留一张</string>
     <string name="tools_duplicate_apply_all">将策略应用到全部分组</string>
     <string name="tools_open_group">查看该组</string>
+    <string name="tools_open_group_cd">查看包含 %1$s 的这一组</string>
     <string name="tools_reclaimable_title">可释放空间</string>
     <string name="tools_reclaimable_summary">重复内容、截屏与大文件的合计上限，同一类别内不会重复计算。</string>
     <string name="tools_reclaimable_none">暂时没有需要清理的内容。</string>

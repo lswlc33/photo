@@ -51,10 +51,14 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -180,6 +184,8 @@ fun MediaTile(
         mediaTypeLabel(item),
         formatBytes(item.sizeBytes),
     )
+    val selectedLabel = stringResource(R.string.media_tile_state_selected)
+    val unselectedLabel = stringResource(R.string.media_tile_state_unselected)
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val tileScale by animateFloatAsState(
@@ -220,9 +226,16 @@ fun MediaTile(
                     },
                 )
             }
-            .semantics {
+            // Merged so a tile is one focus stop instead of five, and given a
+            // checkbox role in selection mode so a screen reader announces what a
+            // tap will do and whether the tile is already picked.
+            .semantics(mergeDescendants = true) {
                 contentDescription = description
                 this.selected = selected
+                if (selectionMode) {
+                    role = Role.Checkbox
+                    stateDescription = if (selected) selectedLabel else unselectedLabel
+                }
                 onClick {
                     if (selectionMode) onSelectionToggle() else onClick()
                     true
@@ -423,7 +436,15 @@ private fun MediaBadges(item: UiMedia, large: Boolean = false) {
     val fontSize = if (large) 11.sp else 9.sp
     val horizontalPadding = if (large) 7.dp else 5.dp
     val outerPadding = if (large) 9.dp else 5.dp
-    Column(Modifier.fillMaxSize().padding(outerPadding)) {
+    // Cleared, not labelled: the badges repeat what the tile's own description
+    // already says, and left as plain Text they were four extra focus stops per
+    // tile - roughly 150 stops for one screen of grid.
+    Column(
+        Modifier
+            .fillMaxSize()
+            .padding(outerPadding)
+            .clearAndSetSemantics {},
+    ) {
         Row(Modifier.fillMaxWidth()) {
             MediaBadge(
                 mediaTypeLabel(item),
