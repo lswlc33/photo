@@ -1,0 +1,16 @@
+#!/bin/sh
+# commit-msg gate: the message has to be written in Chinese.
+#
+# Enabled together with pre-commit by the one-time
+#
+#     git config core.hooksPath .githooks
+#
+# Why this is machine-checked: a commit message is history. Once it is pushed,
+# fixing the wording means rewriting commits, so the cheap moment to catch an
+# English subject is before it exists. There is deliberately no SKIP_VERIFY
+# escape hatch here - unlike a work-in-progress build, a wrong-language subject
+# is never the fastest way forward.
+set -e
+
+cd "$(git rev-parse --show-toplevel)"
+exec tools/check-commit-language.sh --file "$1"

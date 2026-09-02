@@ -1,7 +1,8 @@
 name: CI
 
-# master 是唯一的历史，本地还有一个 pre-commit 门禁跑 :app:test。
-# 这个 workflow 是同一套检查在干净机器上的复核：本地能过不代表换台机器也能过。
+# master 是唯一的历史，本地还有 pre-commit 和 commit-msg 两道门禁。
+# 这个 workflow 是同一套检查在干净机器上的复核：本地能过不代表换台机器也能过，
+# 而没跑过 `git config core.hooksPath .githooks` 的克隆根本没有本地门禁。
 on:
   push:
     branches: [master]
@@ -24,6 +25,31 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          # 提交信息检查要看整段推送范围，浅克隆里看不到推送前的那个提交。
+          fetch-depth: 0
+
+      # 提交信息必须用中文写（AGENTS.md 的 Commit Guidelines）。放在最前面：一条
+      # 写错语言的提交信息推上来之后只能靠改写历史纠正，所以早失败比晚失败便宜，
+      # 也不必先花几分钟跑完 Gradle 才告诉作者这件事。
+      - name: Commit messages are written in Chinese
+        env:
+          PUSH_BEFORE: ${{ github.event.before }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          range=""
+          for candidate in "$PR_BASE" "$PUSH_BEFORE"; do
+            if [ -n "$candidate" ] && git cat-file -e "$candidate^{commit}" 2>/dev/null; then
+              range="$candidate..HEAD"
+              break
+            fi
+          done
+          if [ -n "$range" ]; then
+            tools/check-commit-language.sh --range "$range"
+          else
+            # 新分支的第一次推送，或者手动触发：只检查当前这一个提交。
+            tools/check-commit-language.sh
+          fi
 
       - uses: actions/setup-java@v4
         with:

@@ -76,11 +76,27 @@ release 签名凭据从环境变量 `PHOTO_RELEASE_STORE_FILE` / `_STORE_PASSWOR
 
 分析类逻辑刻意写成不依赖 Android 的纯 Kotlin，Android 部分作为 lambda 注入，因此绝大部分核心逻辑可以在 JVM 上测试。新增算法请沿用这个模式。
 
+## 提交信息
+
+**提交信息一律用中文撰写**，标题和正文都是。标题是一句动词开头的中文短句，并且点明范围，例如「给媒体扫描加上权限状态」「修复仪表盘的空状态」；标识符、路径、命令和库名保留原文，例如「把 `ReviewDecisionStore` 的重放改成最后一行生效」。
+
+一条推上去的提交信息只能靠改写历史来纠正，所以这条规则是机器检查的，本地和远端各一道：
+
+- 本地 `.githooks/commit-msg` 直接拒掉标题里没有中文的提交，并且没有跳过开关。
+- 远端 `ci.yml` 把本次推送范围内的每一条提交信息重新检查一遍——没启用过本地钩子的克隆是没有本地门禁的。
+
+两边跑的是同一个脚本 `tools/check-commit-language.sh`，所以不会各说各话。也可以自己先检查：
+
+```bash
+tools/check-commit-language.sh --file .git/COMMIT_EDITMSG    # 刚写好的那一条
+tools/check-commit-language.sh --range origin/master..HEAD   # 还没推的那些
+```
+
 ## 提交前门禁
 
 一个编译不过的提交只能靠事后 bisect 找回来，所以这条规则是机器检查的，本地和远端各一道。
 
-本地：`.githooks/pre-commit` 会在每次 `git commit` 前跑 `:app:test`（它同时编译主源码与单元测试）。克隆后需要启用一次：
+本地：`.githooks/pre-commit` 会在每次 `git commit` 前跑 `:app:test`（它同时编译主源码与单元测试）。克隆后需要启用一次，这一条配置同时启用上面那道提交信息门禁：
 
 ```bash
 git config core.hooksPath .githooks
