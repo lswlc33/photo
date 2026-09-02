@@ -280,20 +280,7 @@ fun MediaToolsScreen(
         },
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) {
-        Card(modifier = Modifier.fillMaxWidth(), colors = standardCardColors()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    stringResource(R.string.media_tools_engine_ready),
-                    color = AccentGreen,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    stringResource(R.string.media_tools_intro),
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    fontSize = 12.sp,
-                )
-            }
-        }
+        MediaToolsIntroCard()
 
         TabRow(
             tabs = listOf(
@@ -312,225 +299,73 @@ fun MediaToolsScreen(
         )
 
         if (selectedTab == 0) {
-            PreferenceGroup(stringResource(R.string.section_media_tool_output)) {
-                ToolSpinnerPreference(
-                    title = stringResource(R.string.media_tool_output_format),
-                    options = formatOptions,
-                    selected = imageFormat,
-                    enabled = !running,
-                    onSelect = { imageFormat = it },
-                )
-                ToolSpinnerPreference(
-                    title = stringResource(R.string.media_tool_resize),
-                    options = resizeOptions,
-                    selected = imageResize,
-                    enabled = !running,
-                    onSelect = { imageResize = it },
-                )
-                SliderPreference(
-                    title = stringResource(R.string.media_tool_quality),
-                    valueText = "$localImageQuality%",
-                    hint = stringResource(R.string.media_tool_quality_hint),
-                    value = localImageQuality.toFloat(),
-                    onValueChange = { localImageQuality = (it / 5f).roundToInt() * 5 },
-                    valueRange = 40f..100f,
-                    steps = 11,
-                    enabled = !running && imageFormat != ImageFormat.PNG,
-                )
-                SwitchPreference(
-                    checked = keepExif,
-                    onCheckedChange = { keepExif = it },
-                    title = stringResource(R.string.media_tool_keep_exif),
-                    summary = stringResource(R.string.media_tool_keep_exif_summary),
-                    enabled = !running && imageFormat == ImageFormat.JPEG,
-                )
-                SwitchPreference(
-                    checked = keepOnlyIfSmaller,
-                    onCheckedChange = { keepOnlyIfSmaller = it },
-                    title = stringResource(R.string.media_tool_keep_smaller),
-                    summary = stringResource(R.string.media_tool_keep_smaller_summary),
-                    enabled = !running,
-                )
-            }
-            PreferenceGroup(stringResource(R.string.section_media_tool_source)) {
-                ArrowPreference(
-                    title = stringResource(R.string.media_tool_pick_images),
-                    summary = pluralStringResource(
-                        R.plurals.media_tool_pick_summary,
-                        MaxBatchItems,
-                        MaxBatchItems,
-                    ),
-                    enabled = !running,
-                    onClick = {
-                        imagePicker.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
-                        )
-                    },
-                )
-            }
+            ImageToolOptions(
+                formatOptions = formatOptions,
+                resizeOptions = resizeOptions,
+                format = imageFormat,
+                onFormatChange = { imageFormat = it },
+                resize = imageResize,
+                onResizeChange = { imageResize = it },
+                quality = localImageQuality,
+                onQualityChange = { localImageQuality = it },
+                keepExif = keepExif,
+                onKeepExifChange = { keepExif = it },
+                keepOnlyIfSmaller = keepOnlyIfSmaller,
+                onKeepOnlyIfSmallerChange = { keepOnlyIfSmaller = it },
+                running = running,
+                onPick = {
+                    imagePicker.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly),
+                    )
+                },
+            )
         } else {
-            PreferenceGroup(stringResource(R.string.section_media_tool_output)) {
-                ToolSpinnerPreference(
-                    title = stringResource(R.string.media_tool_resolution),
-                    options = resolutionOptions,
-                    selected = videoResolution,
-                    enabled = !running && trackMode != VideoTrackMode.AUDIO_ONLY,
-                    onSelect = { videoResolution = it },
-                )
-                ToolSpinnerPreference(
-                    title = stringResource(R.string.media_tool_tracks),
-                    options = trackOptions,
-                    selected = trackMode,
-                    enabled = !running,
-                    onSelect = { trackMode = it },
-                )
-                SliderPreference(
-                    title = stringResource(R.string.media_tool_bitrate),
-                    valueText = if (bitrateMbps == 0f) {
-                        stringResource(R.string.media_tool_bitrate_auto)
-                    } else {
-                        stringResource(R.string.media_tool_bitrate_value, formatBitrateMbps(bitrateMbps))
-                    },
-                    hint = stringResource(R.string.media_tool_bitrate_hint),
-                    value = bitrateMbps,
-                    onValueChange = { bitrateMbps = (it / bitrateStep).roundToInt() * bitrateStep },
-                    valueRange = 0f..bitrateCeilingMbps,
-                    steps = (bitrateCeilingMbps / bitrateStep).roundToInt().minus(1).coerceAtLeast(0),
-                    enabled = !running && trackMode != VideoTrackMode.AUDIO_ONLY,
-                )
-            }
-            PreferenceGroup(stringResource(R.string.section_media_tool_source)) {
-                ArrowPreference(
-                    title = stringResource(
-                        if (trackMode == VideoTrackMode.AUDIO_ONLY) {
-                            R.string.media_tool_extract_audio_action
-                        } else {
-                            R.string.media_tool_pick_videos
-                        },
-                    ),
-                    summary = pluralStringResource(
-                        if (trackMode == VideoTrackMode.AUDIO_ONLY) {
-                            R.plurals.media_tool_extract_audio_summary
-                        } else {
-                            R.plurals.media_tool_pick_summary
-                        },
-                        MaxBatchItems,
-                        MaxBatchItems,
-                    ),
-                    enabled = !running,
-                    onClick = {
-                        videoPicker.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly),
-                        )
-                    },
-                )
-            }
+            VideoToolOptions(
+                resolutionOptions = resolutionOptions,
+                trackOptions = trackOptions,
+                resolution = videoResolution,
+                onResolutionChange = { videoResolution = it },
+                trackMode = trackMode,
+                onTrackModeChange = { trackMode = it },
+                bitrateMbps = bitrateMbps,
+                onBitrateChange = { bitrateMbps = it },
+                bitrateCeilingMbps = bitrateCeilingMbps,
+                bitrateStep = bitrateStep,
+                running = running,
+                onPick = {
+                    videoPicker.launch(
+                        PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.VideoOnly),
+                    )
+                },
+            )
         }
 
         if (preselected.isNotEmpty()) {
-            val photoCount = preselected.count { !it.isVideo }
-            val videoCount = preselected.size - photoCount
-            PreferenceGroup(stringResource(R.string.section_media_tool_selection)) {
-                BasicComponent(
-                    title = pluralStringResource(
-                        R.plurals.media_tool_selected_count,
-                        preselected.size,
-                        preselected.size,
-                    ),
-                    summary = stringResource(
-                        R.string.media_tool_selected_summary,
-                        photoCount,
-                        videoCount,
-                        formatBytes(preselected.sumOf { it.sizeBytes }),
-                    ),
-                )
-                ArrowPreference(
-                    title = stringResource(R.string.media_tool_process_selected),
-                    summary = stringResource(R.string.media_tool_process_selected_summary),
-                    enabled = !running,
-                    onClick = { startSelectionBatch(preselected.toList()) },
-                )
-                ArrowPreference(
-                    title = stringResource(R.string.media_tool_clear_selection),
-                    enabled = !running,
-                    onClick = onClearPreselected,
-                )
-            }
+            PreselectionSection(
+                preselected = preselected,
+                running = running,
+                onProcess = { startSelectionBatch(preselected.toList()) },
+                onClear = onClearPreselected,
+            )
         }
 
         if (running) {
-            PreferenceGroup(stringResource(R.string.processing_running)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            batch.label ?: stringResource(R.string.processing_running),
-                            modifier = Modifier.weight(1f),
-                            color = AccentBlue,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            stringResource(
-                                R.string.media_tool_progress_queue,
-                                batch.queueIndex,
-                                batch.queueTotal,
-                            ),
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            fontSize = 12.sp,
-                        )
-                    }
-                    LinearProgressIndicator(
-                        modifier = Modifier.fillMaxWidth(),
-                        progress = animatedProgress,
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "${(animatedProgress * 100).roundToInt()}%",
-                            modifier = Modifier.weight(1f),
-                            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            fontSize = 12.sp,
-                        )
-                        CompactTextButton(
-                            text = stringResource(R.string.processing_cancel),
-                            onClick = { batchViewModel.cancel() },
-                        )
-                    }
-                }
-            }
+            BatchProgressSection(
+                label = batch.label,
+                queueIndex = batch.queueIndex,
+                queueTotal = batch.queueTotal,
+                progress = animatedProgress,
+                onCancel = batchViewModel::cancel,
+            )
         }
 
         if (batch.hasReport) {
-            val totalSaved = results.sumOf { it.savedBytes }
-            PreferenceGroup(stringResource(R.string.media_tool_results)) {
-                BasicComponent(
-                    title = if (totalSaved > 0L) {
-                        pluralStringResource(
-                            R.plurals.media_tool_results_total,
-                            results.size,
-                            results.size,
-                            formatBytes(totalSaved),
-                        )
-                    } else {
-                        pluralStringResource(
-                            R.plurals.media_tool_results_total_none,
-                            results.size,
-                            results.size,
-                        )
-                    },
-                    summary = listOfNotNull(
-                        batch.failedCount.takeIf { it > 0 }
-                            ?.let { pluralStringResource(R.plurals.media_tool_failed_count, it, it) },
-                        batch.skippedCount.takeIf { it > 0 }
-                            ?.let { pluralStringResource(R.plurals.media_tool_skipped_count, it, it) },
-                    ).joinToString(" · ").takeIf { it.isNotEmpty() },
-                )
-                results.forEach { processed ->
-                    ArrowPreference(
-                        title = processed.displayName,
-                        summary = processed.detailText(),
-                        onClick = { onOpenResult(processed.uri) },
-                    )
-                }
-            }
+            BatchReportSection(
+                results = results,
+                failedCount = batch.failedCount,
+                skippedCount = batch.skippedCount,
+                onOpenResult = onOpenResult,
+            )
         }
 
         errorMessage?.let { ErrorCard(stringResource(R.string.processing_failed), it) }
@@ -552,8 +387,285 @@ fun MediaToolsScreen(
 }
 
 @Composable
-private fun <T> ToolSpinnerPreference(
-    title: String,
+private fun MediaToolsIntroCard() {
+    Card(modifier = Modifier.fillMaxWidth(), colors = standardCardColors()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(
+                stringResource(R.string.media_tools_engine_ready),
+                color = AccentGreen,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                stringResource(R.string.media_tools_intro),
+                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                fontSize = 12.sp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ImageToolOptions(
+    formatOptions: List<ToolOption<ImageFormat>>,
+    resizeOptions: List<ToolOption<ImageResizeOption>>,
+    format: ImageFormat,
+    onFormatChange: (ImageFormat) -> Unit,
+    resize: ImageResizeOption,
+    onResizeChange: (ImageResizeOption) -> Unit,
+    quality: Int,
+    onQualityChange: (Int) -> Unit,
+    keepExif: Boolean,
+    onKeepExifChange: (Boolean) -> Unit,
+    keepOnlyIfSmaller: Boolean,
+    onKeepOnlyIfSmallerChange: (Boolean) -> Unit,
+    running: Boolean,
+    onPick: () -> Unit,
+) {
+    PreferenceGroup(stringResource(R.string.section_media_tool_output)) {
+        ToolSpinnerPreference(
+            title = stringResource(R.string.media_tool_output_format),
+            options = formatOptions,
+            selected = format,
+            enabled = !running,
+            onSelect = onFormatChange,
+        )
+        ToolSpinnerPreference(
+            title = stringResource(R.string.media_tool_resize),
+            options = resizeOptions,
+            selected = resize,
+            enabled = !running,
+            onSelect = onResizeChange,
+        )
+        SliderPreference(
+            title = stringResource(R.string.media_tool_quality),
+            valueText = "$quality%",
+            hint = stringResource(R.string.media_tool_quality_hint),
+            value = quality.toFloat(),
+            onValueChange = { onQualityChange((it / 5f).roundToInt() * 5) },
+            valueRange = 40f..100f,
+            steps = 11,
+            // PNG is lossless, so the quality slider would be a control that
+            // silently does nothing.
+            enabled = !running && format != ImageFormat.PNG,
+        )
+        SwitchPreference(
+            checked = keepExif,
+            onCheckedChange = onKeepExifChange,
+            title = stringResource(R.string.media_tool_keep_exif),
+            summary = stringResource(R.string.media_tool_keep_exif_summary),
+            enabled = !running && format == ImageFormat.JPEG,
+        )
+        SwitchPreference(
+            checked = keepOnlyIfSmaller,
+            onCheckedChange = onKeepOnlyIfSmallerChange,
+            title = stringResource(R.string.media_tool_keep_smaller),
+            summary = stringResource(R.string.media_tool_keep_smaller_summary),
+            enabled = !running,
+        )
+    }
+    PreferenceGroup(stringResource(R.string.section_media_tool_source)) {
+        ArrowPreference(
+            title = stringResource(R.string.media_tool_pick_images),
+            summary = pluralStringResource(
+                R.plurals.media_tool_pick_summary,
+                MaxBatchItems,
+                MaxBatchItems,
+            ),
+            enabled = !running,
+            onClick = onPick,
+        )
+    }
+}
+
+@Composable
+private fun VideoToolOptions(
+    resolutionOptions: List<ToolOption<VideoResolution>>,
+    trackOptions: List<ToolOption<VideoTrackMode>>,
+    resolution: VideoResolution,
+    onResolutionChange: (VideoResolution) -> Unit,
+    trackMode: VideoTrackMode,
+    onTrackModeChange: (VideoTrackMode) -> Unit,
+    bitrateMbps: Float,
+    onBitrateChange: (Float) -> Unit,
+    bitrateCeilingMbps: Float,
+    bitrateStep: Float,
+    running: Boolean,
+    onPick: () -> Unit,
+) {
+    val audioOnly = trackMode == VideoTrackMode.AUDIO_ONLY
+    PreferenceGroup(stringResource(R.string.section_media_tool_output)) {
+        ToolSpinnerPreference(
+            title = stringResource(R.string.media_tool_resolution),
+            options = resolutionOptions,
+            selected = resolution,
+            // Nothing to scale when only the audio track survives.
+            enabled = !running && !audioOnly,
+            onSelect = onResolutionChange,
+        )
+        ToolSpinnerPreference(
+            title = stringResource(R.string.media_tool_tracks),
+            options = trackOptions,
+            selected = trackMode,
+            enabled = !running,
+            onSelect = onTrackModeChange,
+        )
+        SliderPreference(
+            title = stringResource(R.string.media_tool_bitrate),
+            valueText = if (bitrateMbps == 0f) {
+                stringResource(R.string.media_tool_bitrate_auto)
+            } else {
+                stringResource(R.string.media_tool_bitrate_value, formatBitrateMbps(bitrateMbps))
+            },
+            hint = stringResource(R.string.media_tool_bitrate_hint),
+            value = bitrateMbps,
+            onValueChange = { onBitrateChange((it / bitrateStep).roundToInt() * bitrateStep) },
+            valueRange = 0f..bitrateCeilingMbps,
+            steps = (bitrateCeilingMbps / bitrateStep).roundToInt().minus(1).coerceAtLeast(0),
+            enabled = !running && !audioOnly,
+        )
+    }
+    PreferenceGroup(stringResource(R.string.section_media_tool_source)) {
+        ArrowPreference(
+            title = stringResource(
+                if (audioOnly) {
+                    R.string.media_tool_extract_audio_action
+                } else {
+                    R.string.media_tool_pick_videos
+                },
+            ),
+            summary = pluralStringResource(
+                if (audioOnly) {
+                    R.plurals.media_tool_extract_audio_summary
+                } else {
+                    R.plurals.media_tool_pick_summary
+                },
+                MaxBatchItems,
+                MaxBatchItems,
+            ),
+            enabled = !running,
+            onClick = onPick,
+        )
+    }
+}
+
+/** Items handed over from a gallery grid, so a batch can skip the system picker. */
+@Composable
+private fun PreselectionSection(
+    preselected: List<PendingMedia>,
+    running: Boolean,
+    onProcess: () -> Unit,
+    onClear: () -> Unit,
+) {
+    val photoCount = remember(preselected) { preselected.count { !it.isVideo } }
+    val totalBytes = remember(preselected) { preselected.sumOf { it.sizeBytes } }
+    PreferenceGroup(stringResource(R.string.section_media_tool_selection)) {
+        BasicComponent(
+            title = pluralStringResource(
+                R.plurals.media_tool_selected_count,
+                preselected.size,
+                preselected.size,
+            ),
+            summary = stringResource(
+                R.string.media_tool_selected_summary,
+                photoCount,
+                preselected.size - photoCount,
+                formatBytes(totalBytes),
+            ),
+        )
+        ArrowPreference(
+            title = stringResource(R.string.media_tool_process_selected),
+            summary = stringResource(R.string.media_tool_process_selected_summary),
+            enabled = !running,
+            onClick = onProcess,
+        )
+        ArrowPreference(
+            title = stringResource(R.string.media_tool_clear_selection),
+            enabled = !running,
+            onClick = onClear,
+        )
+    }
+}
+
+@Composable
+private fun BatchProgressSection(
+    label: String?,
+    queueIndex: Int,
+    queueTotal: Int,
+    progress: Float,
+    onCancel: () -> Unit,
+) {
+    PreferenceGroup(stringResource(R.string.processing_running)) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    label ?: stringResource(R.string.processing_running),
+                    modifier = Modifier.weight(1f),
+                    color = AccentBlue,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    stringResource(R.string.media_tool_progress_queue, queueIndex, queueTotal),
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    fontSize = 12.sp,
+                )
+            }
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), progress = progress)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "${(progress * 100).roundToInt()}%",
+                    modifier = Modifier.weight(1f),
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    fontSize = 12.sp,
+                )
+                CompactTextButton(
+                    text = stringResource(R.string.processing_cancel),
+                    onClick = onCancel,
+                )
+            }
+        }
+    }
+}
+
+/** What every batch since the last clear produced, plus the failure and skip tallies. */
+@Composable
+private fun BatchReportSection(
+    results: List<ProcessedMedia>,
+    failedCount: Int,
+    skippedCount: Int,
+    onOpenResult: (Uri) -> Unit,
+) {
+    val totalSaved = remember(results) { results.sumOf { it.savedBytes } }
+    PreferenceGroup(stringResource(R.string.media_tool_results)) {
+        BasicComponent(
+            title = if (totalSaved > 0L) {
+                pluralStringResource(
+                    R.plurals.media_tool_results_total,
+                    results.size,
+                    results.size,
+                    formatBytes(totalSaved),
+                )
+            } else {
+                pluralStringResource(R.plurals.media_tool_results_total_none, results.size, results.size)
+            },
+            summary = listOfNotNull(
+                failedCount.takeIf { it > 0 }
+                    ?.let { pluralStringResource(R.plurals.media_tool_failed_count, it, it) },
+                skippedCount.takeIf { it > 0 }
+                    ?.let { pluralStringResource(R.plurals.media_tool_skipped_count, it, it) },
+            ).joinToString(" · ").takeIf { it.isNotEmpty() },
+        )
+        results.forEach { processed ->
+            ArrowPreference(
+                title = processed.displayName,
+                summary = processed.detailText(),
+                onClick = { onOpenResult(processed.uri) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun <T> ToolSpinnerPreference(    title: String,
     options: List<ToolOption<T>>,
     selected: T,
     enabled: Boolean,
