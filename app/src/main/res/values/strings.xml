@@ -422,8 +422,21 @@
     <string name="about_application_section">About this app</string>
     <string name="about_application_description">Photo Organizer indexes photos and videos on this device, then helps you review them with keep and discard marks. Discarded items are only removed after Android displays its system confirmation.</string>
     <string name="about_privacy_description">Indexing, review marks and media tools stay on the device. Media tools create a new file and do not overwrite the original.</string>
+    <string name="about_features_section">What it does</string>
+    <string name="about_feature_index_title">On-device index</string>
+    <string name="about_feature_index_summary">Scans the Images and Video collections, then reports counts, size and which folders they came from. The scan is cancellable and re-runs when the permission grant changes.</string>
+    <string name="about_feature_modes_title">Three review modes</string>
+    <string name="about_feature_modes_summary">Smart mode queues by likely payoff — duplicates first, then screenshots, then large files. Targeted mode filters by album, date range, type and minimum size. Manual mode is a date-grouped grid with batch selection.</string>
+    <string name="about_feature_duplicates_title">Duplicates and look-alikes</string>
+    <string name="about_feature_duplicates_summary">Exact duplicates are found by SHA-256 over the whole file, so a rename cannot hide one. Look-alikes use a perceptual hash to catch burst shots and re-encodes; that pass is opt-in because it decodes every image.</string>
+    <string name="about_feature_cleanup_title">Screenshots and large files</string>
+    <string name="about_feature_cleanup_summary">Both are listed with a running total of what deleting them would free. The large-file threshold is selectable between 5 and 100 MB.</string>
+    <string name="about_feature_processing_title">Local media processing</string>
+    <string name="about_feature_processing_summary">Images convert to JPEG, WebP or PNG with a long-edge limit, a quality target and optional Exif. Videos convert to 1080p, 720p or 480p with a bitrate ceiling, or hand back only their audio. A result larger than its source is discarded rather than saved.</string>
+    <string name="about_feature_privacy_title">No network, no overwrites</string>
+    <string name="about_feature_privacy_summary">The app declares no internet permission, so nothing can leave the device. Source files are never modified — processing writes a new file — and deletion always goes through Android\'s own confirmation dialog.</string>
     <string name="about_open_source_section">Source code and licenses</string>
-    <string name="about_license_note">The listed projects retain their own copyright notices and license terms.</string>
+    <string name="about_license_note">The listed projects retain their own copyright notices and license terms. Transitive dependencies are grouped under the project that brings them in.</string>
     <string name="help_dialog_title">Photo Organizer help</string>
     <string name="help_dialog_message">Dashboard shows counts, space and review progress. Organize offers smart, targeted and manual review. Tools finds duplicates, screenshots and large files, and re-encodes images or videos with platform codecs. Settings controls theme and processing defaults. Everything runs locally.</string>
 </resources>

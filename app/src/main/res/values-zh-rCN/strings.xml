@@ -401,8 +401,21 @@
     <string name="about_application_section">软件介绍</string>
     <string name="about_application_description">照片整理会在本机索引照片和视频，并通过保留与弃置标记帮助你逐项检查。只有在 Android 显示系统确认后，已弃置内容才会被真正删除。</string>
     <string name="about_privacy_description">索引、整理标记和媒体工具均在设备本地运行。媒体工具会创建新文件，不会覆盖原文件。</string>
+    <string name="about_features_section">功能一览</string>
+    <string name="about_feature_index_title">本机索引</string>
+    <string name="about_feature_index_summary">扫描图片与视频两个媒体集合，给出数量、体积以及各来源目录的分布。扫描可随时取消，授权变化后会自动重扫。</string>
+    <string name="about_feature_modes_title">三种整理模式</string>
+    <string name="about_feature_modes_summary">智能模式按收益排队——先重复副本，再截屏，然后大文件。定向模式按相册、日期区间、类型与最小体积筛选。手动模式是按日期分组的网格，支持批量选择。</string>
+    <string name="about_feature_duplicates_title">重复与相似</string>
+    <string name="about_feature_duplicates_summary">精确重复读取完整文件计算 SHA-256，改名藏不住。相似照片用感知哈希识别连拍与重新编码的同一画面；因为要解码每一张图，这一项按需启动。</string>
+    <string name="about_feature_cleanup_title">截屏与大文件</string>
+    <string name="about_feature_cleanup_summary">两者都会给出删除后可释放空间的合计。大文件阈值可在 5 到 100 MB 之间选择。</string>
+    <string name="about_feature_processing_title">本机媒体处理</string>
+    <string name="about_feature_processing_summary">图片可转 JPEG、WebP 或 PNG，并限制长边、指定质量、决定是否保留 Exif。视频可转 1080p、720p 或 480p 并限制码率，也可只取音频。产物比原文件更大时直接放弃而不保存。</string>
+    <string name="about_feature_privacy_title">无网络，不覆盖</string>
+    <string name="about_feature_privacy_summary">应用没有申请网络权限，数据无法离开设备。源文件永不修改——处理只写新文件——删除也一律经由 Android 自己的确认对话框。</string>
     <string name="about_open_source_section">源代码与开源许可</string>
-    <string name="about_license_note">所列项目保留各自的版权声明和许可条款。</string>
+    <string name="about_license_note">所列项目保留各自的版权声明和许可条款。传递依赖归在引入它的项目之下。</string>
     <string name="help_dialog_title">使用帮助</string>
     <string name="help_dialog_message">仪表盘展示数量、空间与整理进度；整理页提供智能、定向、手动三种整理方式；工具页可查找重复、截屏与大文件，并使用系统编解码器重新编码图片与视频；设置页管理主题与处理默认项。所有功能均在本地完成。</string>
 </resources>
