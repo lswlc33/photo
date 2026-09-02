@@ -516,7 +516,8 @@ private fun RowScope.ManualGridTopBarActions(
 }
 
 @Composable
-private fun ManualGridSearchBar(query: String, onQueryChange: (String) -> Unit) {    SearchBar(
+private fun ManualGridSearchBar(query: String, onQueryChange: (String) -> Unit) {
+    SearchBar(
         inputField = {
             InputField(
                 query = query,
