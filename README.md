@@ -7,7 +7,13 @@
 
 全部处理都在设备上进行：应用**没有申请网络权限**，任何照片、缩略图或统计数据都不会离开设备。
 
-介绍页：<https://lswlc33.github.io/photo/> · 直接下载：[nightly 预发布](https://github.com/lswlc33/photo/releases/tag/nightly)（master 每次推送自动刷新）
+介绍页：<https://lswlc33.github.io/photo/> · 直接下载：[nightly 预发布](https://github.com/lswlc33/photo/releases/tag/nightly)
+
+## 界面
+
+| 首页 | 整理 | 工具 | 关于 |
+|---|---|---|---|
+| ![首页](assets/screens/home.png) | ![整理](assets/screens/organize.png) | ![工具](assets/screens/tools.png) | ![关于](assets/screens/about.png) |
 
 ## 功能
 
@@ -30,6 +36,14 @@
 
 **设置** 主题（跟随系统/浅色/深色）、滑动动画、删除前确认、默认排序、图片与视频的默认质量、元数据处理，以及索引范围（全部相册／排除指定相册／仅指定相册）。「关于」页除版本信息外，还列出应用做什么、不做什么，以及用到的每一个第三方开源项目及其许可证。
 
+## 下载与安装
+
+当前版本 **v8.0**（`versionCode 8`）。
+
+发布页上的 APK 是 **debug 构建**：仓库里不放签名密钥，它由 Android 自带的 debug 密钥签名，所以可以直接安装。代价是它可被调试、也没有代码压缩，适合试用而不是长期使用。安装时系统会问一次是否允许安装未知来源的应用。
+
+master 每次推送都会自动构建，并把新的 APK 刷新到同一个 [nightly 预发布](https://github.com/lswlc33/photo/releases/tag/nightly)。连续两次构建用的是同一把 debug 密钥，所以新版可以直接覆盖安装，不必先卸载。
+
 ## 环境要求
 
 | 项目 | 版本 |
@@ -47,12 +61,11 @@
 ```bash
 ./gradlew :app:assembleDebug     # 构建 debug APK
 ./gradlew :app:installDebug      # 安装到已连接的设备
-./gradlew :app:assembleRelease   # 构建 release APK（签名见下）
 ```
 
 Windows 的 PowerShell / cmd 下用 `.\gradlew.bat`。
 
-release 签名凭据从环境变量 `PHOTO_RELEASE_STORE_FILE` / `_STORE_PASSWORD` / `_KEY_ALIAS` / `_KEY_PASSWORD` 读取，或从 `~/.android/photo-organizer-release.properties` 读取。凭据缺失时 `release` 签名配置不会创建，构建产出未签名 APK 而不会失败。
+版本号在 `gradle.properties` 的 `photoVersionCode` / `photoVersionName` 里声明。仓库里没有 release 签名配置，`:app:assembleRelease` 产出的是未签名 APK，只用来验证代码压缩仍然可用，不能安装。
 
 ## 测试
 
@@ -76,48 +89,35 @@ release 签名凭据从环境变量 `PHOTO_RELEASE_STORE_FILE` / `_STORE_PASSWOR
 
 分析类逻辑刻意写成不依赖 Android 的纯 Kotlin，Android 部分作为 lambda 注入，因此绝大部分核心逻辑可以在 JVM 上测试。新增算法请沿用这个模式。
 
-## 提交信息
+## 提交约定
 
-**提交信息一律用中文撰写**，标题和正文都是。标题是一句动词开头的中文短句，并且点明范围，例如「给媒体扫描加上权限状态」「修复仪表盘的空状态」；标识符、路径、命令和库名保留原文，例如「把 `ReviewDecisionStore` 的重放改成最后一行生效」。
+**提交信息一律用中文撰写**，标题和正文都是。标题是一句动词开头、点明范围的中文短句，例如「给媒体扫描加上权限状态」「修复仪表盘的空状态」；标识符、路径、命令和库名保留原文，例如「把 `ReviewDecisionStore` 的重放改成最后一行生效」。正文写清改了什么、为什么，以及跑过哪些验证命令。
 
-一条推上去的提交信息只能靠改写历史来纠正，所以这条规则是机器检查的，本地和远端各一道：
+每个完成的改动单独成一个提交，并且每个提交都要能独立编译。这两条都是机器检查的，克隆后启用一次仓库自带的钩子即可：
 
-- 本地 `.githooks/commit-msg` 直接拒掉标题里没有中文的提交，并且没有跳过开关。
-- 远端 `ci.yml` 把本次推送范围内的每一条提交信息重新检查一遍——没启用过本地钩子的克隆是没有本地门禁的。
+```bash
+git config core.hooksPath .githooks
+```
 
-两边跑的是同一个脚本 `tools/check-commit-language.sh`，所以不会各说各话。也可以自己先检查：
+- `commit-msg` —— 标题里没有中文就拒掉提交，没有跳过开关。
+- `pre-commit` —— 跑 `:app:test`，它同时编译主源码与单元测试。
+- `tools/verify.sh` —— 完整门禁：test + lint + assembleDebug，和 CI 跑的是同样三步。
+
+远端 `ci.yml` 会把本次推送范围内的每条提交信息重新检查一遍，因为没启用过本地钩子的克隆没有本地门禁；两边跑的是同一个脚本，也可以自己先检查：
 
 ```bash
 tools/check-commit-language.sh --file .git/COMMIT_EDITMSG    # 刚写好的那一条
 tools/check-commit-language.sh --range origin/master..HEAD   # 还没推的那些
 ```
 
-## 提交前门禁
-
-一个编译不过的提交只能靠事后 bisect 找回来，所以这条规则是机器检查的，本地和远端各一道。
-
-本地：`.githooks/pre-commit` 会在每次 `git commit` 前跑 `:app:test`（它同时编译主源码与单元测试）。克隆后需要启用一次，这一条配置同时启用上面那道提交信息门禁：
-
-```bash
-git config core.hooksPath .githooks
-```
-
-要故意提交一个未完成的改动时用 `SKIP_VERIFY=1 git commit`。此外：
-
-- `tools/verify.sh` —— 完整门禁：test + lint + assembleDebug。发版前跑，和 CI 跑的是同样三步。
-- `tools/verify-history.sh [base]` —— 在临时 worktree 里逐个提交重放这套构建，用来确认整段历史每一步都能独立编译。它不改动工作区，也不重写提交。
-
-远端：`.github/workflows/` 里有三个 workflow，都只用运行时自带的 `GITHUB_TOKEN`，不需要 PAT。
+## 自动构建
 
 | workflow | 触发 | 做什么 |
 |---|---|---|
-| `ci.yml` | 推送 master、PR | 在干净机器上重跑 test + lint + assembleDebug，上传 APK 与 lint 报告 |
-| `prerelease.yml` | 推送 master | 刷新滚动的 `nightly` 预发布，附一个可直接安装的 APK |
+| `ci.yml` | 每次推送、PR | 检查提交信息语言，跑 test + lint + assembleDebug；master 上再把同一个 APK 刷新到 `nightly` 预发布 |
 | `pages.yml` | `index.html` / `assets/` 变化 | 部署介绍页 |
 
-`prerelease.yml` 在仓库配了 `PHOTO_RELEASE_KEYSTORE_BASE64`、`PHOTO_RELEASE_STORE_PASSWORD`、`PHOTO_RELEASE_KEY_ALIAS`、`PHOTO_RELEASE_KEY_PASSWORD` 四个 secret 时产出签过名的 release APK；没配就退回 debug APK——未签名的 release APK 装不上，上传它等于上传一个废文件。
-
-三个 workflow 都会在自己的工作副本里把 `distributionUrl` 换回 `services.gradle.org`。提交里的腾讯云镜像对本地更快，但 GitHub 的 runner 在境外，从那个镜像拉发行版很慢。
+两个 workflow 都只用运行时自带的 `GITHUB_TOKEN`，不需要额外配置密钥。
 
 ## 代码结构
 
@@ -133,12 +133,4 @@ git config core.hooksPath .githooks
 
 界面文案中文优先。新增任何用户可见文本都必须同时写入 `values/strings.xml` 与 `values-zh-rCN/strings.xml`。
 
-## 参与开发
-
-动手前请阅读：
-
-- **`AGENTS.md`** —— 代码风格、MIUIX 组件使用规范、提交约定、依赖库文档索引。
-- **`CLAUDE.md`** —— 架构说明：状态归属、两级导航、索引与指纹管线、需要注意的不变量。
-
-仓库根目录的 `index.html` 与 `assets/` 是介绍页，纯静态、无构建步骤，由 `pages.yml` 部署。它需要仓库 Settings → Pages 里把 Source 选成 `GitHub Actions`，之后 `index.html` 或 `assets/` 一有变化就会自动重新发布。它不参与 Android 构建。
-
+动手改代码前请阅读 `AGENTS.md`（代码风格、MIUIX 组件规范、提交约定）与 `CLAUDE.md`（架构说明：状态归属、两级导航、索引与指纹管线、需要注意的不变量）。

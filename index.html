@@ -13,10 +13,6 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100,400;100,500;100,600;100,700;100,800;112,700;112,800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<!--
-  照片整理 · 介绍页
-  纯静态，没有构建步骤。由 .github/workflows/pages.yml 部署到 GitHub Pages。
--->
 <style>
 :root{
   --deep:#074D56;
@@ -66,7 +62,7 @@ code{
 .band{padding:88px 0}
 .band-tight{padding:64px 0}
 
-/* ---------- eyebrow: names the mechanism in the codebase's own vocabulary ---------- */
+/* ---------- eyebrow ---------- */
 .eyebrow{
   font-family:var(--mono);
   font-size:12px;
@@ -105,7 +101,7 @@ h3{font-size:19px;font-weight:700;letter-spacing:-.01em;line-height:1.5;margin:0
 .muted{color:var(--muted)}
 p{margin:0 0 18px;max-width:64ch}
 
-/* ================= hero: the manifest is the thesis ================= */
+/* ================= hero ================= */
 .hero{
   background:
     radial-gradient(120% 90% at 82% 8%, rgba(79,184,175,.30) 0%, rgba(79,184,175,0) 58%),
@@ -148,7 +144,7 @@ p{margin:0 0 18px;max-width:64ch}
   font-weight:500;
 }
 
-/* ---------- the proof: real permission lines, and the one that is absent ---------- */
+/* ---------- manifest panel ---------- */
 .manifest{
   margin:56px 0 0;
   border:1px solid rgba(79,184,175,.34);
@@ -217,6 +213,7 @@ p{margin:0 0 18px;max-width:64ch}
 .cta-primary:hover{background:#ff8478;transform:translateY(-2px)}
 .cta-ghost{border:1px solid rgba(221,247,242,.34);color:#DDF7F2}
 .cta-ghost:hover{border-color:var(--sea);transform:translateY(-2px)}
+.cta-note{margin:18px 0 0;max-width:48ch;font-size:13.5px;line-height:1.8;color:rgba(221,247,242,.5)}
 
 /* ================= light sections ================= */
 .split{
@@ -256,7 +253,7 @@ p{margin:0 0 18px;max-width:64ch}
 .card-sun{border-left:3px solid var(--sun)}
 .card-teal{border-left:3px solid var(--teal)}
 
-/* ---------- bucket diagram: the size-bucket pass, drawn as what it does ---------- */
+/* ---------- bucket diagram ---------- */
 .buckets{
   background:var(--card);
   border:1px solid var(--line);
@@ -305,7 +302,7 @@ p{margin:0 0 18px;max-width:64ch}
 .legend span{color:var(--muted);font-size:13.5px}
 .legend code{background:none;padding:0;font-size:13px;white-space:nowrap}
 
-/* ---------- what it will not do: absence stated plainly ---------- */
+/* ---------- boundaries ---------- */
 .nots{
   background:var(--deep);
   border-radius:var(--r-lg);
@@ -422,7 +419,7 @@ footer a:hover{border-bottom-color:var(--teal)}
   <div class="wrap">
     <div class="hero-top stagger" style="animation-delay:.05s">
       <img src="assets/icon.svg" alt="" width="40" height="40">
-      <span>com.example.photoorganizer</span>
+      <span>Android 13+ · 开源 · 本机运行</span>
     </div>
 
     <h1 class="wordmark stagger" style="animation-delay:.12s">
@@ -467,9 +464,10 @@ footer a:hover{border-bottom-color:var(--teal)}
     </div>
 
     <div class="cta-row stagger" style="animation-delay:1s">
-      <a class="cta cta-primary" href="https://github.com/lswlc33/photo/releases">下载 APK</a>
+      <a class="cta cta-primary" href="https://github.com/lswlc33/photo/releases/tag/nightly">下载 APK</a>
       <a class="cta cta-ghost" href="https://github.com/lswlc33/photo">查看源码</a>
     </div>
+    <p class="cta-note stagger" style="animation-delay:1.06s">v8.0 · Android 13 及以上 · 随 master 每次提交刷新。下载到的是 debug 构建，由 Android 自带的 debug 密钥签名，安装时系统会问一次是否允许未知来源。</p>
   </div>
 </header>
 
@@ -672,7 +670,7 @@ footer a:hover{border-bottom-color:var(--teal)}
         按能认出来的那个名字分组，而不是逐个模块罗列——单独列一行 <code>androidx.compose.ui:ui-geometry</code> 是噪音，不是披露。传递依赖归在引入它的项目下面。
       </p>
     </div>
-    <img class="split-shot" src="assets/screens/about.png" alt="关于页：应用图标、版本 v1.0.0，下面是软件介绍与功能一览" width="1080" height="1920" loading="lazy">
+    <img class="split-shot" src="assets/screens/about.png" alt="关于页：应用图标与版本号，下面是软件介绍与功能一览" width="1080" height="1920" loading="lazy">
   </div>
 
   <div class="wrap oss rise">
@@ -708,10 +706,10 @@ footer a:hover{border-bottom-color:var(--teal)}
 <pre>./gradlew :app:assembleDebug     <span># 构建 debug APK</span>
 ./gradlew :app:installDebug      <span># 安装到已连接的设备</span>
 ./gradlew :app:test              <span># JVM 单元测试</span>
-git config core.hooksPath .githooks   <span># 启用提交前门禁，克隆后跑一次</span></pre>
+./gradlew :app:lint              <span># Android lint</span></pre>
 
     <p class="muted" style="margin-top:26px">
-      release 签名凭据从环境变量或 <code>~/.android/photo-organizer-release.properties</code> 读取。缺失时构建产出未签名 APK，不会失败。
+      发布页上的 APK 就是这条命令的产物。master 每次推送都会在 GitHub Actions 上重跑测试、lint 与构建，并把同一个 APK 刷新到滚动的预发布里；仓库里不放签名密钥，所以可安装的构建一律是 debug 版本。
     </p>
   </div>
 </section>
