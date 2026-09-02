@@ -33,6 +33,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -58,7 +59,9 @@ import com.example.photoorganizer.media.IndexScopeMode
 import com.example.photoorganizer.media.MediaIndexViewModel
 import com.example.photoorganizer.media.MediaStatistics
 import com.example.photoorganizer.media.PendingMedia
+import com.example.photoorganizer.media.ReviewDecisionStore
 import com.example.photoorganizer.media.ReviewState
+import com.example.photoorganizer.media.shouldCompactLog
 import com.example.photoorganizer.media.TargetFilters
 import com.example.photoorganizer.media.DuplicateGroup
 import com.example.photoorganizer.media.ToolAnalysis
@@ -68,7 +71,7 @@ import com.example.photoorganizer.media.applyTargetFilters
 import com.example.photoorganizer.media.formatBytes
 import com.example.photoorganizer.media.mediaPermissionState
 import com.example.photoorganizer.media.photoPermissionRequest
-import com.example.photoorganizer.media.reviewPreferenceKey
+import com.example.photoorganizer.media.reviewKey
 import com.example.photoorganizer.media.smartReviewOrder
 import com.example.photoorganizer.media.toPendingMedia
 import com.example.photoorganizer.media.toUiMedia
@@ -108,7 +111,9 @@ import top.yukonga.miuix.kmp.basic.Scaffold
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.theme.ThemeController
 
@@ -158,6 +163,12 @@ fun PhotoOrganizerApp() {
     // root - and re-derived every list below - on every single mark. Swapping the
     // instance instead makes the `remember` keys further down a real cache.
     var reviewStates by remember { mutableStateOf<Map<Long, ReviewState>>(emptyMap()) }
+    // Review decisions live in their own append-only log rather than as one
+    // SharedPreferences key per item; see ReviewDecisionStore for why.
+    val reviewStore = remember(context) {
+        ReviewDecisionStore(File(context.filesDir, "review-decisions.tsv"))
+    }
+    val reviewScope = rememberCoroutineScope()
     var pendingDeleteIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var pendingDeleteReviewKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
     var deleteError by remember { mutableStateOf<String?>(null) }
@@ -167,12 +178,10 @@ fun PhotoOrganizerApp() {
     val deleteLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
             reviewStates = reviewStates - pendingDeleteIds
-            // One commit for the whole batch: the per-item form rewrote the
-            // entire preference file once per deleted item.
-            prefs.edit {
-                pendingDeleteIds.forEach { id -> remove("review_$id") }
-                pendingDeleteReviewKeys.forEach(::remove)
-            }
+            // Cleared rather than removed: an append-only log cancels an entry by
+            // recording the default, and compaction drops it later.
+            val cleared = pendingDeleteReviewKeys.associateWith { ReviewState.UNREVIEWED }
+            reviewScope.launch { withContext(Dispatchers.IO) { reviewStore.append(cleared) } }
             scanRequest++
         }
         pendingDeleteIds = emptySet()
@@ -228,11 +237,12 @@ fun PhotoOrganizerApp() {
     val availableAlbums = indexState.snapshot?.availableAlbums ?: emptyList()
     LaunchedEffect(indexState.snapshot, indexScope) {
         val snapshot = indexState.snapshot ?: return@LaunchedEffect
-        // Reading one preference per item, with a migration write behind it, is
-        // O(library) work: it stays off the main thread and lands as a single
-        // commit plus a single state assignment.
-        val hydrated = withContext(Dispatchers.Default) {
+        // Reading the log, migrating any legacy preference keys and deciding whether
+        // to compact is all O(library), so it stays off the main thread and lands as
+        // a single state assignment.
+        val hydrated = withContext(Dispatchers.IO) {
             hydrateReviewStates(
+                store = reviewStore,
                 prefs = prefs,
                 items = snapshot.items,
                 pruneStaleKeys = indexScope.mode == IndexScopeMode.ALL && !snapshot.permissionLimited,
@@ -309,7 +319,7 @@ fun PhotoOrganizerApp() {
             pendingDeleteIds = markIds
             pendingDeleteReviewKeys = rawItems
                 .filter { it.id in markIds }
-                .mapTo(hashSetOf()) { it.reviewPreferenceKey() }
+                .mapTo(hashSetOf()) { it.reviewKey() }
             deleteLauncher.launch(IntentSenderRequest.Builder(request.intentSender).build())
         }.onFailure { deleteError = it.message ?: deleteLaunchFailedText }
     }
@@ -326,12 +336,13 @@ fun PhotoOrganizerApp() {
     fun markMedia(decisions: Map<Long, ReviewState>) {
         if (decisions.isEmpty()) return
         reviewStates = reviewStates + decisions
-        prefs.edit {
-            decisions.forEach { (id, state) ->
-                itemsById[id]?.let { item -> putString(item.reviewPreferenceKey(), state.name) }
-                remove("review_$id")
-            }
+        val byKey = LinkedHashMap<String, ReviewState>(decisions.size)
+        decisions.forEach { (id, state) ->
+            itemsById[id]?.let { item -> byKey[item.reviewKey()] = state }
         }
+        // Appended off the main thread: the decision is already applied in memory,
+        // so the write is durability rather than something the UI waits on.
+        reviewScope.launch { withContext(Dispatchers.IO) { reviewStore.append(byKey) } }
     }
 
     fun requestDiscard(ids: Set<Long>) {
@@ -828,49 +839,72 @@ private fun writePreference(prefs: SharedPreferences, key: String, value: Any?) 
 }
 
 /**
- * Reads every item's persisted review decision, migrating legacy `review_<id>`
- * keys and dropping keys whose media is gone. Every preference mutation is
- * batched into a single commit, because the per-item form rewrote the whole
- * preference file once per item.
+ * Loads every item's review decision, folding in any decision an older version
+ * left in `SharedPreferences`, and compacts the log once replaying it costs more
+ * than the decisions it yields.
  *
  * Runs off the main thread; the caller assigns the result in one state write.
  */
 private fun hydrateReviewStates(
+    store: ReviewDecisionStore,
     prefs: SharedPreferences,
     items: List<IndexedMedia>,
     pruneStaleKeys: Boolean,
 ): Map<Long, ReviewState> {
-    val statesByName = ReviewState.entries.associateBy { it.name }
+    val byKey = HashMap(store.load())
+    val legacy = readLegacyReviewPreferences(prefs, items)
+    val unlogged = legacy.filterKeys { it !in byKey }
+    byKey.putAll(unlogged)
+
     val states = HashMap<Long, ReviewState>(items.size)
     val activeKeys = HashSet<String>(items.size)
-    val migrated = LinkedHashMap<String, String>()
-    val legacyKeys = ArrayList<String>()
     items.forEach { item ->
-        val key = item.reviewPreferenceKey()
+        val key = item.reviewKey()
         activeKeys += key
-        val saved = prefs.getString(key, null) ?: run {
-            val legacyKey = "review_${item.id}"
-            prefs.getString(legacyKey, null)?.also { legacy ->
-                migrated[key] = legacy
-                legacyKeys += legacyKey
-            }
-        }
-        states[item.id] = saved?.let { value -> statesByName[value] } ?: ReviewState.UNREVIEWED
+        states[item.id] = byKey[key] ?: ReviewState.UNREVIEWED
     }
-    // Read before the edit, so freshly migrated keys are never seen as stale.
-    val staleKeys = if (pruneStaleKeys) {
-        prefs.all.keys.filter { it.startsWith("review_") && it !in activeKeys && it !in legacyKeys }
-    } else {
-        emptyList()
+
+    // Draining the old preference keys deletes them, so it only happens once the
+    // snapshot covers the whole library. A scoped or partially permitted scan
+    // cannot tell a decision for a file it may not see from a stale one, and
+    // deleting on that basis would throw away the user's work.
+    if (!pruneStaleKeys) {
+        if (unlogged.isNotEmpty()) store.append(unlogged)
+        return states
     }
-    if (migrated.isNotEmpty() || legacyKeys.isNotEmpty() || staleKeys.isNotEmpty()) {
-        prefs.edit {
-            migrated.forEach { (key, value) -> putString(key, value) }
-            legacyKeys.forEach(::remove)
-            staleKeys.forEach(::remove)
-        }
+    store.append(unlogged)
+    // Every review_* key, not just the ones matched above: with the whole library
+    // in view, a key nothing matched is stale by definition.
+    val legacyKeys = prefs.all.keys.filter { it.startsWith("review_") }
+    if (legacyKeys.isNotEmpty()) prefs.edit { legacyKeys.forEach(::remove) }
+    val live = byKey.filterKeys { it in activeKeys }
+    if (live.size != byKey.size || shouldCompactLog(store.lastLineCount, live.size)) {
+        store.compact(live)
     }
     return states
+}
+
+/**
+ * Review decisions still held as `review_*` preference keys by a version that kept
+ * them there, including the even older `review_<id>` form.
+ *
+ * `prefs.all` is only touched when at least one such key exists, so a migrated
+ * install does not walk the preference map on every scan.
+ */
+private fun readLegacyReviewPreferences(
+    prefs: SharedPreferences,
+    items: List<IndexedMedia>,
+): Map<String, ReviewState> {
+    if (prefs.all.keys.none { it.startsWith("review_") }) return emptyMap()
+    val statesByName = ReviewState.entries.associateBy { it.name }
+    val found = LinkedHashMap<String, ReviewState>()
+    items.forEach { item ->
+        val key = item.reviewKey()
+        val saved = prefs.getString(key, null) ?: prefs.getString("review_${item.id}", null)
+        val state = saved?.let(statesByName::get) ?: return@forEach
+        if (state != ReviewState.UNREVIEWED) found[key] = state
+    }
+    return found
 }
 
 private enum class DetailMode {

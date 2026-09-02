@@ -84,7 +84,11 @@ MIUIX component library for structure and theming, Kyant Backdrop for the glass 
 
 ### Persistence
 
-Everything is `SharedPreferences` (`photo_organizer_preferences`) — settings, `logical_albums` (encoded by `LogicalAlbumStore`), index scope, and one `review_*` key per item. Review keys embed type, URI, size and modified time (`reviewPreferenceKey()`) so a MediaStore row replaced in place loses its stale decision; the legacy `review_<id>` form is migrated on read. Stale-key cleanup and album pruning only run after a full-library scan (`IndexScopeMode.ALL` and unlimited permission), otherwise a scoped scan would delete good data.
+Settings, `logical_albums` (encoded by `LogicalAlbumStore`) and the index scope live in `SharedPreferences` (`photo_organizer_preferences`).
+
+Per-item review decisions do **not**. They are an append-only log at `filesDir/review-decisions.tsv` (`ReviewDecisionStore`): one tab-separated line per decision, replayed on load with last-line-wins, and compacted once replaying costs more than the decisions it yields. Marking is O(1) regardless of library size, where one preference key per item meant a multi-megabyte XML parsed synchronously on the main thread at startup and rewritten by every `apply()`.
+
+`reviewKey()` embeds type, URI, size and modified time, so a MediaStore row replaced in place loses its stale decision. `ReviewState.UNREVIEWED` is a tombstone: appending it cancels an earlier line, and compaction drops it. Decisions left in `review_*` preference keys by older versions are drained on the first full-library scan — never on a scoped or partially permitted one, which cannot tell a stale key from a file it may not see. Stale-key pruning has the same guard.
 
 ### Permissions
 

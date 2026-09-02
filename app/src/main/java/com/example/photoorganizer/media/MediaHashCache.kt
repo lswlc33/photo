@@ -111,7 +111,3 @@ class MediaHashCache(private val maxEntries: Int = 20_000) {
         modifiedMillis = dateModifiedMillis,
     )
 }
-
-/** Preference key that changes when a MediaStore row is replaced in place. */
-fun IndexedMedia.reviewPreferenceKey(): String =
-    "review_${type.name}_${uri}_${sizeBytes}_${dateModifiedMillis ?: 0L}"
