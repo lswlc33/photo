@@ -3,13 +3,14 @@ name: CI
 # master 是唯一的历史，本地还有 pre-commit 和 commit-msg 两道门禁。
 # 这个 workflow 是同一套检查在干净机器上的复核：本地能过不代表换台机器也能过，
 # 而没跑过 `git config core.hooksPath .githooks` 的克隆根本没有本地门禁。
+# 检查全过之后，同一个 APK 会被刷新到滚动的 nightly 预发布里 —— 发布出去的必须
+# 是刚被检查过的那个构建，而不是另起一次构建的产物。
+#
+# 每一次推送都构建，只改文档或介绍页的推送也一样：产物名里带着当次提交的短 SHA，
+# 「这次提交构建过没有」不应该存在例外。
 on:
   push:
-    branches: [master]
-    paths-ignore:
-      - 'index.html'
-      - 'assets/**'
-      - '**.md'
+    branches: ['**']
   pull_request:
   workflow_dispatch:
 
@@ -23,6 +24,10 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.apk.outputs.version }}
+      code: ${{ steps.apk.outputs.code }}
+      apk: ${{ steps.apk.outputs.name }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -73,13 +78,44 @@ jobs:
       - name: Android lint
         run: ./gradlew :app:lint --console=plain
 
+      # 干净的 runner 上没有 ~/.android/debug.keystore，AGP 会当场生成一把新的，
+      # 于是每次构建出来的 nightly 签名都不一样：装新的会被系统当成另一个来源的
+      # 应用而拒绝，只能先卸载 —— 连带把已有的评审记录一起清掉。把这把密钥缓存
+      # 下来复用，覆盖安装就是一次正常的更新。
+      # 它不是发布密钥，而是 Android 给调试构建用的默认密钥，口令本来就是公开的。
+      - name: Reuse one debug signing key across builds
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore
+
+      # 只构建 debug。仓库里没有 release 签名密钥，也不打算放一把进来：未签名的
+      # release APK 根本装不上，而 debug 构建由上面那把 debug 密钥自动签名，下载
+      # 下来就能安装。代价是它可被调试、也没有代码压缩，只适合试用。
       - name: Debug APK
         run: ./gradlew :app:assembleDebug --console=plain
 
+      # 版本号只在 gradle.properties 里声明一次，这里读它而不是再抄一遍。
+      # 产物名带上版本和短 SHA：一个下载下来的 APK 要能自己说明它是哪次构建。
+      - name: Name the APK after the version and the commit
+        id: apk
+        run: |
+          version=$(sed -n 's/^photoVersionName=//p' gradle.properties)
+          code=$(sed -n 's/^photoVersionCode=//p' gradle.properties)
+          built=$(find app/build/outputs/apk/debug -name '*.apk' | head -1)
+          name="photo-organizer-v$version-$(git rev-parse --short HEAD).apk"
+          mkdir -p artifacts
+          cp "$built" "artifacts/$name"
+          {
+            echo "version=$version"
+            echo "code=$code"
+            echo "name=$name"
+          } >> "$GITHUB_OUTPUT"
+
       - uses: actions/upload-artifact@v4
         with:
-          name: photo-organizer-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: photo-organizer-apk
+          path: artifacts/${{ steps.apk.outputs.name }}
           if-no-files-found: error
 
       # 失败时报告比日志有用得多，所以无论成败都上传。
@@ -91,3 +127,52 @@ jobs:
             app/build/reports/lint-results-debug.html
             app/build/reports/tests/
           if-no-files-found: ignore
+
+  prerelease:
+    # 挂在 build 后面，发的也是 build 产出的那个文件：预发布里的 APK 必须是刚跑完
+    # 测试、lint 和构建的那一个，而不是另起一次构建的另一个。
+    # 只在 master 上发 —— nightly 这个标签的含义是「master 的最新提交」。
+    needs: build
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: photo-organizer-apk
+          path: artifacts
+
+      # gh 已经装在 runner 上，所以这一步不引入任何第三方 action。
+      # 删掉再建是为了让 nightly 这个 tag 始终指向最新的提交。
+      - name: Refresh the rolling nightly prerelease
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.build.outputs.version }}
+          VERSION_CODE: ${{ needs.build.outputs.code }}
+          APK: ${{ needs.build.outputs.apk }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          # 先赋值再 echo：提交标题里的反引号不会在双引号里被当成命令展开。
+          sha=$(git rev-parse --short HEAD)
+          subject=$(git log -1 --pretty=%s)
+          {
+            echo "master 最新提交的自动构建，每次推送刷新。"
+            echo
+            echo "- 版本：**v$VERSION**（versionCode \`$VERSION_CODE\`）"
+            echo "- 提交：\`$sha\` — $subject"
+            echo "- 构建：debug · CI #$RUN_NUMBER"
+            echo "- 系统要求：Android 13（API 33）及以上"
+            echo
+            echo "> 这是 **debug 构建，没有做 release 签名** —— 仓库里不放签名密钥。Android 自带的 debug 密钥会给它签名，所以下载下来可以直接安装，系统会问一次是否允许安装未知来源的应用；代价是它可被调试、也没有代码压缩，只适合试用。万一覆盖安装被系统拒绝，说明 CI 缓存的那把 debug 密钥换过了，先卸载旧版再装。"
+          } > "$RUNNER_TEMP/notes.md"
+
+          gh release delete nightly --yes --cleanup-tag || true
+          gh release create nightly \
+            --target "$GITHUB_SHA" \
+            --title "照片整理 v$VERSION · 构建 #$RUN_NUMBER" \
+            --prerelease \
+            --notes-file "$RUNNER_TEMP/notes.md" \
+            "artifacts/$APK"

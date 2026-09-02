@@ -12,7 +12,7 @@ This repository contains a single Android application module (`com.example.photo
 - `app/src/main/res/` contains Android resources: `values/` and `values-zh-rCN/` strings, `values/` and `values-night/` styles, the adaptive launcher icon (`mipmap-anydpi-v26/` over `drawable/ic_launcher_background.xml`, `ic_launcher_foreground.xml` and `ic_launcher_monochrome.xml`, with `drawable/ic_launcher.xml` as the flat fallback), and `xml/` (`locales_config.xml`, `data_extraction_rules.xml`).
 - `app/src/main/AndroidManifest.xml` declares the app and media permissions.
 - All dependencies come from `gradle/libs.versions.toml`; `settings.gradle.kts` sets `RepositoriesMode.FAIL_ON_PROJECT_REPOS`, so never add project-level repositories or hard-coded dependency coordinates.
-- The repository root holds the Gradle/wrapper config, the three guides (`README.md`, this file, `CLAUDE.md`), `index.html` plus `assets/` (the GitHub Pages landing page, not part of the Android build), `.github/workflows/` (CI, the rolling prerelease, and the Pages deploy), `.githooks/` (`pre-commit`, `commit-msg`), and `tools/` (`verify.sh`, `verify-history.sh`, `check-commit-language.sh`). `build/`, `app/build/`, `.gradle/`, `.kotlin/`, `artifacts/`, and `local.properties` are generated or machine-local and ignored by git.
+- The repository root holds the Gradle/wrapper config, the three guides (`README.md`, this file, `CLAUDE.md`), `index.html` plus `assets/` (the GitHub Pages landing page, not part of the Android build), `.github/workflows/` (`ci.yml`, which also refreshes the rolling prerelease, and `pages.yml`), `.githooks/` (`pre-commit`, `commit-msg`), and `tools/` (`verify.sh`, `verify-history.sh`, `check-commit-language.sh`). `build/`, `app/build/`, `.gradle/`, `.kotlin/`, `artifacts/`, and `local.properties` are generated or machine-local and ignored by git.
 
 ## Build, Test, and Development Commands
 
@@ -51,7 +51,7 @@ Because a commit that does not compile is only ever found by bisecting into it l
 
 Follow the subject with a body that states what changed, why, and which validation commands were run; note emulator verification for UI changes. Split unrelated work into separate commits and keep generated files out of the change.
 
-Pushing to `master` publishes: `prerelease.yml` refreshes the rolling `nightly` prerelease with a fresh APK, and a change under `index.html` or `assets/` redeploys the landing page. Neither needs a PAT — both use the workflow's own `GITHUB_TOKEN`.
+Pushing publishes. `ci.yml` runs the commit-message check, test, lint, and `assembleDebug` on every push to any branch and on every pull request; on `master` a second job then hands the APK that build just produced to the rolling `nightly` prerelease, so what people download is the file that passed the checks rather than a rebuild of it. That APK is always a `debug` build: there is no release keystore in this repository and no plan to add one, an unsigned release APK cannot be installed at all, and a debug build is signed by Android's standard debug key, so `debug` is the only variant that can be handed to someone. CI caches that debug key between runs so a new nightly installs over the previous one instead of forcing an uninstall. A change under `index.html` or `assets/` also redeploys the landing page. Nothing here needs a PAT — every workflow uses the run's own `GITHUB_TOKEN`.
 
 `core.autocrlf` is deliberately `false` so the LF line endings in the tree survive round-trips. Do not re-enable it, or every file will show up as fully rewritten.
 
