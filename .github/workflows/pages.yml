@@ -1,0 +1,49 @@
+name: Pages
+
+# 仓库根的 index.html + assets/ 就是介绍页，没有构建步骤。
+# 需要在仓库 Settings → Pages 里把 Source 选成 "GitHub Actions"，这个 workflow 才有权部署。
+on:
+  push:
+    branches: [master]
+    paths:
+      - 'index.html'
+      - 'assets/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 部署不该被后一次推送打断，所以这里不取消进行中的任务。
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/configure-pages@v5
+
+      # 只把介绍页需要的东西放进去，Android 源码不必上传到 Pages。
+      # .nojekyll 让 Jekyll 完全不参与，省掉一层不需要的处理。
+      - name: Stage the site
+        run: |
+          mkdir -p _site
+          cp index.html _site/
+          cp -r assets _site/
+          touch _site/.nojekyll
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

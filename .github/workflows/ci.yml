@@ -1,0 +1,67 @@
+name: CI
+
+# master 是唯一的历史，本地还有一个 pre-commit 门禁跑 :app:test。
+# 这个 workflow 是同一套检查在干净机器上的复核：本地能过不代表换台机器也能过。
+on:
+  push:
+    branches: [master]
+    paths-ignore:
+      - 'index.html'
+      - 'assets/**'
+      - '**.md'
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # gradle-wrapper.properties 指向腾讯云镜像，那对本地构建更快，但 GitHub
+      # 的 runner 在境外，从那个镜像拉 Gradle 发行版会很慢。这里只在 CI 的工作
+      # 副本里换回官方地址，提交里的镜像地址保持不变。
+      - name: Point the wrapper at the upstream Gradle distribution
+        run: |
+          sed -i 's#https\\://mirrors.cloud.tencent.com/Gradle/#https\\://services.gradle.org/distributions/#' \
+            gradle/wrapper/gradle-wrapper.properties
+          grep distributionUrl gradle/wrapper/gradle-wrapper.properties
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Unit tests
+        run: ./gradlew :app:test --console=plain
+
+      - name: Android lint
+        run: ./gradlew :app:lint --console=plain
+
+      - name: Debug APK
+        run: ./gradlew :app:assembleDebug --console=plain
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: photo-organizer-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      # 失败时报告比日志有用得多，所以无论成败都上传。
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: reports
+          path: |
+            app/build/reports/lint-results-debug.html
+            app/build/reports/tests/
+          if-no-files-found: ignore
