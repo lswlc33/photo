@@ -1,26 +1,49 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Adaptive icon foreground.
+
+  Everything sits inside a group scaled to 0.76 and nudged to the canvas centre,
+  because an adaptive icon's safe zone is the centre 66x66 dp of a 108x108 dp canvas -
+  a circle of radius 33 around (54, 54). The artwork itself spans x 23..88, y 22..96,
+  so drawn at its own coordinates the coral badge and its check mark ran roughly 9 dp
+  past the bottom of the safe zone and were sliced off on any launcher that masks to a
+  circle or a squircle.
+
+  The transform keeps the badge - the furthest element from the centre - entirely
+  inside the safe circle: after scaling its centre lands 19.2 dp out with a 12.9 dp
+  radius, for 32.1 dp against the 33 dp limit. Scaling the group rather than rewriting
+  the path data means the drawing stays editable as drawn.
+-->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <path
-        android:fillColor="#074D56"
-        android:fillAlpha="0.34"
-        android:pathData="M36,27h45c4.4,0 8,3.6 8,8v39c0,4.4 -3.6,8 -8,8h-45c-4.4,0 -8,-3.6 -8,-8v-39c0,-4.4 3.6,-8 8,-8z" />
-    <path
-        android:fillColor="#DDF7F2"
-        android:pathData="M31,22h45c4.4,0 8,3.6 8,8v39c0,4.4 -3.6,8 -8,8h-45c-4.4,0 -8,-3.6 -8,-8v-39c0,-4.4 3.6,-8 8,-8z" />
-    <path
-        android:fillColor="#4FB8AF"
-        android:pathData="M31,58l12,-12 10,10 7,-7 20,20h-49z" />
-    <path
-        android:fillColor="#F5C451"
-        android:pathData="M67,34a7,7 0,1 1,0 14a7,7 0,1 1,0 -14" />
-    <path
-        android:fillColor="#FF6B5E"
-        android:pathData="M71,62a17,17 0,1 1,0 34a17,17 0,1 1,0 -34" />
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M62,78l6,6 12,-14 4,3.7 -15.7,18.2 -10.3,-10.3z" />
+    <group
+        android:pivotX="55.5"
+        android:pivotY="59"
+        android:scaleX="0.76"
+        android:scaleY="0.76"
+        android:translateX="-1.5"
+        android:translateY="-5">
+        <path
+            android:fillColor="#074D56"
+            android:fillAlpha="0.34"
+            android:pathData="M36,27h45c4.4,0 8,3.6 8,8v39c0,4.4 -3.6,8 -8,8h-45c-4.4,0 -8,-3.6 -8,-8v-39c0,-4.4 3.6,-8 8,-8z" />
+        <path
+            android:fillColor="#DDF7F2"
+            android:pathData="M31,22h45c4.4,0 8,3.6 8,8v39c0,4.4 -3.6,8 -8,8h-45c-4.4,0 -8,-3.6 -8,-8v-39c0,-4.4 3.6,-8 8,-8z" />
+        <path
+            android:fillColor="#4FB8AF"
+            android:pathData="M31,58l12,-12 10,10 7,-7 20,20h-49z" />
+        <path
+            android:fillColor="#F5C451"
+            android:pathData="M67,34a7,7 0,1 1,0 14a7,7 0,1 1,0 -14" />
+        <path
+            android:fillColor="#FF6B5E"
+            android:pathData="M71,62a17,17 0,1 1,0 34a17,17 0,1 1,0 -34" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M62,78l6,6 12,-14 4,3.7 -15.7,18.2 -10.3,-10.3z" />
+    </group>
 </vector>
