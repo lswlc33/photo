@@ -9,9 +9,11 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -66,6 +68,7 @@ import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.photoorganizer.R
@@ -73,6 +76,7 @@ import com.example.photoorganizer.media.ReviewState
 import com.example.photoorganizer.media.UiMedia
 import com.example.photoorganizer.media.scanDate
 import com.example.photoorganizer.ui.components.EmptyState
+import com.example.photoorganizer.ui.components.MediaPreviewController
 import com.example.photoorganizer.ui.components.MediaPreviewHost
 import com.example.photoorganizer.ui.components.MediaTile
 import com.example.photoorganizer.ui.components.OverlayAction
@@ -93,6 +97,7 @@ import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.ToolbarPosition
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
+import top.yukonga.miuix.kmp.basic.ScrollBehavior
 import top.yukonga.miuix.kmp.basic.SpinnerEntry
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
@@ -130,6 +135,18 @@ private val MediaGridMode.supportsMarking: Boolean
         this == MediaGridMode.SCREENSHOTS ||
         this == MediaGridMode.LARGEST ||
         this == MediaGridMode.DUPLICATE_GROUP
+
+/** Default page title; [ManualGridScreen]'s `titleOverride` wins when it is set. */
+private val MediaGridMode.titleRes: Int
+    get() = when (this) {
+        MediaGridMode.MANUAL -> R.string.manual_mode_title
+        MediaGridMode.KEPT -> R.string.marked_kept_title
+        MediaGridMode.TRASH -> R.string.marked_trash_title
+        MediaGridMode.SCREENSHOTS -> R.string.tools_screenshots_title
+        MediaGridMode.LARGEST -> R.string.tools_largest_title
+        MediaGridMode.DUPLICATE_GROUP -> R.string.tools_duplicate_title
+        MediaGridMode.LOGICAL_ALBUM -> R.string.logical_album_title
+    }
 
 /** Gallery grid grouped by capture date, with full-screen hold previews. */
 @Composable
@@ -249,108 +266,63 @@ fun ManualGridScreen(
                 modifier = Modifier
                     .background(MiuixTheme.colorScheme.background)
                     .statusBarsPadding(),
-                title = titleOverride ?: stringResource(
-                    when (mode) {
-                        MediaGridMode.MANUAL -> R.string.manual_mode_title
-                        MediaGridMode.KEPT -> R.string.marked_kept_title
-                        MediaGridMode.TRASH -> R.string.marked_trash_title
-                        MediaGridMode.SCREENSHOTS -> R.string.tools_screenshots_title
-                        MediaGridMode.LARGEST -> R.string.tools_largest_title
-                        MediaGridMode.DUPLICATE_GROUP -> R.string.tools_duplicate_title
-                        MediaGridMode.LOGICAL_ALBUM -> R.string.logical_album_title
-                    },
-                ),
+                title = titleOverride ?: stringResource(mode.titleRes),
                 color = MiuixTheme.colorScheme.background,
                 titleColor = MiuixTheme.colorScheme.onSurface,
                 navigationIcon = {
+                    // One button, three jobs: leave selection, leave search, or go
+                    // back - in that order, so a nested mode is always unwound first.
+                    val dismissing = selectionMode || searchActive
                     IconButton(onClick = {
-                        if (selectionMode) {
-                            selectionMode = false
-                            selected = emptySet()
-                        } else if (searchActive) {
-                            searchActive = false
-                            searchQuery = ""
-                        } else {
-                            onBack()
+                        when {
+                            selectionMode -> {
+                                selectionMode = false
+                                selected = emptySet()
+                            }
+                            searchActive -> {
+                                searchActive = false
+                                searchQuery = ""
+                            }
+                            else -> onBack()
                         }
                     }) {
                         Icon(
-                            imageVector = if (selectionMode || searchActive) {
+                            imageVector = if (dismissing) {
                                 Icons.Default.Close
                             } else {
                                 Icons.AutoMirrored.Filled.ArrowBack
                             },
-                            contentDescription = if (selectionMode || searchActive) {
-                                stringResource(R.string.close_cd)
-                            } else {
-                                stringResource(R.string.back_cd)
-                            },
+                            contentDescription = stringResource(
+                                if (dismissing) R.string.close_cd else R.string.back_cd,
+                            ),
                         )
                     }
                 },
                 actions = {
-                    if (selectionMode) {
-                        Text(
-                            text = pluralStringResource(
-                                R.plurals.manual_selected_count,
-                                selected.size,
-                                selected.size,
-                            ),
-                            color = MiuixTheme.colorScheme.primary,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 6.dp),
-                        )
-                    } else {
-                        IconButton(onClick = {
+                    ManualGridTopBarActions(
+                        mode = mode,
+                        selectionMode = selectionMode,
+                        selectedCount = selected.size,
+                        searchActive = searchActive,
+                        hasMedia = media.isNotEmpty(),
+                        overflowActions = overflowActions,
+                        showOverflow = showDeleteMenu,
+                        deleteAllArmed = deleteAllArmed,
+                        onToggleSearch = {
                             searchActive = !searchActive
                             if (!searchActive) searchQuery = ""
-                        }) {
-                            Icon(
-                                Icons.Default.Search,
-                                contentDescription = stringResource(R.string.manual_search_cd),
-                            )
-                        }
-                        IconButton(onClick = { selectionMode = true }) {
-                            Icon(
-                                Icons.Default.CheckCircleOutline,
-                                contentDescription = stringResource(R.string.manual_select_mode_cd),
-                            )
-                        }
-                        if (overflowActions.isNotEmpty() && media.isNotEmpty()) {
-                            OverlayActionPopup(
-                                show = showDeleteMenu,
-                                actions = overflowActions,
-                                onDismissRequest = { showDeleteMenu = false },
-                            ) {
-                                IconButton(onClick = { showDeleteMenu = true }) {
-                                    Icon(
-                                        Icons.Default.MoreVert,
-                                        contentDescription = stringResource(R.string.marked_delete_menu_cd),
-                                    )
-                                }
-                            }
-                        }
-                        if (mode == MediaGridMode.TRASH && media.isNotEmpty()) {
-                            DeleteAllBinButton(
-                                armed = deleteAllArmed,
-                                onArm = { deleteAllArmed = true },
-                                onDisarm = { deleteAllArmed = false },
-                                onConfirm = {
-                                    deleteAllArmed = false
-                                    onDeleteRequest(allMediaIds)
-                                },
-                            )
-                        }
-                        if (mode == MediaGridMode.LOGICAL_ALBUM) {
-                            IconButton(onClick = onDeleteCollection) {
-                                Icon(
-                                    Icons.Default.DeleteOutline,
-                                    contentDescription = stringResource(R.string.logical_album_delete),
-                                    tint = DangerRed,
-                                )
-                            }
-                        }
-                    }
+                        },
+                        onEnterSelection = { selectionMode = true },
+                        onShowOverflow = { showDeleteMenu = true },
+                        onDismissOverflow = { showDeleteMenu = false },
+                        onArmDeleteAll = { deleteAllArmed = true },
+                        onDisarmDeleteAll = { deleteAllArmed = false },
+                        onConfirmDeleteAll = {
+                            deleteAllArmed = false
+                            onDeleteRequest(allMediaIds)
+                        },
+                        onDeleteCollection = onDeleteCollection,
+                    )
                 },
                 scrollBehavior = scrollBehavior,
                 defaultWindowInsetsPadding = false,
@@ -358,46 +330,27 @@ fun ManualGridScreen(
         },
         floatingToolbar = {
             if (selectionMode) {
+                // Every bulk action ends selection, so the exit is factored out and
+                // each callback only says what it does with the ids.
+                val finish: (action: (Set<Long>) -> Unit) -> () -> Unit = { action ->
+                    {
+                        val ids = selected
+                        selectionMode = false
+                        selected = emptySet()
+                        action(ids)
+                    }
+                }
                 SelectionToolbar(
                     mode = mode,
                     hasSelection = selected.isNotEmpty(),
                     bottomClearance = clearance.bottom,
                     onSelectAll = { selected = visibleIds },
-                    onKeep = {
-                        onMark(selected.associateWith { ReviewState.KEPT })
-                        selectionMode = false
-                        selected = emptySet()
-                    },
-                    onTrash = {
-                        onMark(selected.associateWith { ReviewState.TRASH_MARKED })
-                        selectionMode = false
-                        selected = emptySet()
-                    },
-                    onClear = {
-                        onMark(selected.associateWith { ReviewState.UNREVIEWED })
-                        selectionMode = false
-                        selected = emptySet()
-                    },
-                    onDeleteSelected = {
-                        val ids = selected
-                        selectionMode = false
-                        selected = emptySet()
-                        onDeleteRequest(ids)
-                    },
-                    onRemoveFromCollection = {
-                        val ids = selected
-                        selectionMode = false
-                        selected = emptySet()
-                        onRemoveFromCollection(ids)
-                    },
-                    onCompressSelected = onCompressSelected?.let { compress ->
-                        {
-                            val ids = selected
-                            selectionMode = false
-                            selected = emptySet()
-                            compress(ids)
-                        }
-                    },
+                    onKeep = finish { ids -> onMark(ids.associateWith { ReviewState.KEPT }) },
+                    onTrash = finish { ids -> onMark(ids.associateWith { ReviewState.TRASH_MARKED }) },
+                    onClear = finish { ids -> onMark(ids.associateWith { ReviewState.UNREVIEWED }) },
+                    onDeleteSelected = finish(onDeleteRequest),
+                    onRemoveFromCollection = finish(onRemoveFromCollection),
+                    onCompressSelected = onCompressSelected?.let { compress -> finish(compress) },
                 )
             }
         },
@@ -414,161 +367,288 @@ fun ManualGridScreen(
                 ),
         ) {
             if (searchActive) {
-                SearchBar(
-                    inputField = {
-                        InputField(
-                            query = searchQuery,
-                            onQueryChange = { searchQuery = it },
-                            onSearch = {},
-                            expanded = false,
-                            onExpandedChange = {},
-                            label = stringResource(R.string.manual_search_hint),
-                        )
-                    },
-                    onExpandedChange = {},
-                    modifier = Modifier.padding(bottom = 4.dp),
-                ) {}
+                ManualGridSearchBar(query = searchQuery, onQueryChange = { searchQuery = it })
             }
             if (mode.supportsMarking) {
-                Card(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
-                    colors = standardCardColors(),
-                ) {
-                    OverlaySpinnerPreference(
-                        items = sortOptions.map { bySize ->
-                            SpinnerEntry(
-                                title = stringResource(
-                                    if (bySize) R.string.manual_sort_by_size else R.string.manual_sort_by_date,
-                                ),
-                            )
-                        },
-                        selectedIndex = sortOptions.indexOf(sortBySize),
-                        title = stringResource(R.string.manual_sort_title),
-                        renderInRootScaffold = true,
-                        onSelectedIndexChange = { index ->
-                            sortOptions.getOrNull(index)?.let { sortBySize = it }
-                        },
-                    )
-                }
+                ManualGridSortCard(
+                    sortBySize = sortBySize,
+                    onSortChange = { sortBySize = it },
+                )
             }
             if (entries.isEmpty()) {
-                EmptyState(
-                    title = stringResource(
-                        when {
-                            searchQuery.isNotBlank() -> R.string.manual_search_empty_title
-                            mode.supportsMarking -> R.string.empty_review_title
-                            else -> R.string.marked_empty_title
-                        },
-                    ),
-                    summary = stringResource(
-                        when {
-                            searchQuery.isNotBlank() -> R.string.manual_search_empty_summary
-                            mode.supportsMarking -> R.string.empty_review_summary
-                            else -> R.string.marked_empty_summary
-                        },
-                    ),
-                    actionLabel = if (searchQuery.isNotBlank()) {
-                        stringResource(R.string.manual_search_clear)
-                    } else {
-                        stringResource(R.string.empty_review_action)
-                    },
-                    onAction = if (searchQuery.isNotBlank()) {
-                        { searchQuery = "" }
-                    } else {
-                        onBack
-                    },
+                ManualGridEmptyState(
+                    searching = searchQuery.isNotBlank(),
+                    supportsMarking = mode.supportsMarking,
+                    onClearSearch = { searchQuery = "" },
+                    onBack = onBack,
                 )
             } else {
                 Box(Modifier.weight(1f).fillMaxWidth()) {
-                    LazyVerticalGrid(
-                        state = gridState,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .scrollEndHaptic()
-                            .overScrollVertical()
-                            .nestedScroll(scrollBehavior.nestedScrollConnection),
-                        columns = GridCells.Adaptive(96.dp),
-                        contentPadding = PaddingValues(
-                            start = 12.dp,
-                            end = 50.dp,
-                            top = 8.dp,
-                            bottom = 12.dp + clearance.bottom +
-                                if (selectionMode) SelectionToolbarClearance else 0.dp,
-                        ),
-                        horizontalArrangement = Arrangement.spacedBy(7.dp),
-                        verticalArrangement = Arrangement.spacedBy(7.dp),
-                    ) {
-                        items(
-                            items = entries,
-                            key = { it.key },
-                            span = { entry ->
-                                if (entry is ManualGridEntry.DateHeader) GridItemSpan(maxLineSpan) else GridItemSpan(1)
-                            },
-                        ) { entry ->
-                            when (entry) {
-                                is ManualGridEntry.DateHeader -> DateHeader(entry.label)
-                                is ManualGridEntry.Media -> {
-                                    val item = entry.item
-                                    // A plain `item.id in selected` read would record a
-                                    // dependency on the whole selection, so toggling one
-                                    // tile recomposed every composed tile. derivedStateOf
-                                    // only notifies when this item's own answer flips.
-                                    val isSelected by remember(item.id) {
-                                        derivedStateOf { item.id in selected }
-                                    }
-                                    MediaTile(
-                                        item = item,
-                                        onClick = { preview.open(item) },
-                                        onPreviewStart = { preview.peek(item) },
-                                        onPreviewEnd = { preview.release(item.id) },
-                                        selected = isSelected,
-                                        selectionMode = selectionMode,
-                                        onSelectionToggle = {
-                                            selected = if (item.id in selected) {
-                                                selected - item.id
-                                            } else {
-                                                selected + item.id
-                                            }
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    val totalItems = scrollMetrics.totalItems
-                    val visibleItems = scrollMetrics.visibleItems
-                    if (totalItems > visibleItems) {
-                        ManualGridScrubber(
-                            state = gridState,
-                            totalItems = totalItems,
-                            visibleItems = visibleItems,
-                            modifier = Modifier.align(Alignment.CenterEnd),
-                            onScrubbingChange = { scrubbing = it },
-                        )
-                        if (gridState.isScrollInProgress || scrubbing) {
-                            Text(
-                                text = currentDate,
-                                color = MiuixTheme.colorScheme.onSurfaceContainer,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier
-                                    .align(Alignment.CenterEnd)
-                                    .padding(end = 48.dp)
-                                    .background(
-                                        MiuixTheme.colorScheme.surfaceContainer.copy(alpha = .96f),
-                                        RoundedCornerShape(8.dp),
-                                    )
-                                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                            )
-                        }
-                    }
+                    ManualGridTiles(
+                        entries = entries,
+                        gridState = gridState,
+                        scrollBehavior = scrollBehavior,
+                        bottomPadding = 12.dp + clearance.bottom +
+                            if (selectionMode) SelectionToolbarClearance else 0.dp,
+                        selectionMode = selectionMode,
+                        isSelected = { id -> id in selected },
+                        onSelectionToggle = { id ->
+                            selected = if (id in selected) selected - id else selected + id
+                        },
+                        preview = preview,
+                    )
+                    ManualGridDateScrubber(
+                        gridState = gridState,
+                        metrics = scrollMetrics,
+                        currentDate = currentDate,
+                        scrubbing = scrubbing,
+                        onScrubbingChange = { scrubbing = it },
+                    )
                 }
             }
         }
     }
 
     MediaPreviewHost(preview, animationEnabled)
+}
+
+/**
+ * Top-bar trailing actions. In selection mode the bar shows only the count; the
+ * rest of the actions belong to the browsing state and each depends on the grid
+ * mode, so the branch is wide but flat.
+ */
+@Composable
+private fun RowScope.ManualGridTopBarActions(
+    mode: MediaGridMode,
+    selectionMode: Boolean,
+    selectedCount: Int,
+    searchActive: Boolean,
+    hasMedia: Boolean,
+    overflowActions: List<OverlayAction>,
+    showOverflow: Boolean,
+    deleteAllArmed: Boolean,
+    onToggleSearch: () -> Unit,
+    onEnterSelection: () -> Unit,
+    onShowOverflow: () -> Unit,
+    onDismissOverflow: () -> Unit,
+    onArmDeleteAll: () -> Unit,
+    onDisarmDeleteAll: () -> Unit,
+    onConfirmDeleteAll: () -> Unit,
+    onDeleteCollection: () -> Unit,
+) {
+    if (selectionMode) {
+        Text(
+            text = pluralStringResource(R.plurals.manual_selected_count, selectedCount, selectedCount),
+            color = MiuixTheme.colorScheme.primary,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 6.dp),
+        )
+        return
+    }
+    IconButton(onClick = onToggleSearch) {
+        Icon(
+            if (searchActive) Icons.Default.Close else Icons.Default.Search,
+            contentDescription = stringResource(R.string.manual_search_cd),
+        )
+    }
+    IconButton(onClick = onEnterSelection) {
+        Icon(
+            Icons.Default.CheckCircleOutline,
+            contentDescription = stringResource(R.string.manual_select_mode_cd),
+        )
+    }
+    if (overflowActions.isNotEmpty() && hasMedia) {
+        OverlayActionPopup(
+            show = showOverflow,
+            actions = overflowActions,
+            onDismissRequest = onDismissOverflow,
+        ) {
+            IconButton(onClick = onShowOverflow) {
+                Icon(
+                    Icons.Default.MoreVert,
+                    contentDescription = stringResource(R.string.marked_delete_menu_cd),
+                )
+            }
+        }
+    }
+    if (mode == MediaGridMode.TRASH && hasMedia) {
+        DeleteAllBinButton(
+            armed = deleteAllArmed,
+            onArm = onArmDeleteAll,
+            onDisarm = onDisarmDeleteAll,
+            onConfirm = onConfirmDeleteAll,
+        )
+    }
+    if (mode == MediaGridMode.LOGICAL_ALBUM) {
+        IconButton(onClick = onDeleteCollection) {
+            Icon(
+                Icons.Default.DeleteOutline,
+                contentDescription = stringResource(R.string.logical_album_delete),
+                tint = DangerRed,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ManualGridSearchBar(query: String, onQueryChange: (String) -> Unit) {    SearchBar(
+        inputField = {
+            InputField(
+                query = query,
+                onQueryChange = onQueryChange,
+                onSearch = {},
+                expanded = false,
+                onExpandedChange = {},
+                label = stringResource(R.string.manual_search_hint),
+            )
+        },
+        onExpandedChange = {},
+        modifier = Modifier.padding(bottom = 4.dp),
+    ) {}
+}
+
+@Composable
+private fun ManualGridSortCard(sortBySize: Boolean, onSortChange: (Boolean) -> Unit) {
+    val sortOptions = remember { listOf(false, true) }
+    Card(
+        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+        colors = standardCardColors(),
+    ) {
+        OverlaySpinnerPreference(
+            items = sortOptions.map { bySize ->
+                SpinnerEntry(
+                    title = stringResource(
+                        if (bySize) R.string.manual_sort_by_size else R.string.manual_sort_by_date,
+                    ),
+                )
+            },
+            selectedIndex = sortOptions.indexOf(sortBySize),
+            title = stringResource(R.string.manual_sort_title),
+            renderInRootScaffold = true,
+            onSelectedIndexChange = { index -> sortOptions.getOrNull(index)?.let(onSortChange) },
+        )
+    }
+}
+
+/**
+ * Three different empties: no search results, nothing left to review, or an
+ * analysis list that came back empty. Only the first offers to clear the search.
+ */
+@Composable
+private fun ManualGridEmptyState(
+    searching: Boolean,
+    supportsMarking: Boolean,
+    onClearSearch: () -> Unit,
+    onBack: () -> Unit,
+) {
+    EmptyState(
+        title = stringResource(
+            when {
+                searching -> R.string.manual_search_empty_title
+                supportsMarking -> R.string.empty_review_title
+                else -> R.string.marked_empty_title
+            },
+        ),
+        summary = stringResource(
+            when {
+                searching -> R.string.manual_search_empty_summary
+                supportsMarking -> R.string.empty_review_summary
+                else -> R.string.marked_empty_summary
+            },
+        ),
+        actionLabel = stringResource(
+            if (searching) R.string.manual_search_clear else R.string.empty_review_action,
+        ),
+        onAction = if (searching) onClearSearch else onBack,
+    )
+}
+
+@Composable
+private fun ManualGridTiles(
+    entries: List<ManualGridEntry>,
+    gridState: LazyGridState,
+    scrollBehavior: ScrollBehavior,
+    bottomPadding: Dp,
+    selectionMode: Boolean,
+    isSelected: (Long) -> Boolean,
+    onSelectionToggle: (Long) -> Unit,
+    preview: MediaPreviewController,
+) {
+    LazyVerticalGrid(
+        state = gridState,
+        modifier = Modifier
+            .fillMaxSize()
+            .scrollEndHaptic()
+            .overScrollVertical()
+            .nestedScroll(scrollBehavior.nestedScrollConnection),
+        columns = GridCells.Adaptive(96.dp),
+        contentPadding = PaddingValues(start = 12.dp, end = 50.dp, top = 8.dp, bottom = bottomPadding),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        items(
+            items = entries,
+            key = { it.key },
+            span = { entry ->
+                if (entry is ManualGridEntry.DateHeader) GridItemSpan(maxLineSpan) else GridItemSpan(1)
+            },
+        ) { entry ->
+            when (entry) {
+                is ManualGridEntry.DateHeader -> DateHeader(entry.label)
+                is ManualGridEntry.Media -> {
+                    val item = entry.item
+                    // Reading the selection directly would record a dependency on the
+                    // whole set, so toggling one tile recomposed every composed tile.
+                    // derivedStateOf only notifies when this item's own answer flips.
+                    val selected by remember(item.id) { derivedStateOf { isSelected(item.id) } }
+                    MediaTile(
+                        item = item,
+                        onClick = { preview.open(item) },
+                        onPreviewStart = { preview.peek(item) },
+                        onPreviewEnd = { preview.release(item.id) },
+                        selected = selected,
+                        selectionMode = selectionMode,
+                        onSelectionToggle = { onSelectionToggle(item.id) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Fast-scroll strip plus the floating date label, shown only when the grid overflows. */
+@Composable
+private fun BoxScope.ManualGridDateScrubber(
+    gridState: LazyGridState,
+    metrics: ScrollMetrics,
+    currentDate: String,
+    scrubbing: Boolean,
+    onScrubbingChange: (Boolean) -> Unit,
+) {
+    if (metrics.totalItems <= metrics.visibleItems) return
+    ManualGridScrubber(
+        state = gridState,
+        totalItems = metrics.totalItems,
+        visibleItems = metrics.visibleItems,
+        modifier = Modifier.align(Alignment.CenterEnd),
+        onScrubbingChange = onScrubbingChange,
+    )
+    if (gridState.isScrollInProgress || scrubbing) {
+        Text(
+            text = currentDate,
+            color = MiuixTheme.colorScheme.onSurfaceContainer,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 48.dp)
+                .background(
+                    MiuixTheme.colorScheme.surfaceContainer.copy(alpha = .96f),
+                    RoundedCornerShape(8.dp),
+                )
+                .padding(horizontal = 12.dp, vertical = 8.dp),
+        )
+    }
 }
 
 /**
