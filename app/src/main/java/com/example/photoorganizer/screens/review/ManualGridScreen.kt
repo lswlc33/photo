@@ -116,6 +116,16 @@ enum class MediaGridMode { MANUAL, KEPT, TRASH, SCREENSHOTS, LARGEST, DUPLICATE_
 /** Extra scroll clearance so the floating selection toolbar never covers the last row. */
 private val SelectionToolbarClearance = 84.dp
 
+/**
+ * Three tiles per row, fixed rather than adaptive.
+ *
+ * `Adaptive(96.dp)` looked right but landed on two columns on a 360 dp-wide screen:
+ * the 50 dp reserved for the scrubber left 298 dp, and three 96 dp tiles plus their
+ * spacing need 302 dp. Missing by four dp meant every phone in that range got half
+ * the density it should have, which is exactly the failure mode `Adaptive` hides.
+ */
+private const val GridColumns = 3
+
 /** How long the discarded page's bin button stays armed before it reverts. */
 private const val ArmedTimeoutMillis = 3_000L
 
@@ -581,7 +591,7 @@ private fun ManualGridTiles(
             .scrollEndHaptic()
             .overScrollVertical()
             .nestedScroll(scrollBehavior.nestedScrollConnection),
-        columns = GridCells.Adaptive(96.dp),
+        columns = GridCells.Fixed(GridColumns),
         contentPadding = PaddingValues(start = 12.dp, end = 50.dp, top = 8.dp, bottom = bottomPadding),
         horizontalArrangement = Arrangement.spacedBy(7.dp),
         verticalArrangement = Arrangement.spacedBy(7.dp),
