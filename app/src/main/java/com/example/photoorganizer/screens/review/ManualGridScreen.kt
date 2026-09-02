@@ -1,5 +1,6 @@
 package com.example.photoorganizer.screens.review
 
+import android.text.format.DateFormat as AndroidDateFormat
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
@@ -60,6 +61,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
@@ -71,6 +73,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.os.ConfigurationCompat
 import com.example.photoorganizer.R
 import com.example.photoorganizer.media.ReviewState
 import com.example.photoorganizer.media.UiMedia
@@ -109,6 +112,9 @@ import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlin.math.roundToInt
 
 enum class MediaGridMode { MANUAL, KEPT, TRASH, SCREENSHOTS, LARGEST, DUPLICATE_GROUP, LOGICAL_ALBUM }
@@ -218,6 +224,7 @@ fun ManualGridScreen(
     }
     val clearance = systemClearance()
     val unknownDate = stringResource(R.string.manual_unknown_date)
+    val monthLabelOf = rememberMonthLabelFormatter()
     val visibleMedia = remember(media, searchQuery) {
         val needle = searchQuery.trim()
         if (needle.isEmpty()) media else media.filter { it.displayName.contains(needle, ignoreCase = true) }
@@ -232,8 +239,18 @@ fun ManualGridScreen(
             selected = selected.filterTo(HashSet(selected.size)) { it in visibleIds }
         }
     }
-    val entries = remember(visibleMedia, sortBySize, unknownDate) {
-        buildManualGridEntries(visibleMedia, sortBySize, unknownDate)
+    val entries = remember(visibleMedia, sortBySize, unknownDate, monthLabelOf) {
+        // Sorting by size groups by month, not by day. A day-sized bucket puts the
+        // largest file of each day under its own header, which tells you nothing about
+        // where the big files actually are - the whole point of sorting by size.
+        buildManualGridEntries(visibleMedia, sortBySize) { item ->
+            val millis = item.dateTakenMillis
+            when {
+                millis == null -> unknownDate
+                sortBySize -> monthLabelOf(millis)
+                else -> scanDate(millis)
+            }
+        }
     }
     val dateAtIndex = remember(entries) {
         var currentDate = unknownDate
@@ -929,19 +946,50 @@ private fun DateHeader(label: String) {
     }
 }
 
-private fun buildManualGridEntries(
+/**
+ * Formats a timestamp as a month header - "2026年9月", "September 2026".
+ *
+ * Built from an ICU skeleton rather than a literal pattern because the order of year
+ * and month, and whether the month is a name or a number, differ per language. Held
+ * as a lambda so [buildManualGridEntries] stays free of locale handling.
+ */
+@Composable
+private fun rememberMonthLabelFormatter(): (Long) -> String {
+    val locale = ConfigurationCompat.getLocales(LocalConfiguration.current)[0]
+        ?: Locale.getDefault()
+    return remember(locale) {
+        val pattern = AndroidDateFormat.getBestDateTimePattern(locale, "yMMMM")
+        val formatter = SimpleDateFormat(pattern, locale)
+        // Composition only, so the shared SimpleDateFormat is never touched off the
+        // main thread.
+        ({ millis: Long -> formatter.format(Date(millis)) })
+    }
+}
+
+/**
+ * Groups [media] under headers and orders each group.
+ *
+ * The grouping key comes from [labelOf] rather than being computed here, which keeps
+ * the part with ordering bugs in it free of locale handling - and lets the caller
+ * group by day or by month depending on what the sort is for.
+ *
+ * Groups are ordered by their newest item so the most recent header is first, whatever
+ * the label text happens to sort as.
+ */
+internal fun buildManualGridEntries(
     media: List<UiMedia>,
     sortBySize: Boolean,
-    unknownDate: String,
+    labelOf: (UiMedia) -> String,
 ): List<ManualGridEntry> {
     val groups = media
-        .groupBy { item -> item.dateTakenMillis?.let(::scanDate) ?: unknownDate }
-        .values
-        .sortedByDescending { group -> group.maxOfOrNull { it.dateTakenMillis ?: Long.MIN_VALUE } ?: Long.MIN_VALUE }
+        .groupBy(labelOf)
+        .entries
+        .sortedByDescending { (_, group) ->
+            group.maxOfOrNull { it.dateTakenMillis ?: Long.MIN_VALUE } ?: Long.MIN_VALUE
+        }
 
     return buildList {
-        groups.forEach { group ->
-            val label = group.firstOrNull()?.dateTakenMillis?.let(::scanDate) ?: unknownDate
+        groups.forEach { (label, group) ->
             add(ManualGridEntry.DateHeader(label))
             val sorted = if (sortBySize) {
                 group.sortedByDescending { it.sizeBytes }
@@ -953,7 +1001,7 @@ private fun buildManualGridEntries(
     }
 }
 
-private sealed interface ManualGridEntry {
+internal sealed interface ManualGridEntry {
     val key: String
 
     data class DateHeader(val label: String) : ManualGridEntry {
