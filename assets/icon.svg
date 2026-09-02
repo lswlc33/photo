@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108" width="108" height="108" role="img" aria-label="照片整理">
+  <rect width="108" height="108" rx="24" fill="#0B6F78"/>
+  <g transform="translate(-1.5,-5) translate(55.5,59) scale(0.76) translate(-55.5,-59)">
+    <path fill="#074D56" fill-opacity=".34" d="M36,27h45c4.4,0 8,3.6 8,8v39c0,4.4 -3.6,8 -8,8h-45c-4.4,0 -8,-3.6 -8,-8v-39c0,-4.4 3.6,-8 8,-8z"/>
+    <path fill="#DDF7F2" d="M31,22h45c4.4,0 8,3.6 8,8v39c0,4.4 -3.6,8 -8,8h-45c-4.4,0 -8,-3.6 -8,-8v-39c0,-4.4 3.6,-8 8,-8z"/>
+    <path fill="#4FB8AF" d="M31,58l12,-12 10,10 7,-7 20,20h-49z"/>
+    <path fill="#F5C451" d="M67,34a7,7 0,1 1,0 14a7,7 0,1 1,0 -14"/>
+    <path fill="#FF6B5E" d="M71,62a17,17 0,1 1,0 34a17,17 0,1 1,0 -34"/>
+    <path fill="#FFFFFF" d="M62,78l6,6 12,-14 4,3.7 -15.7,18.2 -10.3,-10.3z"/>
+  </g>
+</svg>
