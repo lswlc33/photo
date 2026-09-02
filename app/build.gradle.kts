@@ -1,28 +1,7 @@
-import java.util.Properties
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
 }
-
-val localReleaseProperties = Properties().apply {
-    val propertiesFile = file("${System.getProperty("user.home")}/.android/photo-organizer-release.properties")
-    if (propertiesFile.isFile) propertiesFile.inputStream().use { input -> load(input) }
-}
-
-fun releaseCredential(environmentName: String, propertyName: String): String? =
-    providers.environmentVariable(environmentName).orNull ?: localReleaseProperties.getProperty(propertyName)
-
-val releaseStoreFile = releaseCredential("PHOTO_RELEASE_STORE_FILE", "storeFile")
-val releaseStorePassword = releaseCredential("PHOTO_RELEASE_STORE_PASSWORD", "storePassword")
-val releaseKeyAlias = releaseCredential("PHOTO_RELEASE_KEY_ALIAS", "keyAlias")
-val releaseKeyPassword = releaseCredential("PHOTO_RELEASE_KEY_PASSWORD", "keyPassword")
-val releaseSigningConfigured = listOf(
-    releaseStoreFile,
-    releaseStorePassword,
-    releaseKeyAlias,
-    releaseKeyPassword,
-).all { it != null }
 
 // Declared in gradle.properties so a release bump is a one-line, reviewable
 // commit rather than an edit buried in this file. The environment variables
@@ -49,23 +28,16 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    signingConfigs {
-        if (releaseSigningConfigured) {
-            create("release") {
-                storeFile = rootProject.file(requireNotNull(releaseStoreFile))
-                storePassword = requireNotNull(releaseStorePassword)
-                keyAlias = requireNotNull(releaseKeyAlias)
-                keyPassword = requireNotNull(releaseKeyPassword)
-            }
-        }
-    }
-
     buildTypes {
+        // There is deliberately no release signing config: no keystore lives in
+        // this repository and CI does not sign. `assembleRelease` therefore ends
+        // at app-release-unsigned.apk, which is only good for checking that R8
+        // and resource shrinking still work - the installable artifact everyone
+        // downloads is the debug build, signed by Android's own debug key.
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.findByName("release")
         }
     }
 
