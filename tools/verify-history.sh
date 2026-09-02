@@ -1,9 +1,9 @@
 #!/bin/sh
 # Checks that every commit in a range builds and passes its tests on its own.
 #
-# master is the only history and has no remote, so a commit that does not build
-# is only discovered by bisecting into it later. Run this after rewriting or
-# splitting history, and before cutting a release.
+# master is pushed as-is, so a commit that does not build is only discovered by
+# bisecting into it later - CI checks the tip, not the steps that led to it. Run
+# this after rewriting or splitting history, and before cutting a release.
 #
 # Usage:
 #     tools/verify-history.sh            # whole history

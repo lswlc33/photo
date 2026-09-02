@@ -3,10 +3,10 @@
 #
 #     git config core.hooksPath .githooks
 #
-# Why this exists: master is the only history and has no remote, so a commit
-# that does not compile can only ever be found by bisecting into it. AGENTS.md
-# declares that every commit must build on its own; this makes that declaration
-# machine-checked instead of remembered.
+# Why this exists: a commit that does not compile can only ever be found by
+# bisecting into it. AGENTS.md declares that every commit must build on its own;
+# this makes that declaration machine-checked instead of remembered, and catches
+# it before the push rather than in CI a minute later.
 #
 # `:app:test` compiles the debug sources and the unit tests, so it catches
 # compile errors as well as test failures. Lint is deliberately not run here

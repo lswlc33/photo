@@ -1,8 +1,13 @@
 # 照片整理 · Photo Organizer
 
+[![CI](https://github.com/lswlc33/photo/actions/workflows/ci.yml/badge.svg)](https://github.com/lswlc33/photo/actions/workflows/ci.yml)
+[![Pages](https://github.com/lswlc33/photo/actions/workflows/pages.yml/badge.svg)](https://github.com/lswlc33/photo/actions/workflows/pages.yml)
+
 本地相册整理工具。扫描设备上的照片与视频，帮助逐张做出取舍，检出重复项、相似画面、截屏与大文件，并在本机完成压缩重编码。
 
 全部处理都在设备上进行：应用**没有申请网络权限**，任何照片、缩略图或统计数据都不会离开设备。
+
+介绍页：<https://lswlc33.github.io/photo/> · 直接下载：[nightly 预发布](https://github.com/lswlc33/photo/releases/tag/nightly)（master 每次推送自动刷新）
 
 ## 功能
 
@@ -12,7 +17,7 @@
 
 - **智能模式** —— 按"收益"排队：先问重复副本，再问截屏，再问大文件，最后是其余项目。
 - **定向模式** —— 按相册、日期区间、类型（照片/视频/动态照片/截屏）与最小体积筛选后再评审。
-- **手动模式** —— 日期分组网格，支持批量选择、统一标记与右侧快速滚动条。
+- **手动模式** —— 分组网格，支持批量选择、统一标记与右侧快速滚动条。按日期排序时按天分组；按大小排序时先按月份分组，每月内部大文件在前——这样"最占空间的那些照片"才落在同一屏里，而不是被打散成一条全库长队。
 
 评审结果分为「已保留」与「已弃置」两个集合，可随时回看。删除一律通过系统确认对话框执行，应用自身从不直接删除文件。另可把任意项目归入自建的「逻辑相册」，它只记录归属关系，不移动文件。
 
@@ -23,7 +28,7 @@
 - **截屏** / **大文件** —— 阈值可在 5/10/20/50/100 MB 间选择。
 - **媒体处理** —— 图片可转 JPEG/WebP/PNG、限制长边、调整质量、保留或清除 Exif；视频可转 1080p/720p/480p、限制码率、仅保留视频或仅提取音频。**源文件永不修改**，产物写入 `Pictures|Movies|Music/Photo Organizer`，并且在体积反而变大时自动放弃。
 
-**设置** 主题（跟随系统/浅色/深色）、滑动动画、删除前确认、默认排序、图片与视频的默认质量、元数据处理，以及索引范围（全部相册／排除指定相册／仅指定相册）。
+**设置** 主题（跟随系统/浅色/深色）、滑动动画、删除前确认、默认排序、图片与视频的默认质量、元数据处理，以及索引范围（全部相册／排除指定相册／仅指定相册）。「关于」页除版本信息外，还列出应用做什么、不做什么，以及用到的每一个第三方开源项目及其许可证。
 
 ## 环境要求
 
@@ -71,6 +76,33 @@ release 签名凭据从环境变量 `PHOTO_RELEASE_STORE_FILE` / `_STORE_PASSWOR
 
 分析类逻辑刻意写成不依赖 Android 的纯 Kotlin，Android 部分作为 lambda 注入，因此绝大部分核心逻辑可以在 JVM 上测试。新增算法请沿用这个模式。
 
+## 提交前门禁
+
+一个编译不过的提交只能靠事后 bisect 找回来，所以这条规则是机器检查的，本地和远端各一道。
+
+本地：`.githooks/pre-commit` 会在每次 `git commit` 前跑 `:app:test`（它同时编译主源码与单元测试）。克隆后需要启用一次：
+
+```bash
+git config core.hooksPath .githooks
+```
+
+要故意提交一个未完成的改动时用 `SKIP_VERIFY=1 git commit`。此外：
+
+- `tools/verify.sh` —— 完整门禁：test + lint + assembleDebug。发版前跑，和 CI 跑的是同样三步。
+- `tools/verify-history.sh [base]` —— 在临时 worktree 里逐个提交重放这套构建，用来确认整段历史每一步都能独立编译。它不改动工作区，也不重写提交。
+
+远端：`.github/workflows/` 里有三个 workflow，都只用运行时自带的 `GITHUB_TOKEN`，不需要 PAT。
+
+| workflow | 触发 | 做什么 |
+|---|---|---|
+| `ci.yml` | 推送 master、PR | 在干净机器上重跑 test + lint + assembleDebug，上传 APK 与 lint 报告 |
+| `prerelease.yml` | 推送 master | 刷新滚动的 `nightly` 预发布，附一个可直接安装的 APK |
+| `pages.yml` | `index.html` / `assets/` 变化 | 部署介绍页 |
+
+`prerelease.yml` 在仓库配了 `PHOTO_RELEASE_KEYSTORE_BASE64`、`PHOTO_RELEASE_STORE_PASSWORD`、`PHOTO_RELEASE_KEY_ALIAS`、`PHOTO_RELEASE_KEY_PASSWORD` 四个 secret 时产出签过名的 release APK；没配就退回 debug APK——未签名的 release APK 装不上，上传它等于上传一个废文件。
+
+三个 workflow 都会在自己的工作副本里把 `distributionUrl` 换回 `services.gradle.org`。提交里的腾讯云镜像对本地更快，但 GitHub 的 runner 在境外，从那个镜像拉发行版很慢。
+
 ## 代码结构
 
 单模块 `:app`，包名 `com.example.photoorganizer`：
@@ -91,4 +123,6 @@ release 签名凭据从环境变量 `PHOTO_RELEASE_STORE_FILE` / `_STORE_PASSWOR
 
 - **`AGENTS.md`** —— 代码风格、MIUIX 组件使用规范、提交约定、依赖库文档索引。
 - **`CLAUDE.md`** —— 架构说明：状态归属、两级导航、索引与指纹管线、需要注意的不变量。
+
+仓库根目录的 `index.html` 与 `assets/` 是介绍页，纯静态、无构建步骤，由 `pages.yml` 部署。它需要仓库 Settings → Pages 里把 Source 选成 `GitHub Actions`，之后 `index.html` 或 `assets/` 一有变化就会自动重新发布。它不参与 Android 构建。
 

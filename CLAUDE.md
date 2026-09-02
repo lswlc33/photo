@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Read `AGENTS.md` too: it holds the coding style, the MIUIX component rules, the commit conventions and the library reference links. Two of its statements are now stale — the `ffmpeg/` package and `app/src/main/jniLibs/` were deleted (commit `16418b4`), and the manifest no longer declares `READ_EXTERNAL_STORAGE`.
+Read `AGENTS.md` too: it holds the coding style, the MIUIX component rules, the commit conventions and the library reference links.
 
 ## Commands
 
@@ -33,6 +33,12 @@ Release signing credentials come from the env vars `PHOTO_RELEASE_STORE_FILE` / 
 
 Dependencies live only in `gradle/libs.versions.toml`. `settings.gradle.kts` sets `FAIL_ON_PROJECT_REPOS`, so never add a repository or a hard-coded coordinate in a module build file.
 
+`.githooks/pre-commit` runs `:app:test` before every commit so a non-compiling commit cannot land. It only takes effect once per clone, via `git config core.hooksPath .githooks`; `SKIP_VERIFY=1 git commit` bypasses it deliberately. `tools/verify.sh` is the fuller gate (test + lint + `assembleDebug`) and `tools/verify-history.sh [base]` replays it over a whole commit range inside a scratch worktree.
+
+`.github/workflows/` holds three workflows, none of which needs a personal access token — each uses the run's own `GITHUB_TOKEN`. `ci.yml` re-runs test, lint and `assembleDebug` on a clean machine. `prerelease.yml` refreshes a rolling `nightly` prerelease with an APK on every push to `master`; it builds `assembleRelease` when the four `PHOTO_RELEASE_*` secrets are set and falls back to `assembleDebug` when they are not, because an unsigned release APK cannot be installed. `pages.yml` deploys the landing page, and needs Settings → Pages → Source set to "GitHub Actions". All three rewrite `distributionUrl` to `services.gradle.org` in their working copy, because the committed wrapper points at a Tencent mirror that is fast locally and slow from GitHub's runners.
+
+`index.html` and `assets/` at the repository root are that landing page. They are not part of the Android build and nothing in `app/` reads them.
+
 ## Architecture
 
 A Compose photo/video cleanup app (`com.example.photoorganizer`, minSdk 33, compile/target 37). No DI container, no Room, no navigation library, no persisted database — that is deliberate, and the layering below is what replaces them.
@@ -49,7 +55,7 @@ Data flows down as `IndexedMedia` (domain) → `UiMedia` (`toUiMedia`, adds the 
 
 `AppPage` (`ui/AppPage.kt`) is the four bottom-bar pages. `DetailMode` — a *private* enum at the bottom of `PhotoOrganizerApp.kt` — is the full-screen detail layer stacked on top of the page layer; `selectedMode = null` means "no detail open". Adding a screen means adding a `DetailMode` entry plus a branch in the `when (selectedMode)` block. Back is handled by `PredictiveBackHandler` in the root, not per screen.
 
-`ManualGridScreen` is reused for eight different detail modes; `MediaGridMode` selects which selection actions its toolbar offers.
+`ManualGridScreen` is reused for all seven grid-shaped detail modes; `MediaGridMode` selects which selection actions its toolbar offers.
 
 ### Index and fingerprint pipeline
 
@@ -96,8 +102,8 @@ Per-item review decisions do **not**. They are an append-only log at `filesDir/r
 
 ## Conventions that break things quietly
 
-- Chinese is the primary UI language. Add every user-visible string to **both** `values/strings.xml` and `values-zh-rCN/strings.xml` in the same change (306 strings and 21 plurals each today); Chinese plurals get only a `quantity="other"` item. Source files stay ASCII apart from the Chinese resource file.
+- Chinese is the primary UI language. Add every user-visible string to **both** `values/strings.xml` and `values-zh-rCN/strings.xml` in the same change (336 strings and 21 plurals each today); Chinese plurals get only a `quantity="other"` item. Source files stay ASCII apart from the Chinese resource file.
 - Keep new analysis logic pure and Android-free, and inject the Android part as a lambda — that is why `ToolAnalyzer`, `PerceptualHash`, `SmartQueue`, `MediaHashCache`, `MediaFingerprintCodec` and `LogicalAlbumStore` all have generic internal helpers with JVM tests next to them. Anything that reaches for `ContentResolver` directly can only be tested on a device.
 - `core.autocrlf` is deliberately `false`. Re-enabling it rewrites every file in the tree.
-- There is no remote; `master` is the only history. Each change should land as its own independently-compiling commit.
+- `master` tracks `origin/master` at <https://github.com/lswlc33/photo>. Each change should land as its own independently-compiling commit; pushing publishes, so see the workflow notes above before you push.
 
