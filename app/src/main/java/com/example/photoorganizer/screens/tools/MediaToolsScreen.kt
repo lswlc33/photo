@@ -168,37 +168,48 @@ fun MediaToolsScreen(
         }
     }
 
-    val formatOptions = listOf(
-        ToolOption(ImageFormat.JPEG, "JPEG", stringResource(R.string.media_tool_format_jpeg_desc)),
-        ToolOption(ImageFormat.WEBP, "WebP", stringResource(R.string.media_tool_format_webp_desc)),
-        ToolOption(ImageFormat.PNG, "PNG", stringResource(R.string.media_tool_format_png_desc)),
-    )
-    val resizeOptions = ImageResizeOption.entries.map { option ->
-        ToolOption(
-            value = option,
-            title = option.longEdgePx?.let { stringResource(R.string.media_tool_resize_value, it) }
-                ?: stringResource(R.string.media_tool_keep_original),
-            summary = if (option == ImageResizeOption.ORIGINAL) {
-                stringResource(R.string.media_tool_resize_original_desc)
-            } else {
-                null
-            },
+    // Keyed on Resources rather than remembered outright: these hold resolved
+    // strings, and Resources is what changes when the configuration does. Rebuilt
+    // per recomposition they were four list allocations plus a string lookup each.
+    val formatOptions = remember(resources) {
+        listOf(
+            ToolOption(ImageFormat.JPEG, "JPEG", resources.getString(R.string.media_tool_format_jpeg_desc)),
+            ToolOption(ImageFormat.WEBP, "WebP", resources.getString(R.string.media_tool_format_webp_desc)),
+            ToolOption(ImageFormat.PNG, "PNG", resources.getString(R.string.media_tool_format_png_desc)),
         )
     }
-    val resolutionOptions = VideoResolution.entries.map { option ->
-        ToolOption(
-            value = option,
-            title = option.shortSidePx?.let { "${it}p" }
-                ?: stringResource(R.string.media_tool_keep_original),
-            summary = stringResource(option.descriptionRes()),
-        )
+    val resizeOptions = remember(resources) {
+        ImageResizeOption.entries.map { option ->
+            ToolOption(
+                value = option,
+                title = option.longEdgePx?.let { resources.getString(R.string.media_tool_resize_value, it) }
+                    ?: resources.getString(R.string.media_tool_keep_original),
+                summary = if (option == ImageResizeOption.ORIGINAL) {
+                    resources.getString(R.string.media_tool_resize_original_desc)
+                } else {
+                    null
+                },
+            )
+        }
     }
-    val trackOptions = VideoTrackMode.entries.map { option ->
-        ToolOption(
-            value = option,
-            title = stringResource(option.labelRes()),
-            summary = stringResource(option.descriptionRes()),
-        )
+    val resolutionOptions = remember(resources) {
+        VideoResolution.entries.map { option ->
+            ToolOption(
+                value = option,
+                title = option.shortSidePx?.let { "${it}p" }
+                    ?: resources.getString(R.string.media_tool_keep_original),
+                summary = resources.getString(option.descriptionRes()),
+            )
+        }
+    }
+    val trackOptions = remember(resources) {
+        VideoTrackMode.entries.map { option ->
+            ToolOption(
+                value = option,
+                title = resources.getString(option.labelRes()),
+                summary = resources.getString(option.descriptionRes()),
+            )
+        }
     }
 
     // The screen only describes the work; running it belongs to the ViewModel, so a

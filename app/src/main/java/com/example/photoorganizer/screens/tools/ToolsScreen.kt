@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.res.pluralStringResource
@@ -61,8 +63,21 @@ fun ToolsScreen(
     onOpenSimilar: () -> Unit,
 ) {
     val refresh = rememberRefreshBridge(busy = !indexReady, onRefresh = onRefresh)
+    val resources = LocalResources.current
     val thresholdLabel = formatBytes(ToolAnalyzer.thresholdBytesOf(largestThresholdMb))
     val thresholdOptions = ToolAnalyzer.LargestThresholdOptionsMb
+    // Fixed for a given configuration: rebuilding it per recomposition meant a
+    // string lookup and a formatBytes call per option, every frame.
+    val thresholdEntries = remember(resources) {
+        thresholdOptions.map { mb ->
+            SpinnerEntry(
+                title = resources.getString(
+                    R.string.tools_threshold_option,
+                    formatBytes(ToolAnalyzer.thresholdBytesOf(mb)),
+                ),
+            )
+        }
+    }
     ScreenColumn(
         title = stringResource(R.string.tools_title),
         contentBottomPadding = contentBottomPadding,
@@ -173,9 +188,7 @@ fun ToolsScreen(
                     }
                 }
                 OverlaySpinnerPreference(
-                    items = thresholdOptions.map { mb ->
-                        SpinnerEntry(title = stringResource(R.string.tools_threshold_option, formatBytes(ToolAnalyzer.thresholdBytesOf(mb))))
-                    },
+                    items = thresholdEntries,
                     selectedIndex = thresholdOptions.indexOf(largestThresholdMb).coerceAtLeast(0),
                     title = stringResource(R.string.tools_largest_threshold_title),
                     renderInRootScaffold = true,

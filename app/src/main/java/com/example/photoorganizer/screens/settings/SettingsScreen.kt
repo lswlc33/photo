@@ -1,6 +1,7 @@
 package com.example.photoorganizer.screens.settings
 
 import android.content.Intent
+import android.content.res.Resources
 import android.os.Build
 import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +21,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.unit.dp
@@ -75,42 +77,31 @@ fun SettingsScreen(
     contentBottomPadding: androidx.compose.ui.unit.Dp,
 ) {
     val context = LocalContext.current
+    val resources = LocalResources.current
     var showCapabilitiesDialog by rememberSaveable { mutableStateOf(false) }
     var showHelpDialog by rememberSaveable { mutableStateOf(false) }
     var showIndexScopeDialog by rememberSaveable { mutableStateOf(false) }
 
-    val themeLabel: (ThemeMode) -> Int = {
-            when (it) {
-                ThemeMode.AUTO -> R.string.settings_theme_auto
-                ThemeMode.LIGHT -> R.string.settings_theme_light
-                ThemeMode.DARK -> R.string.settings_theme_dark
-            }
-    }
-    val sortLabel: (SortOrder) -> Int = {
-        if (it == SortOrder.DATE) R.string.settings_sort_date else R.string.settings_sort_size
-    }
-    val imageQualityLabel: (Int) -> Int = {
-            when (it) {
-                90 -> R.string.settings_image_quality_high
-                80 -> R.string.settings_image_quality_medium
-                else -> R.string.settings_image_quality_low
-            }
-    }
-    val videoQualityLabel: (VideoQuality) -> Int = {
-            when (it) {
-                VideoQuality.HIGH -> R.string.settings_video_quality_high
-                VideoQuality.MEDIUM -> R.string.settings_video_quality_medium
-                VideoQuality.LOW -> R.string.settings_video_quality_low
-            }
-    }
+    // The option lists and their labels are fixed for a given configuration, so
+    // they are built once instead of once per recomposition - this file previously
+    // remembered two of the seven and rebuilt the rest, including five label
+    // lambdas and three `entries.toList()` copies.
+    val themeEntries = remember(resources) { spinnerEntries(ThemeMode.entries, resources, ::themeLabel) }
+    val sortEntries = remember(resources) { spinnerEntries(SortOrder.entries, resources, ::sortLabel) }
     val imageQualityOptions = remember { listOf(90, 80, 65) }
-    val metadataOptions = remember { listOf(true, false) }
-    val metadataLabel: (Boolean) -> Int = {
-        if (it) R.string.settings_metadata_strip else R.string.settings_metadata_keep
+    val imageQualityEntries = remember(resources) {
+        spinnerEntries(imageQualityOptions, resources, ::imageQualityLabel)
     }
-    val themeOptions = ThemeMode.entries.toList()
-    val sortOptions = SortOrder.entries.toList()
-    val videoQualityOptions = VideoQuality.entries.toList()
+    val videoQualityEntries = remember(resources) {
+        spinnerEntries(VideoQuality.entries, resources, ::videoQualityLabel)
+    }
+    val metadataOptions = remember { listOf(true, false) }
+    val metadataEntries = remember(resources) {
+        spinnerEntries(metadataOptions, resources, ::metadataLabel)
+    }
+    val themeOptions = ThemeMode.entries
+    val sortOptions = SortOrder.entries
+    val videoQualityOptions = VideoQuality.entries
 
     ScreenColumn(
         title = stringResource(R.string.settings_title),
@@ -126,7 +117,7 @@ fun SettingsScreen(
     ) {
         PreferenceGroup(stringResource(R.string.settings_appearance)) {
             OverlaySpinnerPreference(
-                items = themeOptions.map { SpinnerEntry(title = stringResource(themeLabel(it))) },
+                items = themeEntries,
                 selectedIndex = themeOptions.indexOf(themeMode),
                 title = stringResource(R.string.settings_theme_title),
                 renderInRootScaffold = true,
@@ -160,7 +151,7 @@ fun SettingsScreen(
         }
         PreferenceGroup(stringResource(R.string.settings_organize_behavior)) {
             OverlaySpinnerPreference(
-                items = sortOptions.map { SpinnerEntry(title = stringResource(sortLabel(it))) },
+                items = sortEntries,
                 selectedIndex = sortOptions.indexOf(defaultSortOrder),
                 title = stringResource(R.string.settings_default_sort),
                 renderInRootScaffold = true,
@@ -181,21 +172,21 @@ fun SettingsScreen(
         }
         PreferenceGroup(stringResource(R.string.settings_compression_defaults)) {
             OverlaySpinnerPreference(
-                items = imageQualityOptions.map { SpinnerEntry(title = stringResource(imageQualityLabel(it))) },
+                items = imageQualityEntries,
                 selectedIndex = imageQualityOptions.indexOf(imageQuality).coerceAtLeast(0),
                 title = stringResource(R.string.settings_image_quality),
                 renderInRootScaffold = true,
                 onSelectedIndexChange = { index -> imageQualityOptions.getOrNull(index)?.let(onImageQualityChange) },
             )
             OverlaySpinnerPreference(
-                items = videoQualityOptions.map { SpinnerEntry(title = stringResource(videoQualityLabel(it))) },
+                items = videoQualityEntries,
                 selectedIndex = videoQualityOptions.indexOf(videoQuality),
                 title = stringResource(R.string.settings_video_quality),
                 renderInRootScaffold = true,
                 onSelectedIndexChange = { index -> videoQualityOptions.getOrNull(index)?.let(onVideoQualityChange) },
             )
             OverlaySpinnerPreference(
-                items = metadataOptions.map { SpinnerEntry(title = stringResource(metadataLabel(it))) },
+                items = metadataEntries,
                 selectedIndex = metadataOptions.indexOf(stripMetadata),
                 title = stringResource(R.string.settings_metadata),
                 renderInRootScaffold = true,
@@ -349,3 +340,34 @@ private fun openAppSettings(context: android.content.Context) {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
     )
 }
+
+/** Resolves one spinner's labels in a single pass, off the composition's hot path. */
+private fun <T> spinnerEntries(
+    options: Iterable<T>,
+    resources: Resources,
+    label: (T) -> Int,
+): List<SpinnerEntry> = options.map { option -> SpinnerEntry(title = resources.getString(label(option))) }
+
+private fun themeLabel(mode: ThemeMode): Int = when (mode) {
+    ThemeMode.AUTO -> R.string.settings_theme_auto
+    ThemeMode.LIGHT -> R.string.settings_theme_light
+    ThemeMode.DARK -> R.string.settings_theme_dark
+}
+
+private fun sortLabel(order: SortOrder): Int =
+    if (order == SortOrder.DATE) R.string.settings_sort_date else R.string.settings_sort_size
+
+private fun imageQualityLabel(quality: Int): Int = when (quality) {
+    90 -> R.string.settings_image_quality_high
+    80 -> R.string.settings_image_quality_medium
+    else -> R.string.settings_image_quality_low
+}
+
+private fun videoQualityLabel(quality: VideoQuality): Int = when (quality) {
+    VideoQuality.HIGH -> R.string.settings_video_quality_high
+    VideoQuality.MEDIUM -> R.string.settings_video_quality_medium
+    VideoQuality.LOW -> R.string.settings_video_quality_low
+}
+
+private fun metadataLabel(strip: Boolean): Int =
+    if (strip) R.string.settings_metadata_strip else R.string.settings_metadata_keep
