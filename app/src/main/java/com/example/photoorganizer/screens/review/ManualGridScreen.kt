@@ -98,7 +98,7 @@ import top.yukonga.miuix.kmp.basic.ToolbarPosition
 import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.ScrollBehavior
-import top.yukonga.miuix.kmp.basic.SpinnerEntry
+import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
@@ -516,7 +516,7 @@ private fun ManualGridSortCard(sortBySize: Boolean, onSortChange: (Boolean) -> U
     ) {
         OverlaySpinnerPreference(
             items = sortOptions.map { bySize ->
-                SpinnerEntry(
+                DropdownItem(
                     title = stringResource(
                         if (bySize) R.string.manual_sort_by_size else R.string.manual_sort_by_date,
                     ),

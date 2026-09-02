@@ -36,7 +36,7 @@ import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.SpinnerEntry
+import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
@@ -70,7 +70,7 @@ fun ToolsScreen(
     // string lookup and a formatBytes call per option, every frame.
     val thresholdEntries = remember(resources) {
         thresholdOptions.map { mb ->
-            SpinnerEntry(
+            DropdownItem(
                 title = resources.getString(
                     R.string.tools_threshold_option,
                     formatBytes(ToolAnalyzer.thresholdBytesOf(mb)),

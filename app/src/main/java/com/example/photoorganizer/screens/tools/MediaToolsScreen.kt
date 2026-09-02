@@ -67,7 +67,7 @@ import top.yukonga.miuix.kmp.basic.Slider
 import top.yukonga.miuix.kmp.basic.SliderDefaults
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
-import top.yukonga.miuix.kmp.basic.SpinnerEntry
+import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.TabRow
 import top.yukonga.miuix.kmp.basic.TabRowDefaults
 import top.yukonga.miuix.kmp.basic.Text
@@ -676,7 +676,8 @@ private fun BatchReportSection(
 }
 
 @Composable
-private fun <T> ToolSpinnerPreference(    title: String,
+private fun <T> ToolSpinnerPreference(
+    title: String,
     options: List<ToolOption<T>>,
     selected: T,
     enabled: Boolean,
@@ -684,7 +685,7 @@ private fun <T> ToolSpinnerPreference(    title: String,
 ) {
     val selectedIndex = options.indexOfFirst { it.value == selected }.coerceAtLeast(0)
     OverlaySpinnerPreference(
-        items = options.map { SpinnerEntry(title = it.title, summary = it.summary) },
+        items = options.map { DropdownItem(title = it.title, summary = it.summary) },
         selectedIndex = selectedIndex,
         title = title,
         enabled = enabled,

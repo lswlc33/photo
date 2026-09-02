@@ -6,12 +6,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import top.yukonga.miuix.kmp.basic.DropdownDefaults
 import top.yukonga.miuix.kmp.basic.DropdownImpl
+import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.ListPopupColumn
 import top.yukonga.miuix.kmp.basic.PopupPositionProvider
-import top.yukonga.miuix.kmp.basic.SpinnerDefaults
-import top.yukonga.miuix.kmp.basic.SpinnerEntry
-import top.yukonga.miuix.kmp.basic.SpinnerItemImpl
 import top.yukonga.miuix.kmp.overlay.OverlayListPopup
 import com.example.photoorganizer.ui.TrackOverlayPopup
 
@@ -78,7 +77,7 @@ data class OverlayAction(
 
 /**
  * Single-choice overlay popup whose rows carry a title plus an explanatory
- * summary, rendered with MIUIX [SpinnerItemImpl] so options that need a short
+ * summary, rendered with MIUIX [DropdownImpl] so options that need a short
  * description read the same as a native spinner. Labels are plain strings
  * because several option sets mix resources with formatted values.
  */
@@ -106,15 +105,15 @@ fun <T> OverlaySpinnerChoicePopup(
             minWidth = minWidth,
             renderInRootScaffold = false,
         ) {
-            val spinnerColors = SpinnerDefaults.spinnerColors()
+            val dropdownColors = DropdownDefaults.dropdownColors()
             ListPopupColumn {
                 options.forEachIndexed { index, option ->
-                    SpinnerItemImpl(
-                        entry = SpinnerEntry(title = title(option), summary = summary(option)),
-                        entryCount = options.size,
+                    DropdownImpl(
+                        item = DropdownItem(title = title(option), summary = summary(option)),
+                        optionSize = options.size,
                         isSelected = option == selected,
                         index = index,
-                        spinnerColors = spinnerColors,
+                        dropdownColors = dropdownColors,
                         dialogMode = false,
                         onSelectedIndexChange = {
                             onDismissRequest()

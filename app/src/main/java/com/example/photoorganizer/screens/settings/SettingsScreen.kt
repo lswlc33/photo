@@ -38,7 +38,7 @@ import com.example.photoorganizer.ui.components.AlbumRowMargin
 import com.example.photoorganizer.ui.components.OverlayScrollMaxHeight
 import com.example.photoorganizer.ui.components.ScreenColumn
 import com.example.photoorganizer.ui.components.albumCheckboxItems
-import top.yukonga.miuix.kmp.basic.SpinnerEntry
+import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
@@ -346,7 +346,7 @@ private fun <T> spinnerEntries(
     options: Iterable<T>,
     resources: Resources,
     label: (T) -> Int,
-): List<SpinnerEntry> = options.map { option -> SpinnerEntry(title = resources.getString(label(option))) }
+): List<DropdownItem> = options.map { option -> DropdownItem(title = resources.getString(label(option))) }
 
 private fun themeLabel(mode: ThemeMode): Int = when (mode) {
     ThemeMode.AUTO -> R.string.settings_theme_auto
