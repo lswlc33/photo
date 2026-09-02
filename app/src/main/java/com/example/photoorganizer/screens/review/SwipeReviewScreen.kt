@@ -66,8 +66,9 @@ import com.example.photoorganizer.media.UiMedia
 import com.example.photoorganizer.media.formatBytes
 import com.example.photoorganizer.media.scanDate
 import com.example.photoorganizer.ui.components.EmptyState
-import com.example.photoorganizer.ui.components.FullScreenMediaPreview
 import com.example.photoorganizer.ui.components.MediaPreview
+import com.example.photoorganizer.ui.components.MediaPreviewHost
+import com.example.photoorganizer.ui.components.rememberMediaPreviewController
 import com.example.photoorganizer.ui.systemClearance
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -111,9 +112,7 @@ fun SwipeReviewScreen(
     var previewWidthPx by remember { mutableFloatStateOf(0f) }
     var previewHeightPx by remember { mutableFloatStateOf(0f) }
     var settling by remember { mutableStateOf(false) }
-    var previewItem by remember { mutableStateOf<UiMedia?>(null) }
-    var temporaryPreview by remember { mutableStateOf(false) }
-    var previewVisible by remember { mutableStateOf(false) }
+    val preview = rememberMediaPreviewController()
     val topAppBarState = rememberTopAppBarState()
     val scrollBehavior = MiuixScrollBehavior(topAppBarState, canScroll = { true })
     val dragThreshold = with(LocalDensity.current) { 72.dp.toPx() }
@@ -284,21 +283,11 @@ fun SwipeReviewScreen(
                         }
                         .pointerInput(current.id) {
                             detectTapGestures(
-                                onTap = {
-                                    previewItem = current
-                                    temporaryPreview = false
-                                    previewVisible = true
-                                },
-                                onLongPress = {
-                                    previewItem = current
-                                    temporaryPreview = true
-                                    previewVisible = true
-                                },
+                                onTap = { preview.open(current) },
+                                onLongPress = { preview.peek(current) },
                                 onPress = {
                                     tryAwaitRelease()
-                                    if (temporaryPreview && previewItem?.id == current.id) {
-                                        previewVisible = false
-                                    }
+                                    preview.release(current.id)
                                 },
                             )
                         }
@@ -356,9 +345,7 @@ fun SwipeReviewScreen(
                         .semantics {
                             contentDescription = mediaDescription
                             onClick(label = previewLabel) {
-                                previewItem = current
-                                temporaryPreview = false
-                                previewVisible = true
+                                preview.open(current)
                                 true
                             }
                             customActions = buildList {
@@ -552,19 +539,7 @@ fun SwipeReviewScreen(
         }
     }
 
-    previewItem?.let { item ->
-        FullScreenMediaPreview(
-            item = item,
-            temporary = temporaryPreview,
-            visible = previewVisible,
-            animationEnabled = animationEnabled,
-            onRequestDismiss = { previewVisible = false },
-            onDismissed = {
-                previewItem = null
-                temporaryPreview = false
-            },
-        )
-    }
+    MediaPreviewHost(preview, animationEnabled)
 }
 
 private enum class DragAxis { HORIZONTAL, VERTICAL }

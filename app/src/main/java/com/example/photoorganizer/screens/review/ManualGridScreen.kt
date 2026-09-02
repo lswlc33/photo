@@ -73,10 +73,11 @@ import com.example.photoorganizer.media.ReviewState
 import com.example.photoorganizer.media.UiMedia
 import com.example.photoorganizer.media.scanDate
 import com.example.photoorganizer.ui.components.EmptyState
-import com.example.photoorganizer.ui.components.FullScreenMediaPreview
+import com.example.photoorganizer.ui.components.MediaPreviewHost
 import com.example.photoorganizer.ui.components.MediaTile
 import com.example.photoorganizer.ui.components.OverlayAction
 import com.example.photoorganizer.ui.components.OverlayActionPopup
+import com.example.photoorganizer.ui.components.rememberMediaPreviewController
 import com.example.photoorganizer.ui.components.standardCardColors
 import com.example.photoorganizer.ui.systemClearance
 import com.example.photoorganizer.ui.theme.AccentBlue
@@ -149,9 +150,7 @@ fun ManualGridScreen(
     var selectionMode by rememberSaveable { mutableStateOf(false) }
     var searchActive by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
-    var previewItem by remember { mutableStateOf<UiMedia?>(null) }
-    var temporaryPreview by remember { mutableStateOf(false) }
-    var previewVisible by remember { mutableStateOf(false) }
+    val preview = rememberMediaPreviewController()
     // Ids only: the review state at selection time was never read and goes stale
     // the moment a mark lands, so storing it only invited a reader to trust it.
     var selected by rememberSaveable(stateSaver = SelectionSaver) { mutableStateOf(emptySet<Long>()) }
@@ -519,21 +518,9 @@ fun ManualGridScreen(
                                     }
                                     MediaTile(
                                         item = item,
-                                        onClick = {
-                                            previewItem = item
-                                            temporaryPreview = false
-                                            previewVisible = true
-                                        },
-                                        onPreviewStart = {
-                                            previewItem = item
-                                            temporaryPreview = true
-                                            previewVisible = true
-                                        },
-                                        onPreviewEnd = {
-                                            if (temporaryPreview && previewItem?.id == item.id) {
-                                                previewVisible = false
-                                            }
-                                        },
+                                        onClick = { preview.open(item) },
+                                        onPreviewStart = { preview.peek(item) },
+                                        onPreviewEnd = { preview.release(item.id) },
                                         selected = isSelected,
                                         selectionMode = selectionMode,
                                         onSelectionToggle = {
@@ -581,19 +568,7 @@ fun ManualGridScreen(
         }
     }
 
-    previewItem?.let { item ->
-        FullScreenMediaPreview(
-            item = item,
-            temporary = temporaryPreview,
-            visible = previewVisible,
-            animationEnabled = animationEnabled,
-            onRequestDismiss = { previewVisible = false },
-            onDismissed = {
-                previewItem = null
-                temporaryPreview = false
-            },
-        )
-    }
+    MediaPreviewHost(preview, animationEnabled)
 }
 
 /**
