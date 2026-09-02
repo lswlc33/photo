@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -53,11 +54,12 @@ import com.example.photoorganizer.R
 import com.example.photoorganizer.media.TargetFilters
 import com.example.photoorganizer.media.TypeFilter
 import com.example.photoorganizer.media.LogicalAlbum
-import com.example.photoorganizer.media.albumDisplayName
 import com.example.photoorganizer.media.scanDate
 import com.example.photoorganizer.ui.components.DialogActions
+import com.example.photoorganizer.ui.components.OverlayScrollMaxHeight
 import com.example.photoorganizer.ui.components.ScreenColumn
 import com.example.photoorganizer.ui.components.SectionTitle
+import com.example.photoorganizer.ui.components.albumCheckboxItems
 import com.example.photoorganizer.ui.components.standardCardColors
 import com.example.photoorganizer.ui.theme.AccentBlue
 import com.example.photoorganizer.ui.theme.AccentGreen
@@ -72,7 +74,6 @@ import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.MindMap
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
-import top.yukonga.miuix.kmp.preference.CheckboxPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
@@ -486,30 +487,14 @@ private fun AlbumMultiSelectDialog(
         onDismissRequest = onDismiss,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Column(
-                Modifier
-                    .heightIn(max = 320.dp)
-                    .verticalScroll(rememberScrollState()),
-            ) {
-                availableAlbums.forEach { path ->
-                    val checked = path in working
-                    CheckboxPreference(
-                        title = albumDisplayName(path),
-                        summary = path,
-                        checked = checked,
-                        onCheckedChange = {
-                            working = if (it) working + path else working - path
-                        },
-                        insideMargin = AlbumRowMargin,
-                    )
-                }
-                if (availableAlbums.isEmpty()) {
-                    Text(
-                        stringResource(R.string.filter_album_empty),
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        modifier = Modifier.padding(vertical = 18.dp),
-                    )
-                }
+            LazyColumn(Modifier.heightIn(max = OverlayScrollMaxHeight)) {
+                albumCheckboxItems(
+                    availableAlbums = availableAlbums,
+                    selected = working,
+                    onToggle = { path, checked ->
+                        working = if (checked) working + path else working - path
+                    },
+                )
             }
             DialogActions(
                 confirmText = stringResource(R.string.dialog_confirm),
@@ -568,5 +553,3 @@ private val AlbumPathsSaver = listSaver<Set<String>, String>(
     save = { paths -> paths.toList() },
     restore = { paths -> paths.toSet() },
 )
-
-private val AlbumRowMargin = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 10.dp)

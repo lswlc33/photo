@@ -7,9 +7,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.runtime.Composable
@@ -28,18 +27,19 @@ import androidx.compose.ui.unit.sp
 import com.example.photoorganizer.R
 import com.example.photoorganizer.media.IndexScope
 import com.example.photoorganizer.media.IndexScopeMode
-import com.example.photoorganizer.media.albumDisplayName
 import com.example.photoorganizer.processing.VideoQuality
 import com.example.photoorganizer.ui.PreferenceGroup
 import com.example.photoorganizer.ui.ThemeMode
 import com.example.photoorganizer.ui.components.DialogActions
 import com.example.photoorganizer.ui.components.MessageDialog
+import com.example.photoorganizer.ui.components.AlbumRowMargin
+import com.example.photoorganizer.ui.components.OverlayScrollMaxHeight
 import com.example.photoorganizer.ui.components.ScreenColumn
+import com.example.photoorganizer.ui.components.albumCheckboxItems
 import top.yukonga.miuix.kmp.basic.SpinnerEntry
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.preference.ArrowPreference
-import top.yukonga.miuix.kmp.preference.CheckboxPreference
 import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
 import top.yukonga.miuix.kmp.preference.RadioButtonPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
@@ -287,49 +287,37 @@ private fun IndexScopeDialog(
         onDismissRequest = onDismiss,
     ) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            // Radio group and album checkboxes share one scroll area so the
-            // action row stays pinned inside the dialog on short screens.
-            Column(
-                Modifier
-                    .heightIn(max = OverlayScrollMaxHeight)
-                    .verticalScroll(rememberScrollState()),
-            ) {
-                IndexScopeMode.entries.forEach { option ->
+            // Radio group and album checkboxes share one scroll area so the action
+            // row stays pinned inside the dialog on short screens. It is a LazyColumn
+            // rather than a scrolling Column because a device can hold hundreds of
+            // album folders and every checkbox used to compose up front.
+            LazyColumn(Modifier.heightIn(max = OverlayScrollMaxHeight)) {
+                items(items = IndexScopeMode.entries, key = { it.name }) { option ->
                     RadioButtonPreference(
                         title = stringResource(indexScopeModeLabel(option)),
                         summary = stringResource(indexScopeModeSummary(option)),
                         selected = option == mode,
                         onClick = { mode = option },
-                        insideMargin = IndexScopeRowMargin,
+                        insideMargin = AlbumRowMargin,
                     )
                 }
                 if (mode != IndexScopeMode.ALL) {
-                    Text(
-                        stringResource(R.string.index_scope_album_title),
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 2.dp),
-                    )
-                    availableAlbums.forEach { path ->
-                        val checked = path in selectedAlbums
-                        CheckboxPreference(
-                            title = albumDisplayName(path),
-                            summary = path,
-                            checked = checked,
-                            onCheckedChange = {
-                                selectedAlbums =
-                                    if (it) selectedAlbums + path else selectedAlbums - path
-                            },
-                            insideMargin = IndexScopeRowMargin,
-                        )
-                    }
-                    if (availableAlbums.isEmpty()) {
+                    item {
                         Text(
-                            stringResource(R.string.filter_album_empty),
+                            stringResource(R.string.index_scope_album_title),
                             color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                            modifier = Modifier.padding(vertical = 18.dp),
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(start = 4.dp, top = 8.dp, bottom = 2.dp),
                         )
                     }
+                    albumCheckboxItems(
+                        availableAlbums = availableAlbums,
+                        selected = selectedAlbums,
+                        onToggle = { path, checked ->
+                            selectedAlbums =
+                                if (checked) selectedAlbums + path else selectedAlbums - path
+                        },
+                    )
                 }
             }
             DialogActions(
@@ -361,8 +349,3 @@ private fun openAppSettings(context: android.content.Context) {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
     )
 }
-
-private val IndexScopeRowMargin = PaddingValues(horizontal = 4.dp, vertical = 10.dp)
-
-/** Keeps the scrolling body of an overlay dialog clear of its action row. */
-private val OverlayScrollMaxHeight = 380.dp

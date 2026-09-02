@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -37,7 +38,7 @@ import com.example.photoorganizer.ui.components.CompactTextButton
 import com.example.photoorganizer.ui.components.EmptyState
 import com.example.photoorganizer.ui.components.MediaThumbnail
 import com.example.photoorganizer.ui.components.OverlaySpinnerChoicePopup
-import com.example.photoorganizer.ui.components.ScreenColumn
+import com.example.photoorganizer.ui.components.ScreenLazyColumn
 import com.example.photoorganizer.ui.components.SectionTitle
 import com.example.photoorganizer.ui.components.standardCardColors
 import kotlinx.coroutines.flow.filter
@@ -100,7 +101,7 @@ fun DuplicateGroupsScreen(
         onMark(plan)
         plan.count { it.value == ReviewState.TRASH_MARKED }
     }
-    ScreenColumn(
+    ScreenLazyColumn(
         title = title,
         navigationIcon = {
             IconButton(onClick = onBack) {
@@ -136,51 +137,53 @@ fun DuplicateGroupsScreen(
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) {
         if (!analysisReady) {
-            EmptyState(
-                title = stringResource(R.string.tools_analysis_running),
-                summary = hint,
-            )
-            return@ScreenColumn
+            item {
+                EmptyState(
+                    title = stringResource(R.string.tools_analysis_running),
+                    summary = hint,
+                )
+            }
+            return@ScreenLazyColumn
         }
         if (groups.isEmpty()) {
-            EmptyState(title = emptyTitle, summary = hint)
-            return@ScreenColumn
+            item { EmptyState(title = emptyTitle, summary = hint) }
+            return@ScreenLazyColumn
         }
 
-        // Remembered on the strategy, not recomputed per recomposition: the keepers
-        // are cached per group but the sum across every group is not.
-        val totalReclaimable = remember(groups, strategy) {
-            groups.sumOf { it.reclaimableBytes(strategy) }
-        }
-        SectionTitle(
-            title = countLabel(groups.size, formatBytes(totalReclaimable)),
-            subtitle = stringResource(strategy.titleRes()),
-        )
-        Text(
-            text = hint,
-            color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-            fontSize = 12.sp,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
-        )
-        CompactTextButton(
-            text = stringResource(R.string.tools_duplicate_apply_all),
-            onClick = { announceCleanup(applyPlan(groups, strategy)) },
-        )
-        Card(modifier = Modifier.fillMaxWidth(), colors = standardCardColors()) {
-            Column(
-                Modifier.padding(vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
-                groups.forEach { group ->
-                    DuplicateGroupRow(
-                        group = group,
-                        strategy = strategy,
-                        onOpen = { onOpenGroup(group) },
-                        onKeepOne = {
-                            announceCleanup(applyPlan(listOf(group), strategy))
-                        },
-                    )
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Remembered on the strategy, not recomputed per recomposition: the
+                // keepers are cached per group but the sum across every group is not.
+                val totalReclaimable = remember(groups, strategy) {
+                    groups.sumOf { it.reclaimableBytes(strategy) }
                 }
+                SectionTitle(
+                    title = countLabel(groups.size, formatBytes(totalReclaimable)),
+                    subtitle = stringResource(strategy.titleRes()),
+                )
+                Text(
+                    text = hint,
+                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 2.dp),
+                )
+                CompactTextButton(
+                    text = stringResource(R.string.tools_duplicate_apply_all),
+                    onClick = { announceCleanup(applyPlan(groups, strategy)) },
+                )
+            }
+        }
+        // A row per group, each decoding four thumbnails. Eager composition meant a
+        // library with hundreds of duplicate groups decoded all of them before the
+        // page could be drawn.
+        items(items = groups, key = { it.hash }) { group ->
+            Card(modifier = Modifier.fillMaxWidth(), colors = standardCardColors()) {
+                DuplicateGroupRow(
+                    group = group,
+                    strategy = strategy,
+                    onOpen = { onOpenGroup(group) },
+                    onKeepOne = { announceCleanup(applyPlan(listOf(group), strategy)) },
+                )
             }
         }
     }

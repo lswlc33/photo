@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -43,6 +44,10 @@ import top.yukonga.miuix.kmp.utils.scrollEndHaptic
  * Passing both [isRefreshing] and [onRefresh] wraps the body in a MIUIX
  * [PullToRefresh]; the indicator is offset below the top bar and the bar
  * collapse animation is driven by the same scroll behavior.
+ *
+ * The whole body is one lazy item, so everything in it composes eagerly. That is
+ * the right trade for a page of fixed sections; a page whose body grows with the
+ * library - a row per duplicate group, say - wants [ScreenLazyColumn] instead.
  */
 @Composable
 fun ScreenColumn(
@@ -54,6 +59,36 @@ fun ScreenColumn(
     isRefreshing: Boolean? = null,
     onRefresh: (() -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
+) {
+    ScreenLazyColumn(
+        title = title,
+        navigationIcon = navigationIcon,
+        actions = actions,
+        contentBottomPadding = contentBottomPadding,
+        snackbarHost = snackbarHost,
+        isRefreshing = isRefreshing,
+        onRefresh = onRefresh,
+    ) {
+        item { Column(verticalArrangement = Arrangement.spacedBy(8.dp), content = content) }
+    }
+}
+
+/**
+ * [ScreenColumn] with the body's lazy scope exposed, for pages whose content
+ * length depends on the library. Emitting real items means rows are composed as
+ * they scroll into view instead of all at once - which for a list of duplicate
+ * groups also means four thumbnail decodes per row are not all queued up front.
+ */
+@Composable
+fun ScreenLazyColumn(
+    title: String,
+    navigationIcon: (@Composable () -> Unit)? = null,
+    actions: (@Composable RowScope.() -> Unit)? = null,
+    contentBottomPadding: Dp = 24.dp,
+    snackbarHost: (@Composable () -> Unit)? = null,
+    isRefreshing: Boolean? = null,
+    onRefresh: (() -> Unit)? = null,
+    content: LazyListScope.() -> Unit,
 ) {
     val topAppBarState = rememberTopAppBarState()
     val scrollBehavior = MiuixScrollBehavior(topAppBarState, canScroll = { true })
@@ -99,9 +134,8 @@ fun ScreenColumn(
                     bottom = contentBottomPadding,
                 ),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                item { Column(verticalArrangement = Arrangement.spacedBy(8.dp), content = content) }
-            }
+                content = content,
+            )
         }
         if (isRefreshing != null && onRefresh != null) {
             PullToRefresh(
