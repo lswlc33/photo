@@ -1,12 +1,13 @@
 package com.example.photoorganizer.screens.organize
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,11 +15,11 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -41,13 +42,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.photoorganizer.R
@@ -56,6 +57,7 @@ import com.example.photoorganizer.media.TypeFilter
 import com.example.photoorganizer.media.LogicalAlbum
 import com.example.photoorganizer.media.formatCount
 import com.example.photoorganizer.media.scanDate
+import com.example.photoorganizer.ui.PreferenceGroup
 import com.example.photoorganizer.ui.components.DatePickerSheet
 import com.example.photoorganizer.ui.components.DialogActions
 import com.example.photoorganizer.ui.components.GradientHero
@@ -69,14 +71,15 @@ import com.example.photoorganizer.ui.theme.AccentBlue
 import com.example.photoorganizer.ui.theme.AccentGreen
 import com.example.photoorganizer.ui.theme.DangerRed
 import top.yukonga.miuix.kmp.basic.Card
+import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Text
-import top.yukonga.miuix.kmp.basic.TextField
 import top.yukonga.miuix.kmp.icon.MiuixIcons
 import top.yukonga.miuix.kmp.icon.extended.MindMap
 import top.yukonga.miuix.kmp.overlay.OverlayBottomSheet
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
+import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 
 @Composable
@@ -242,17 +245,29 @@ private fun TargetedFilterSheet(
     var startDateMillis by rememberSaveable { mutableStateOf(initial.startDateMillis) }
     var endDateMillis by rememberSaveable { mutableStateOf(initial.endDateMillis) }
     var type by rememberSaveable { mutableStateOf(initial.type) }
-    var minimumMb by rememberSaveable {
-        mutableStateOf(initial.minSizeBytes?.div(MEGABYTE)?.toString().orEmpty())
+    val resources = LocalResources.current
+    val minSizeEntries = remember(resources) {
+        MinSizeOptionsMb.map { mb ->
+            DropdownItem(
+                title = if (mb == 0) {
+                    resources.getString(R.string.filter_value_all)
+                } else {
+                    resources.getString(R.string.filter_minimum_size_option, mb)
+                },
+            )
+        }
     }
     var showAlbumPicker by rememberSaveable { mutableStateOf(false) }
     var editingDate by rememberSaveable { mutableStateOf<DateField?>(null) }
+    var minSizeMb by rememberSaveable {
+        mutableStateOf(initial.minSizeBytes?.div(MEGABYTE)?.toInt() ?: 0)
+    }
     val reset = {
         albumPaths = emptySet()
         startDateMillis = null
         endDateMillis = null
         type = TypeFilter.ALL
-        minimumMb = ""
+        minSizeMb = 0
     }
     OverlayBottomSheet(
         show = show,
@@ -280,57 +295,69 @@ private fun TargetedFilterSheet(
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 fontSize = 12.sp,
             )
-            FilterValueRow(
-                title = stringResource(R.string.filter_label_album),
-                value = if (albumPaths.isEmpty()) {
-                    stringResource(R.string.filter_value_all)
-                } else {
-                    pluralStringResource(R.plurals.filter_album_selected_count, albumPaths.size, albumPaths.size)
-                },
-                onClick = { showAlbumPicker = true },
-            )
-            FilterValueRow(
-                title = stringResource(R.string.filter_start_date),
-                value = startDateMillis?.let(::scanDate) ?: stringResource(R.string.filter_not_set),
-                onClick = { editingDate = DateField.START },
-                onClear = if (startDateMillis != null) ({ startDateMillis = null }) else null,
-            )
-            FilterValueRow(
-                title = stringResource(R.string.filter_end_date),
-                value = endDateMillis?.let(::scanDate) ?: stringResource(R.string.filter_not_set),
-                onClick = { editingDate = DateField.END },
-                onClear = if (endDateMillis != null) ({ endDateMillis = null }) else null,
-            )
-            SectionTitle(stringResource(R.string.filter_label_type))
-            Row(
-                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(7.dp),
-            ) {
-                TypeFilter.entries.forEach { option ->
-                    FilterChip(
-                        label = stringResource(typeLabel(option)),
-                        selected = option == type,
-                        onClick = { type = option },
-                    )
+            // Grouped, and every row is the same kind of row. This panel used to mix
+            // three control idioms - card rows with an arrow, a horizontally scrolling
+            // chip strip that cut its last option in half, and a bare number field -
+            // with section titles on only some of them.
+            PreferenceGroup(stringResource(R.string.filter_group_scope)) {
+                FilterValueRow(
+                    title = stringResource(R.string.filter_label_album),
+                    value = if (albumPaths.isEmpty()) {
+                        stringResource(R.string.filter_value_all)
+                    } else {
+                        pluralStringResource(
+                            R.plurals.filter_album_selected_count,
+                            albumPaths.size,
+                            albumPaths.size,
+                        )
+                    },
+                    onClick = { showAlbumPicker = true },
+                )
+                FilterValueRow(
+                    title = stringResource(R.string.filter_start_date),
+                    value = startDateMillis?.let(::scanDate) ?: stringResource(R.string.filter_not_set),
+                    onClick = { editingDate = DateField.START },
+                    onClear = if (startDateMillis != null) ({ startDateMillis = null }) else null,
+                )
+                FilterValueRow(
+                    title = stringResource(R.string.filter_end_date),
+                    value = endDateMillis?.let(::scanDate) ?: stringResource(R.string.filter_not_set),
+                    onClick = { editingDate = DateField.END },
+                    onClear = if (endDateMillis != null) ({ endDateMillis = null }) else null,
+                )
+                // Preset steps rather than a number field: this was the only control in
+                // the panel that needed the keyboard, and the thresholds match the ones
+                // the tools page already offers for large files.
+                OverlaySpinnerPreference(
+                    items = minSizeEntries,
+                    selectedIndex = MinSizeOptionsMb.indexOf(minSizeMb).coerceAtLeast(0),
+                    title = stringResource(R.string.filter_minimum_size),
+                    summary = stringResource(R.string.filter_minimum_size_hint),
+                    onSelectedIndexChange = { index ->
+                        MinSizeOptionsMb.getOrNull(index)?.let { minSizeMb = it }
+                    },
+                )
+            }
+            PreferenceGroup(stringResource(R.string.filter_label_type)) {
+                // Wrapped instead of scrolled: five options fit two rows, and all five
+                // being visible at once is the reason to use chips rather than a
+                // spinner in the first place.
+                FlowRow(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(7.dp),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    TypeFilter.entries.forEach { option ->
+                        FilterChip(
+                            label = stringResource(typeLabel(option)),
+                            selected = option == type,
+                            onClick = { type = option },
+                        )
+                    }
                 }
             }
-            SectionTitle(stringResource(R.string.filter_minimum_size))
-            TextField(
-                value = minimumMb,
-                onValueChange = { value -> minimumMb = value.filter(Char::isDigit).take(6) },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                label = stringResource(R.string.filter_minimum_size_hint),
-                useLabelAsPlaceholder = true,
-                modifier = Modifier.fillMaxWidth(),
-                trailingIcon = {
-                    Text(
-                        "MB",
-                        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                        modifier = Modifier.padding(end = 14.dp),
-                    )
-                },
-            )
             DialogActions(
                 confirmText = stringResource(R.string.filter_apply),
                 onCancel = onDismiss,
@@ -343,7 +370,7 @@ private fun TargetedFilterSheet(
                             startDateMillis = if (start != null && end != null) minOf(start, end) else start,
                             endDateMillis = if (start != null && end != null) maxOf(start, end) else end,
                             type = type,
-                            minSizeBytes = minimumMb.toLongOrNull()?.times(MEGABYTE),
+                            minSizeBytes = minSizeMb.takeIf { it > 0 }?.times(MEGABYTE),
                         ),
                     )
                 },
@@ -415,13 +442,27 @@ private fun FilterValueRow(
 private fun FilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
     val selectedLabel = stringResource(R.string.filter_chip_state_selected)
     val unselectedLabel = stringResource(R.string.filter_chip_state_unselected)
+    val border = MiuixTheme.colorScheme.onSurfaceVariantSummary.copy(alpha = .28f)
     Box(
         Modifier
             .heightIn(min = MinimumTouchTarget)
-            .clip(RoundedCornerShape(50))
+            .widthIn(min = 76.dp)
+            // A fixed radius, not 50 percent: at 48 dp tall a short label like "全部"
+            // is square, and a 50 percent radius turns that into a circle while every
+            // longer chip stays a pill.
+            .clip(RoundedCornerShape(24.dp))
             .background(
                 if (selected) AccentBlue.copy(alpha = .14f)
                 else MiuixTheme.colorScheme.surfaceContainerHighest,
+            )
+            // Outlined when unselected. Inside a card the fill alone is nearly
+            // invisible, so there was nothing to say these labels were tappable.
+            .then(
+                if (selected) {
+                    Modifier
+                } else {
+                    Modifier.border(1.dp, border, RoundedCornerShape(24.dp))
+                },
             )
             // Selection was conveyed by colour and weight only, so a screen-reader
             // user had no way to tell which type filter was active. These are
@@ -493,6 +534,13 @@ fun typeLabel(filter: TypeFilter): Int = when (filter) {
 }
 
 private const val MEGABYTE = 1024L * 1024L
+
+/**
+ * Selectable minimum sizes in megabytes; 0 means no lower bound. The upper steps match
+ * the large-file thresholds on the tools page, so the two screens agree about what
+ * counts as big.
+ */
+private val MinSizeOptionsMb = listOf(0, 1, 5, 10, 20, 50, 100)
 
 /**
  * A parcel writes a String list natively, while a `Set` falls through to Java

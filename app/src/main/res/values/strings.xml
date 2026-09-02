@@ -166,6 +166,8 @@
     <string name="filter_album_empty">No albums are currently available</string>
     <string name="filter_minimum_size">File size</string>
     <string name="filter_minimum_size_hint">Only show files larger than this</string>
+    <string name="filter_minimum_size_option">Larger than %1$d MB</string>
+    <string name="filter_group_scope">Scope</string>
 
     <!-- Dialogs -->
     <string name="discard_title">Confirm trash</string>

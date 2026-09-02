@@ -73,7 +73,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.os.ConfigurationCompat
 import com.example.photoorganizer.R
 import com.example.photoorganizer.media.ReviewState
 import com.example.photoorganizer.media.UiMedia
@@ -114,7 +113,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 import kotlin.math.roundToInt
 
 enum class MediaGridMode { MANUAL, KEPT, TRASH, SCREENSHOTS, LARGEST, DUPLICATE_GROUP, LOGICAL_ALBUM }
@@ -955,8 +953,9 @@ private fun DateHeader(label: String) {
  */
 @Composable
 private fun rememberMonthLabelFormatter(): (Long) -> String {
-    val locale = ConfigurationCompat.getLocales(LocalConfiguration.current)[0]
-        ?: Locale.getDefault()
+    // Read through LocalConfiguration so a system language change recomposes this;
+    // Locale.getDefault() would give the same answer today and a stale one after.
+    val locale = LocalConfiguration.current.locales[0]
     return remember(locale) {
         val pattern = AndroidDateFormat.getBestDateTimePattern(locale, "yMMMM")
         val formatter = SimpleDateFormat(pattern, locale)

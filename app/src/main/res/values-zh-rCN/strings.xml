@@ -162,6 +162,8 @@
     <string name="filter_album_empty">当前没有可选择的相册</string>
     <string name="filter_minimum_size">文件大小</string>
     <string name="filter_minimum_size_hint">仅显示大于此大小的文件</string>
+    <string name="filter_minimum_size_option">大于 %1$d MB</string>
+    <string name="filter_group_scope">范围</string>
 
     <!-- 对话框 -->
     <string name="discard_title">确认删除</string>
