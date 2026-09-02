@@ -15,8 +15,10 @@ echo "==> :app:lint"
 ./gradlew :app:lint --console=plain
 
 echo
-echo "==> :app:assembleDebug"
-./gradlew :app:assembleDebug --console=plain
+# The variant CI publishes, so an R8 or resource-shrinking failure surfaces here
+# instead of after the push. It is also what the pre-commit hook cannot afford.
+echo "==> :app:assembleNightly"
+./gradlew :app:assembleNightly --console=plain
 
 echo
 echo "all checks passed"

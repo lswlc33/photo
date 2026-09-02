@@ -467,7 +467,7 @@ footer a:hover{border-bottom-color:var(--teal)}
       <a class="cta cta-primary" href="https://github.com/lswlc33/photo/releases/tag/nightly">下载 APK</a>
       <a class="cta cta-ghost" href="https://github.com/lswlc33/photo">查看源码</a>
     </div>
-    <p class="cta-note stagger" style="animation-delay:1.06s">v8.0 · Android 13 及以上 · 随 master 每次提交刷新。下载到的是 debug 构建，由 Android 自带的 debug 密钥签名，安装时系统会问一次是否允许未知来源。</p>
+    <p class="cta-note stagger" style="animation-delay:1.06s">v8.0 · Android 13 及以上 · 约 5 MB，随 master 每次提交刷新。它用 Android SDK 本机生成的 debug 密钥签名，所以安装时系统会问一次是否允许未知来源。</p>
   </div>
 </header>
 
@@ -705,11 +705,12 @@ footer a:hover{border-bottom-color:var(--teal)}
 
 <pre>./gradlew :app:assembleDebug     <span># 构建 debug APK</span>
 ./gradlew :app:installDebug      <span># 安装到已连接的设备</span>
+./gradlew :app:assembleNightly   <span># 构建发布页上那个 APK</span>
 ./gradlew :app:test              <span># JVM 单元测试</span>
 ./gradlew :app:lint              <span># Android lint</span></pre>
 
     <p class="muted" style="margin-top:26px">
-      发布页上的 APK 就是这条命令的产物。master 每次推送都会在 GitHub Actions 上重跑测试、lint 与构建，并把同一个 APK 刷新到滚动的预发布里；仓库里不放签名密钥，所以可安装的构建一律是 debug 版本。
+      发布页上的 APK 就是 <code>assembleNightly</code> 的产物：和 release 一样开着代码压缩、不可调试，只是用本机的 debug 密钥签名，因此不需要密钥库也能安装。master 每次推送都会在 GitHub Actions 上重跑测试、lint 与构建，并把同一个文件刷新到滚动的预发布里。
     </p>
   </div>
 </section>

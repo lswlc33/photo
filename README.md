@@ -40,7 +40,7 @@
 
 当前版本 **v8.0**（`versionCode 8`）。
 
-发布页上的 APK 是 **debug 构建**：仓库里不放签名密钥，它由 Android 自带的 debug 密钥签名，所以可以直接安装。代价是它可被调试、也没有代码压缩，适合试用而不是长期使用。安装时系统会问一次是否允许安装未知来源的应用。
+发布页上的 APK 是 **nightly 构建**：代码压缩、资源压缩和「不可调试」都和 release 版一致（约 5 MB），唯一的区别是用 Android SDK 在本机生成的 debug 密钥签名 —— 仓库里不放 release 密钥。所以它可以直接安装，安装时系统会问一次是否允许安装未知来源的应用。
 
 master 每次推送都会自动构建，并把新的 APK 刷新到同一个 [nightly 预发布](https://github.com/lswlc33/photo/releases/tag/nightly)。连续两次构建用的是同一把 debug 密钥，所以新版可以直接覆盖安装，不必先卸载。
 
@@ -61,11 +61,14 @@ master 每次推送都会自动构建，并把新的 APK 刷新到同一个 [nig
 ```bash
 ./gradlew :app:assembleDebug     # 构建 debug APK
 ./gradlew :app:installDebug      # 安装到已连接的设备
+./gradlew :app:assembleNightly   # 构建发布页上那个 APK
 ```
 
 Windows 的 PowerShell / cmd 下用 `.\gradlew.bat`。
 
-版本号在 `gradle.properties` 的 `photoVersionCode` / `photoVersionName` 里声明。仓库里没有 release 签名配置，`:app:assembleRelease` 产出的是未签名 APK，只用来验证代码压缩仍然可用，不能安装。
+版本号在 `gradle.properties` 的 `photoVersionCode` / `photoVersionName` 里声明。
+
+三个构建变体：`debug` 是本地开发用的，体积大且可调试；`release` 走完整的代码压缩，但仓库里没有签名配置，产出的是未签名 APK，装不上；`nightly` 与 `release` 的配置相同，只是用本机的 debug 密钥签名，因此既小又能安装，发布页上的就是它。
 
 ## 测试
 
@@ -101,7 +104,7 @@ git config core.hooksPath .githooks
 
 - `commit-msg` —— 标题里没有中文就拒掉提交，没有跳过开关。
 - `pre-commit` —— 跑 `:app:test`，它同时编译主源码与单元测试。
-- `tools/verify.sh` —— 完整门禁：test + lint + assembleDebug，和 CI 跑的是同样三步。
+- `tools/verify.sh` —— 完整门禁：test + lint + assembleNightly，和 CI 跑的是同样三步。
 
 远端 `ci.yml` 会把本次推送范围内的每条提交信息重新检查一遍，因为没启用过本地钩子的克隆没有本地门禁；两边跑的是同一个脚本，也可以自己先检查：
 
@@ -114,7 +117,7 @@ tools/check-commit-language.sh --range origin/master..HEAD   # 还没推的那�
 
 | workflow | 触发 | 做什么 |
 |---|---|---|
-| `ci.yml` | 每次推送、PR | 检查提交信息语言，跑 test + lint + assembleDebug；master 上再把同一个 APK 刷新到 `nightly` 预发布 |
+| `ci.yml` | 每次推送、PR | 检查提交信息语言，跑 test + lint + assembleNightly；master 上再把同一个 APK 刷新到 `nightly` 预发布 |
 | `pages.yml` | `index.html` / `assets/` 变化 | 部署介绍页 |
 
 两个 workflow 都只用运行时自带的 `GITHUB_TOKEN`，不需要额外配置密钥。

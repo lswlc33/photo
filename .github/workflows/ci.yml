@@ -89,11 +89,12 @@ jobs:
           path: ~/.android/debug.keystore
           key: android-debug-keystore
 
-      # 只构建 debug。仓库里没有 release 签名密钥，也不打算放一把进来：未签名的
-      # release APK 根本装不上，而 debug 构建由上面那把 debug 密钥自动签名，下载
-      # 下来就能安装。代价是它可被调试、也没有代码压缩，只适合试用。
-      - name: Debug APK
-        run: ./gradlew :app:assembleDebug --console=plain
+      # 发出去的是 nightly 变体：它 initWith(release)，R8、资源压缩、不可调试都和
+      # release 一样，区别只是用上面那把 debug 密钥签名 —— 仓库里没有 release 密钥，
+      # 而未签名的 release APK 根本装不上。debug 变体不适合发布：它带着 Compose 的
+      # 调试工具、也没跑 R8，体积是 nightly 的十几倍。
+      - name: Nightly APK
+        run: ./gradlew :app:assembleNightly --console=plain
 
       # 版本号只在 gradle.properties 里声明一次，这里读它而不是再抄一遍。
       # 产物名带上版本和短 SHA：一个下载下来的 APK 要能自己说明它是哪次构建。
@@ -102,7 +103,7 @@ jobs:
         run: |
           version=$(sed -n 's/^photoVersionName=//p' gradle.properties)
           code=$(sed -n 's/^photoVersionCode=//p' gradle.properties)
-          built=$(find app/build/outputs/apk/debug -name '*.apk' | head -1)
+          built=$(find app/build/outputs/apk/nightly -name '*.apk' | head -1)
           name="photo-organizer-v$version-$(git rev-parse --short HEAD).apk"
           mkdir -p artifacts
           cp "$built" "artifacts/$name"
@@ -163,10 +164,10 @@ jobs:
             echo
             echo "- 版本：**v$VERSION**（versionCode \`$VERSION_CODE\`）"
             echo "- 提交：\`$sha\` — $subject"
-            echo "- 构建：debug · CI #$RUN_NUMBER"
+            echo "- 构建：nightly · CI #$RUN_NUMBER"
             echo "- 系统要求：Android 13（API 33）及以上"
             echo
-            echo "> 这是 **debug 构建，没有做 release 签名** —— 仓库里不放签名密钥。Android 自带的 debug 密钥会给它签名，所以下载下来可以直接安装，系统会问一次是否允许安装未知来源的应用；代价是它可被调试、也没有代码压缩，只适合试用。万一覆盖安装被系统拒绝，说明 CI 缓存的那把 debug 密钥换过了，先卸载旧版再装。"
+            echo "> 这是 **nightly 构建**：代码压缩、资源压缩和「不可调试」都和 release 版一致，唯一的区别是用 Android SDK 本地生成的 debug 密钥签名 —— 仓库里不放 release 密钥。所以它下载下来可以直接安装，系统会问一次是否允许安装未知来源的应用。万一覆盖安装被系统拒绝，说明 CI 缓存的那把 debug 密钥换过了，先卸载旧版再装。"
           } > "$RUNNER_TEMP/notes.md"
 
           gh release delete nightly --yes --cleanup-tag || true

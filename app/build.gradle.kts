@@ -29,15 +29,29 @@ android {
     }
 
     buildTypes {
-        // There is deliberately no release signing config: no keystore lives in
-        // this repository and CI does not sign. `assembleRelease` therefore ends
-        // at app-release-unsigned.apk, which is only good for checking that R8
-        // and resource shrinking still work - the installable artifact everyone
-        // downloads is the debug build, signed by Android's own debug key.
+        // No release signing config is declared here: the keystore and its
+        // passwords are machine-local, so on a machine that has none
+        // `assembleRelease` stops at app-release-unsigned.apk. That is the loud
+        // failure - an unsigned APK cannot be installed at all, and silently
+        // substituting another key would publish something the last release
+        // cannot be updated from.
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+        }
+
+        // What the rolling `nightly` prerelease publishes, and the only variant
+        // that is both installable and small. It is `release` in every way that
+        // affects the shipped code - R8, resource shrinking, not debuggable -
+        // and differs only in being signed by the debug key that every Android
+        // SDK generates locally, so it needs no keystore and no secret.
+        //
+        // The debug build is not a distributable: it bundles the Compose tooling
+        // and skips R8, which makes it about 17x larger (76 MB against 4.4 MB).
+        create("nightly") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
