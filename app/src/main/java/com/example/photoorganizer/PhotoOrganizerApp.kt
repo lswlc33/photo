@@ -452,6 +452,7 @@ fun PhotoOrganizerApp() {
                     AppPage.ORGANIZE -> OrganizeScreen(
                         contentBottomPadding = contentBottomPadding,
                         availableAlbums = availableAlbums,
+                        totalCount = media.size,
                         keptCount = keptCount,
                         trashCount = trashCount,
                         logicalAlbums = logicalAlbums,

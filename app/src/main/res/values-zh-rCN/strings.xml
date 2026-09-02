@@ -72,6 +72,10 @@
 
     <!-- 整理 -->
     <string name="organize_title">整理</string>
+    <string name="organize_progress_title">整理进度</string>
+    <string name="organize_progress_value">%1$d%%</string>
+    <string name="organize_progress_summary">已保留 %1$s · 已弃置 %2$s · 待整理 %3$s</string>
+    <string name="organize_progress_empty">尚未建立索引</string>
     <string name="organize_subtitle">选择整理方式</string>
     <string name="organize_mode_smart">智能模式</string>
     <string name="organize_mode_smart_summary">优先清理重复、截屏与大文件</string>

@@ -58,8 +58,10 @@ import com.example.photoorganizer.R
 import com.example.photoorganizer.media.TargetFilters
 import com.example.photoorganizer.media.TypeFilter
 import com.example.photoorganizer.media.LogicalAlbum
+import com.example.photoorganizer.media.formatCount
 import com.example.photoorganizer.media.scanDate
 import com.example.photoorganizer.ui.components.DialogActions
+import com.example.photoorganizer.ui.components.GradientHero
 import com.example.photoorganizer.ui.components.MinimumTouchTarget
 import com.example.photoorganizer.ui.components.OverlayScrollMaxHeight
 import com.example.photoorganizer.ui.components.ScreenColumn
@@ -85,6 +87,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 fun OrganizeScreen(
     contentBottomPadding: androidx.compose.ui.unit.Dp,
     availableAlbums: List<String>,
+    totalCount: Int,
     keptCount: Int,
     trashCount: Int,
     logicalAlbums: List<LogicalAlbum>,
@@ -100,6 +103,24 @@ fun OrganizeScreen(
         title = stringResource(R.string.organize_title),
         contentBottomPadding = contentBottomPadding,
     ) {
+        // The same blue hero the dashboard and tools pages lead with, so every page
+        // opens by answering "where do I stand" in the same shape.
+        val reviewed = (keptCount + trashCount).coerceAtMost(totalCount)
+        val percent = if (totalCount <= 0) 0 else reviewed * 100 / totalCount
+        GradientHero(
+            title = stringResource(R.string.organize_progress_title),
+            value = stringResource(R.string.organize_progress_value, percent),
+            subtitle = if (totalCount <= 0) {
+                stringResource(R.string.organize_progress_empty)
+            } else {
+                stringResource(
+                    R.string.organize_progress_summary,
+                    formatCount(keptCount),
+                    formatCount(trashCount),
+                    formatCount(totalCount - reviewed),
+                )
+            },
+        )
         SectionTitle(stringResource(R.string.organize_subtitle))
         Card(modifier = Modifier.fillMaxWidth(), colors = standardCardColors()) {
             Column(Modifier.padding(6.dp)) {

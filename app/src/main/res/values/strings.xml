@@ -73,6 +73,10 @@
 
     <!-- Organize -->
     <string name="organize_title">Organize</string>
+    <string name="organize_progress_title">Review progress</string>
+    <string name="organize_progress_value">%1$d%%</string>
+    <string name="organize_progress_summary">Kept %1$s · Discarded %2$s · %3$s to go</string>
+    <string name="organize_progress_empty">Nothing indexed yet</string>
     <string name="organize_subtitle">Pick a review mode</string>
     <string name="organize_mode_smart">Smart mode</string>
     <string name="organize_mode_smart_summary">Pull duplicates, screenshots and large files first</string>
