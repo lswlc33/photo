@@ -7,7 +7,6 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -63,7 +62,6 @@ import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
-import top.yukonga.miuix.kmp.basic.Slider
 import top.yukonga.miuix.kmp.basic.SliderDefaults
 import top.yukonga.miuix.kmp.basic.SnackbarHost
 import top.yukonga.miuix.kmp.basic.SnackbarHostState
@@ -73,6 +71,7 @@ import top.yukonga.miuix.kmp.basic.TabRowDefaults
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.preference.ArrowPreference
 import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
+import top.yukonga.miuix.kmp.preference.SliderPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.math.roundToInt
@@ -448,13 +447,14 @@ private fun ImageToolOptions(
             onSelect = onResizeChange,
         )
         SliderPreference(
-            title = stringResource(R.string.media_tool_quality),
-            valueText = "$quality%",
-            hint = stringResource(R.string.media_tool_quality_hint),
             value = quality.toFloat(),
             onValueChange = { onQualityChange((it / 5f).roundToInt() * 5) },
+            title = stringResource(R.string.media_tool_quality),
+            summary = stringResource(R.string.media_tool_quality_hint),
+            valueText = "$quality%",
             valueRange = 40f..100f,
             steps = 11,
+            hapticEffect = SliderDefaults.SliderHapticEffect.Step,
             // PNG is lossless, so the quality slider would be a control that
             // silently does nothing.
             enabled = !running && format != ImageFormat.PNG,
@@ -521,17 +521,18 @@ private fun VideoToolOptions(
             onSelect = onTrackModeChange,
         )
         SliderPreference(
+            value = bitrateMbps,
+            onValueChange = { onBitrateChange((it / bitrateStep).roundToInt() * bitrateStep) },
             title = stringResource(R.string.media_tool_bitrate),
+            summary = stringResource(R.string.media_tool_bitrate_hint),
             valueText = if (bitrateMbps == 0f) {
                 stringResource(R.string.media_tool_bitrate_auto)
             } else {
                 stringResource(R.string.media_tool_bitrate_value, formatBitrateMbps(bitrateMbps))
             },
-            hint = stringResource(R.string.media_tool_bitrate_hint),
-            value = bitrateMbps,
-            onValueChange = { onBitrateChange((it / bitrateStep).roundToInt() * bitrateStep) },
             valueRange = 0f..bitrateCeilingMbps,
             steps = (bitrateCeilingMbps / bitrateStep).roundToInt().minus(1).coerceAtLeast(0),
+            hapticEffect = SliderDefaults.SliderHapticEffect.Step,
             enabled = !running && !audioOnly,
         )
     }
@@ -691,53 +692,6 @@ private fun <T> ToolSpinnerPreference(
         enabled = enabled,
         renderInRootScaffold = true,
         onSelectedIndexChange = { index -> options.getOrNull(index)?.value?.let(onSelect) },
-    )
-}
-
-@Composable
-private fun SliderPreference(
-    title: String,
-    valueText: String,
-    hint: String,
-    value: Float,
-    onValueChange: (Float) -> Unit,
-    valueRange: ClosedFloatingPointRange<Float>,
-    steps: Int,
-    enabled: Boolean,
-) {
-    BasicComponent(
-        insideMargin = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-        enabled = enabled,
-        content = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    title,
-                    modifier = Modifier.weight(1f),
-                    color = MiuixTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.Medium,
-                )
-                Text(
-                    valueText,
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    fontSize = 12.sp,
-                )
-            }
-            Slider(
-                value = value,
-                onValueChange = onValueChange,
-                modifier = Modifier.fillMaxWidth(),
-                enabled = enabled,
-                valueRange = valueRange,
-                steps = steps,
-                hapticEffect = SliderDefaults.SliderHapticEffect.Step,
-                showKeyPoints = true,
-            )
-            Text(
-                hint,
-                color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                fontSize = 12.sp,
-            )
-        },
     )
 }
 

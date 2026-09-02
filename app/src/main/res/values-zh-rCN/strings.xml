@@ -279,7 +279,7 @@
     <string name="media_tool_bitrate">目标码率</string>
     <string name="media_tool_bitrate_auto">自动</string>
     <string name="media_tool_bitrate_value">%1$s Mbps</string>
-    <string name="media_tool_bitrate_hint">自动会测量源码率并选择明显更低的目标值。</string>
+    <string name="media_tool_bitrate_hint">自动会挑一个明显低于源码率的值。</string>
     <string name="media_tool_pick_images">选择照片</string>
     <string name="media_tool_pick_videos">选择视频</string>
     <plurals name="media_tool_pick_summary">

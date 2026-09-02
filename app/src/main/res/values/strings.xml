@@ -291,7 +291,7 @@
     <string name="media_tool_bitrate">Target bitrate</string>
     <string name="media_tool_bitrate_auto">Auto</string>
     <string name="media_tool_bitrate_value">%1$s Mbps</string>
-    <string name="media_tool_bitrate_hint">Auto measures the source bitrate and picks a clearly lower target.</string>
+    <string name="media_tool_bitrate_hint">Auto picks a target clearly below the source.</string>
     <string name="media_tool_pick_images">Choose photos</string>
     <string name="media_tool_pick_videos">Choose videos</string>
     <plurals name="media_tool_pick_summary">
