@@ -148,6 +148,9 @@
     <string name="filter_end_date">结束日期</string>
     <string name="filter_not_set">不限</string>
     <string name="filter_clear_value">清除该条件</string>
+    <string name="date_picker_year">年</string>
+    <string name="date_picker_month">月</string>
+    <string name="date_picker_day">日</string>
     <string name="filter_chip_state_selected">已选中</string>
     <string name="filter_chip_state_unselected">未选中</string>
     <string name="media_tile_state_selected">已选中</string>

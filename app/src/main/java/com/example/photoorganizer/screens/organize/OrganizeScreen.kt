@@ -1,6 +1,5 @@
 package com.example.photoorganizer.screens.organize
 
-import android.app.DatePickerDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -31,12 +30,10 @@ import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.PhotoAlbum
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -44,7 +41,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -60,6 +56,7 @@ import com.example.photoorganizer.media.TypeFilter
 import com.example.photoorganizer.media.LogicalAlbum
 import com.example.photoorganizer.media.formatCount
 import com.example.photoorganizer.media.scanDate
+import com.example.photoorganizer.ui.components.DatePickerSheet
 import com.example.photoorganizer.ui.components.DialogActions
 import com.example.photoorganizer.ui.components.GradientHero
 import com.example.photoorganizer.ui.components.MinimumTouchTarget
@@ -71,7 +68,6 @@ import com.example.photoorganizer.ui.components.standardCardColors
 import com.example.photoorganizer.ui.theme.AccentBlue
 import com.example.photoorganizer.ui.theme.AccentGreen
 import com.example.photoorganizer.ui.theme.DangerRed
-import java.util.Calendar
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
@@ -365,76 +361,20 @@ private fun TargetedFilterSheet(
         },
     )
     editingDate?.let { field ->
-        PlatformDatePicker(
+        DatePickerSheet(
+            show = true,
             initialMillis = if (field == DateField.START) startDateMillis else endDateMillis,
             endOfDay = field == DateField.END,
-            onSelected = { picked ->
-                if (field == DateField.START) startDateMillis = picked else endDateMillis = picked
-            },
             onDismiss = { editingDate = null },
+            onConfirm = { picked ->
+                if (field == DateField.START) startDateMillis = picked else endDateMillis = picked
+                editingDate = null
+            },
         )
     }
 }
 
 private enum class DateField { START, END }
-
-/**
- * The platform date picker, owned by the composition.
- *
- * It used to be built and shown straight from a click lambda, which left it
- * untracked: a configuration change with the picker open leaked the Activity
- * window (`WindowLeaked`) and dropped whatever was being edited. Holding it in a
- * `DisposableEffect` means it is dismissed with the composition and - because the
- * caller's `editingDate` is saveable - shown again after the restore.
- *
- * MIUIX has no date picker, so this stays a platform dialog rather than becoming
- * a hand-rolled Compose one.
- */
-@Composable
-private fun PlatformDatePicker(
-    initialMillis: Long?,
-    endOfDay: Boolean,
-    onSelected: (Long) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    val context = LocalContext.current
-    val currentOnSelected by rememberUpdatedState(onSelected)
-    val currentOnDismiss by rememberUpdatedState(onDismiss)
-    // Not keyed on initialMillis: the picked date changes it, and restarting the
-    // effect there would tear the dialog down and immediately build a new one.
-    DisposableEffect(endOfDay) {
-        val initial = Calendar.getInstance().apply {
-            if (initialMillis != null) timeInMillis = initialMillis
-        }
-        val dialog = DatePickerDialog(
-            context,
-            { _, year, month, day -> currentOnSelected(dayMillis(year, month, day, endOfDay)) },
-            initial.get(Calendar.YEAR),
-            initial.get(Calendar.MONTH),
-            initial.get(Calendar.DAY_OF_MONTH),
-        )
-        dialog.setOnDismissListener { currentOnDismiss() }
-        dialog.show()
-        onDispose {
-            // Cleared first, so tearing the dialog down here does not report itself
-            // back as a user dismissal while the composition is already leaving.
-            dialog.setOnDismissListener(null)
-            dialog.dismiss()
-        }
-    }
-}
-
-private fun dayMillis(year: Int, month: Int, day: Int, endOfDay: Boolean): Long =
-    Calendar.getInstance().apply {
-        clear()
-        set(year, month, day)
-        if (endOfDay) {
-            set(Calendar.HOUR_OF_DAY, 23)
-            set(Calendar.MINUTE, 59)
-            set(Calendar.SECOND, 59)
-            set(Calendar.MILLISECOND, 999)
-        }
-    }.timeInMillis
 
 @Composable
 private fun FilterValueRow(
@@ -550,36 +490,6 @@ fun typeLabel(filter: TypeFilter): Int = when (filter) {
     TypeFilter.VIDEOS -> R.string.filter_value_videos
     TypeFilter.LIVE_PHOTOS -> R.string.filter_value_live_photos
     TypeFilter.SCREENSHOTS -> R.string.filter_value_screenshots
-}
-
-private fun showDatePicker(
-    context: android.content.Context,
-    initialMillis: Long?,
-    endOfDay: Boolean,
-    onSelected: (Long) -> Unit,
-) {
-    val initial = Calendar.getInstance().apply {
-        if (initialMillis != null) timeInMillis = initialMillis
-    }
-    DatePickerDialog(
-        context,
-        { _, year, month, day ->
-            val selected = Calendar.getInstance().apply {
-                clear()
-                set(year, month, day)
-                if (endOfDay) {
-                    set(Calendar.HOUR_OF_DAY, 23)
-                    set(Calendar.MINUTE, 59)
-                    set(Calendar.SECOND, 59)
-                    set(Calendar.MILLISECOND, 999)
-                }
-            }
-            onSelected(selected.timeInMillis)
-        },
-        initial.get(Calendar.YEAR),
-        initial.get(Calendar.MONTH),
-        initial.get(Calendar.DAY_OF_MONTH),
-    ).show()
 }
 
 private const val MEGABYTE = 1024L * 1024L

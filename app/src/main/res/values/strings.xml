@@ -151,6 +151,9 @@
     <string name="filter_end_date">End date</string>
     <string name="filter_not_set">Any</string>
     <string name="filter_clear_value">Clear this filter</string>
+    <string name="date_picker_year">Year</string>
+    <string name="date_picker_month">Month</string>
+    <string name="date_picker_day">Day</string>
     <string name="filter_chip_state_selected">Selected</string>
     <string name="filter_chip_state_unselected">Not selected</string>
     <string name="media_tile_state_selected">Selected</string>
