@@ -16,7 +16,9 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -58,6 +60,7 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.photoorganizer.R
@@ -373,22 +376,18 @@ fun SwipeReviewScreen(
                         },
                     contentAlignment = Alignment.Center,
                 ) {
-                    // The drag offsets are read inside the graphicsLayer blocks below,
-                    // never in composition. Reading them here instead recomposed this
-                    // whole subtree on every pointer move - up to three MediaPreview
-                    // trees, their modifier chains, the decision stamp and the
-                    // semantics block - where the render phase alone is enough.
-                    val slideX: () -> Float = {
-                        if (dragAxis == DragAxis.HORIZONTAL || settling) dragX else 0f
-                    }
-                    val slideY: () -> Float = {
-                        if (dragAxis == DragAxis.VERTICAL || settling) dragY else 0f
-                    }
-                    val horizontalProgress: () -> Float = {
-                        (abs(slideX()) / (previewWidthPx * .55f).coerceAtLeast(1f)).coerceIn(0f, 1f)
-                    }
-                    val verticalProgress: () -> Float = {
-                        (abs(slideY()) / previewHeightPx.coerceAtLeast(1f)).coerceIn(0f, 1f)
+                    // The drag offsets are read inside the graphicsLayer blocks of the
+                    // stack below, never in composition. Reading them here instead
+                    // recomposed the whole subtree on every pointer move - up to three
+                    // MediaPreview trees, their modifier chains, the decision stamp
+                    // and the semantics block - where the render phase alone is enough.
+                    val geometry = remember {
+                        SwipeDragGeometry(
+                            slideX = { if (dragAxis == DragAxis.HORIZONTAL || settling) dragX else 0f },
+                            slideY = { if (dragAxis == DragAxis.VERTICAL || settling) dragY else 0f },
+                            previewWidthPx = { previewWidthPx },
+                            previewHeightPx = { previewHeightPx },
+                        )
                     }
                     // Whether the neighbouring previews exist at all is a structural
                     // decision, so it has to stay in composition - but derivedStateOf
@@ -408,138 +407,206 @@ fun SwipeReviewScreen(
                         }
                     }
                     val draggingRight by remember { derivedStateOf { dragX > 0f } }
-                    if (showHorizontalDrag) {
-                        media.getOrNull(currentIndex + 1)?.let { next ->
-                            MediaPreview(
-                                next,
-                                Modifier
-                                    .fillMaxSize()
-                                    .graphicsLayer {
-                                        val progress = horizontalProgress()
-                                        alpha = .35f + progress * .65f
-                                        val scale = .93f + progress * .07f
-                                        scaleX = scale
-                                        scaleY = scale
-                                    },
-                            )
-                        }
-                    }
-                    if (showVerticalDrag) {
-                        media.getOrNull(currentIndex - 1)?.let { previous ->
-                            key("previous:${previous.id}") {
-                                MediaPreview(
-                                    previous,
-                                    Modifier
-                                        .fillMaxSize()
-                                        .graphicsLayer {
-                                            translationY = slideY() - previewHeightPx
-                                            val scale = .96f + verticalProgress() * .04f
-                                            scaleX = scale
-                                            scaleY = scale
-                                        },
-                                )
-                            }
-                        }
-                        media.getOrNull(currentIndex + 1)?.let { next ->
-                            key("next:${next.id}") {
-                                MediaPreview(
-                                    next,
-                                    Modifier
-                                        .fillMaxSize()
-                                        .graphicsLayer {
-                                            translationY = slideY() + previewHeightPx
-                                            val scale = .96f + verticalProgress() * .04f
-                                            scaleX = scale
-                                            scaleY = scale
-                                        },
-                                )
-                            }
-                        }
-                    }
-                    key("current:${current.id}") {
-                        MediaPreview(
-                            current,
-                            Modifier
-                                .fillMaxSize()
-                                .graphicsLayer {
-                                    val offsetX = slideX()
-                                    translationX = offsetX
-                                    translationY = slideY()
-                                    rotationZ = if (animationEnabled) offsetX / 60f else 0f
-                                    val horizontal = offsetX != 0f
-                                    alpha = if (animationEnabled && horizontal) {
-                                        1f - (abs(offsetX) / (dragThreshold * 3f)).coerceIn(0f, 0.35f)
-                                    } else {
-                                        1f
-                                    }
-                                    val scale = when {
-                                        !animationEnabled -> 1f
-                                        horizontal -> 1f - horizontalProgress() * .035f
-                                        else -> 1f - verticalProgress() * .018f
-                                    }
-                                    scaleX = scale
-                                    scaleY = scale
-                                },
-                        )
-                    }
-                    if (showHorizontalDrag) {
-                        DecisionStamp(
-                            kept = draggingRight,
-                            progress = horizontalProgress,
-                            keepLabel = stringResource(R.string.review_action_keep),
-                            trashLabel = stringResource(R.string.review_action_trash),
-                            modifier = Modifier
-                                .align(if (draggingRight) Alignment.TopStart else Alignment.TopEnd)
-                                .padding(28.dp),
-                        )
-                    }
+                    SwipePreviewStack(
+                        current = current,
+                        previous = media.getOrNull(currentIndex - 1),
+                        next = media.getOrNull(currentIndex + 1),
+                        geometry = geometry,
+                        showHorizontalDrag = showHorizontalDrag,
+                        showVerticalDrag = showVerticalDrag,
+                        draggingRight = draggingRight,
+                        animationEnabled = animationEnabled,
+                        dragThreshold = dragThreshold,
+                    )
                 }
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 18.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
-                ) {
-                    RoundAction(
-                        icon = Icons.Default.DeleteOutline,
-                        label = stringResource(R.string.review_action_trash),
-                        color = DangerRed,
-                    ) {
-                        commitDecision(ReviewState.TRASH_MARKED)
-                    }
-                    RoundAction(
-                        icon = Icons.Default.Album,
-                        label = stringResource(R.string.review_action_album),
-                        color = MiuixTheme.colorScheme.primary,
-                    ) {
-                        onOpenAlbum(current.id)
-                    }
-                    RoundAction(
-                        icon = Icons.Default.Check,
-                        label = stringResource(R.string.review_action_keep),
-                        color = AccentGreen,
-                    ) {
-                        commitDecision(ReviewState.KEPT)
-                    }
-                }
-                Text(
-                    buildString {
-                        append(current.relativePath?.trimEnd('/') ?: current.mimeType)
-                        current.dateTakenMillis?.let { append(" / "); append(scanDate(it)) }
-                        append(" / ")
-                        append(formatBytes(current.sizeBytes))
-                    },
-                    modifier = Modifier
-                        .align(Alignment.CenterHorizontally)
-                        .padding(bottom = 18.dp + clearance.bottom),
-                    color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
-                    fontSize = 12.sp,
+                SwipeDecisionButtons(
+                    onTrash = { commitDecision(ReviewState.TRASH_MARKED) },
+                    onOpenAlbum = { onOpenAlbum(current.id) },
+                    onKeep = { commitDecision(ReviewState.KEPT) },
                 )
+                SwipeMediaCaption(item = current, bottomPadding = 18.dp + clearance.bottom)
             }
         }
     }
 
     MediaPreviewHost(preview, animationEnabled)
+}
+
+/**
+ * The drag geometry, all as lambdas so every value is read on the render phase
+ * instead of in composition. Passing the numbers themselves would put the reads
+ * back where they cost a recomposition per pointer move.
+ */
+private class SwipeDragGeometry(
+    val slideX: () -> Float,
+    val slideY: () -> Float,
+    val previewWidthPx: () -> Float,
+    val previewHeightPx: () -> Float,
+) {
+    val horizontalProgress: () -> Float = {
+        (abs(slideX()) / (previewWidthPx() * .55f).coerceAtLeast(1f)).coerceIn(0f, 1f)
+    }
+    val verticalProgress: () -> Float = {
+        (abs(slideY()) / previewHeightPx().coerceAtLeast(1f)).coerceIn(0f, 1f)
+    }
+}
+
+/**
+ * The card being reviewed plus whichever neighbours the current drag reveals.
+ *
+ * The neighbours are composed only while a drag is showing them, which is why the
+ * gates are booleans here rather than something read per frame.
+ */
+@Composable
+private fun BoxScope.SwipePreviewStack(
+    current: UiMedia,
+    previous: UiMedia?,
+    next: UiMedia?,
+    geometry: SwipeDragGeometry,
+    showHorizontalDrag: Boolean,
+    showVerticalDrag: Boolean,
+    draggingRight: Boolean,
+    animationEnabled: Boolean,
+    dragThreshold: Float,
+) {
+    if (showHorizontalDrag && next != null) {
+        MediaPreview(
+            next,
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    val progress = geometry.horizontalProgress()
+                    alpha = .35f + progress * .65f
+                    val scale = .93f + progress * .07f
+                    scaleX = scale
+                    scaleY = scale
+                },
+        )
+    }
+    if (showVerticalDrag) {
+        previous?.let {
+            key("previous:${it.id}") {
+                MediaPreview(
+                    it,
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            translationY = geometry.slideY() - geometry.previewHeightPx()
+                            val scale = .96f + geometry.verticalProgress() * .04f
+                            scaleX = scale
+                            scaleY = scale
+                        },
+                )
+            }
+        }
+        next?.let {
+            key("next:${it.id}") {
+                MediaPreview(
+                    it,
+                    Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            translationY = geometry.slideY() + geometry.previewHeightPx()
+                            val scale = .96f + geometry.verticalProgress() * .04f
+                            scaleX = scale
+                            scaleY = scale
+                        },
+                )
+            }
+        }
+    }
+    key("current:${current.id}") {
+        MediaPreview(
+            current,
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    val offsetX = geometry.slideX()
+                    translationX = offsetX
+                    translationY = geometry.slideY()
+                    rotationZ = if (animationEnabled) offsetX / 60f else 0f
+                    val horizontal = offsetX != 0f
+                    alpha = if (animationEnabled && horizontal) {
+                        1f - (abs(offsetX) / (dragThreshold * 3f)).coerceIn(0f, 0.35f)
+                    } else {
+                        1f
+                    }
+                    val scale = when {
+                        !animationEnabled -> 1f
+                        horizontal -> 1f - geometry.horizontalProgress() * .035f
+                        else -> 1f - geometry.verticalProgress() * .018f
+                    }
+                    scaleX = scale
+                    scaleY = scale
+                },
+        )
+    }
+    if (showHorizontalDrag) {
+        DecisionStamp(
+            kept = draggingRight,
+            progress = geometry.horizontalProgress,
+            keepLabel = stringResource(R.string.review_action_keep),
+            trashLabel = stringResource(R.string.review_action_trash),
+            modifier = Modifier
+                .align(if (draggingRight) Alignment.TopStart else Alignment.TopEnd)
+                .padding(28.dp),
+        )
+    }
+}
+
+/** Discard, add-to-album and keep, as the tappable equivalent of the three gestures. */
+@Composable
+private fun SwipeDecisionButtons(
+    onTrash: () -> Unit,
+    onOpenAlbum: () -> Unit,
+    onKeep: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 18.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+    ) {
+        RoundAction(
+            icon = Icons.Default.DeleteOutline,
+            label = stringResource(R.string.review_action_trash),
+            color = DangerRed,
+            onClick = onTrash,
+        )
+        RoundAction(
+            icon = Icons.Default.Album,
+            label = stringResource(R.string.review_action_album),
+            color = MiuixTheme.colorScheme.primary,
+            onClick = onOpenAlbum,
+        )
+        RoundAction(
+            icon = Icons.Default.Check,
+            label = stringResource(R.string.review_action_keep),
+            color = AccentGreen,
+            onClick = onKeep,
+        )
+    }
+}
+
+/** Folder, capture date and size, so a decision has some context behind it. */
+@Composable
+private fun ColumnScope.SwipeMediaCaption(item: UiMedia, bottomPadding: Dp) {
+    val caption = remember(item.id) {
+        buildString {
+            append(item.relativePath?.trimEnd('/') ?: item.mimeType)
+            item.dateTakenMillis?.let { append(" / "); append(scanDate(it)) }
+            append(" / ")
+            append(formatBytes(item.sizeBytes))
+        }
+    }
+    Text(
+        caption,
+        modifier = Modifier
+            .align(Alignment.CenterHorizontally)
+            .padding(bottom = bottomPadding),
+        color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
+        fontSize = 12.sp,
+    )
 }
 
 private enum class DragAxis { HORIZONTAL, VERTICAL }
