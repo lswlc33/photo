@@ -35,7 +35,7 @@ jobs:
       # 副本里换回官方地址，提交里的镜像地址保持不变。
       - name: Point the wrapper at the upstream Gradle distribution
         run: |
-          sed -i 's#https\\://mirrors.cloud.tencent.com/Gradle/#https\\://services.gradle.org/distributions/#' \
+          sed -i 's#mirrors.cloud.tencent.com/Gradle/#services.gradle.org/distributions/#' \
             gradle/wrapper/gradle-wrapper.properties
           grep distributionUrl gradle/wrapper/gradle-wrapper.properties
 

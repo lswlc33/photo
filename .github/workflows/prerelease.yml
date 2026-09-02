@@ -38,7 +38,7 @@ jobs:
 
       - name: Point the wrapper at the upstream Gradle distribution
         run: |
-          sed -i 's#https\\://mirrors.cloud.tencent.com/Gradle/#https\\://services.gradle.org/distributions/#' \
+          sed -i 's#mirrors.cloud.tencent.com/Gradle/#services.gradle.org/distributions/#' \
             gradle/wrapper/gradle-wrapper.properties
 
       - uses: gradle/actions/setup-gradle@v4
@@ -74,21 +74,29 @@ jobs:
       - name: Refresh the rolling nightly prerelease
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RUN_NUMBER: ${{ github.run_number }}
           VARIANT: ${{ steps.build.outputs.variant }}
           APK: ${{ steps.build.outputs.apk }}
         run: |
-          note=""
-          if [ "$VARIANT" = "debug" ]; then
-            note=$'\n\n> 这是 **debug** 构建，用来试用，不建议长期使用：它可被调试，也没有代码压缩。仓库里配好 `PHOTO_RELEASE_KEYSTORE_BASE64`、`PHOTO_RELEASE_STORE_PASSWORD`、`PHOTO_RELEASE_KEY_ALIAS`、`PHOTO_RELEASE_KEY_PASSWORD` 四个 secret 之后，这里会自动换成签过名的 release 版。'
-          fi
+          # 先赋值再 echo：提交标题里的反引号不会在双引号里被当成命令展开。
+          sha=$(git rev-parse --short HEAD)
+          subject=$(git log -1 --pretty=%s)
+          {
+            echo "master 最新提交的自动构建，随每次推送刷新。"
+            echo
+            echo "提交：\`$sha\` — $subject"
+            echo "构建类型：\`$VARIANT\` · versionCode \`$RUN_NUMBER\`"
+            echo "最低系统要求：Android 13（API 33）"
+            if [ "$VARIANT" = debug ]; then
+              echo
+              echo "> 这是 **debug** 构建，用来试用：它可被调试，也没有代码压缩。仓库里配好 \`PHOTO_RELEASE_KEYSTORE_BASE64\`、\`PHOTO_RELEASE_STORE_PASSWORD\`、\`PHOTO_RELEASE_KEY_ALIAS\`、\`PHOTO_RELEASE_KEY_PASSWORD\` 四个 secret 之后，这里会自动换成签过名的 release 版。"
+            fi
+          } > "$RUNNER_TEMP/notes.md"
+
           gh release delete nightly --yes --cleanup-tag || true
           gh release create nightly \
             --target "$GITHUB_SHA" \
-            --title "照片整理 nightly · build ${{ github.run_number }}" \
+            --title "照片整理 nightly · build $RUN_NUMBER" \
             --prerelease \
-            --notes "master 最新提交的自动构建，随每次推送刷新。
-
-提交：\`$(git rev-parse --short HEAD)\` — $(git log -1 --pretty=%s)
-构建类型：\`$VARIANT\` · versionCode \`${{ github.run_number }}\`
-最低系统要求：Android 13（API 33）$note" \
+            --notes-file "$RUNNER_TEMP/notes.md" \
             "$APK"
