@@ -99,7 +99,11 @@ internal data class VideoTrackInfo(
     val mimeType: String?,
     val widthPx: Int,
     val heightPx: Int,
-)
+    /** `MediaFormat.KEY_COLOR_TRANSFER`, or [ColorTransferUnset] when absent. */
+    val colorTransfer: Int,
+) {
+    val hdrKind: HdrKind get() = classifyHdr(mimeType, colorTransfer)
+}
 
 /**
  * Reads the source's video track without decoding it. Returns null when the
@@ -120,6 +124,7 @@ internal fun inspectVideoTrack(context: Context, source: Uri): VideoTrackInfo? =
                 mimeType = mime.lowercase(Locale.US),
                 widthPx = format.optionalInt(MediaFormat.KEY_WIDTH),
                 heightPx = format.optionalInt(MediaFormat.KEY_HEIGHT),
+                colorTransfer = format.optionalInt(MediaFormat.KEY_COLOR_TRANSFER),
             )
         }
         null
@@ -127,6 +132,23 @@ internal fun inspectVideoTrack(context: Context, source: Uri): VideoTrackInfo? =
         extractor.release()
     }
 }.getOrNull()
+
+/** The colour classification of a file already on disk, for checking an output. */
+internal fun inspectLocalVideoHdr(path: String): HdrKind = runCatching {
+    val extractor = MediaExtractor()
+    try {
+        extractor.setDataSource(path)
+        for (index in 0 until extractor.trackCount) {
+            val format = extractor.getTrackFormat(index)
+            val mime = format.getString(MediaFormat.KEY_MIME) ?: continue
+            if (!mime.startsWith("video/")) continue
+            return classifyHdr(mime, format.optionalInt(MediaFormat.KEY_COLOR_TRANSFER))
+        }
+        HdrKind.UNKNOWN
+    } finally {
+        extractor.release()
+    }
+}.getOrDefault(HdrKind.UNKNOWN)
 
 private fun MediaFormat.optionalInt(key: String): Int =
     if (containsKey(key)) runCatching { getInteger(key) }.getOrDefault(0) else 0

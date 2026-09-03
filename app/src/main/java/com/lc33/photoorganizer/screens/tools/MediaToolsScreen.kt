@@ -123,6 +123,7 @@ fun MediaToolsScreen(
     }
     var trackMode by rememberSaveable { mutableStateOf(VideoTrackMode.VIDEO_AND_AUDIO) }
     var videoCodec by rememberSaveable { mutableStateOf(VideoCodec.SOURCE) }
+    var allowHdrToSdr by rememberSaveable { mutableStateOf(false) }
     var bitrateMbps by rememberSaveable { mutableFloatStateOf(0f) }
 
     var showActionsPopup by rememberSaveable { mutableStateOf(false) }
@@ -258,6 +259,7 @@ fun MediaToolsScreen(
             resolution = videoResolution,
             trackMode = trackMode,
             codec = videoCodec,
+            allowHdrToSdr = allowHdrToSdr,
             bitrateOverride = bitrateMbps
                 .takeIf { it > 0f && trackMode != VideoTrackMode.AUDIO_ONLY }
                 ?.times(1_000_000f)
@@ -372,6 +374,8 @@ fun MediaToolsScreen(
                 onTrackModeChange = { trackMode = it },
                 codec = videoCodec,
                 onCodecChange = { videoCodec = it },
+                allowHdrToSdr = allowHdrToSdr,
+                onAllowHdrToSdrChange = { allowHdrToSdr = it },
                 bitrateMbps = bitrateMbps,
                 onBitrateChange = { bitrateMbps = it },
                 bitrateCeilingMbps = bitrateCeilingMbps,
@@ -534,6 +538,8 @@ private fun VideoToolOptions(
     onTrackModeChange: (VideoTrackMode) -> Unit,
     codec: VideoCodec,
     onCodecChange: (VideoCodec) -> Unit,
+    allowHdrToSdr: Boolean,
+    onAllowHdrToSdrChange: (Boolean) -> Unit,
     bitrateMbps: Float,
     onBitrateChange: (Float) -> Unit,
     bitrateCeilingMbps: Float,
@@ -571,6 +577,16 @@ private fun VideoToolOptions(
             // There is no video track left to encode when extracting audio.
             enabled = !running && !audioOnly && codecOptions.size > 1,
             onSelect = onCodecChange,
+        )
+        // Off by default on purpose. Media3's HDR_MODE_KEEP_HDR is best-effort and
+        // falls back to tone mapping without telling anyone, so an HDR source is
+        // refused rather than quietly returned as a washed-out SDR file.
+        SwitchPreference(
+            title = stringResource(R.string.media_tool_allow_hdr_sdr),
+            summary = stringResource(R.string.media_tool_allow_hdr_sdr_summary),
+            checked = allowHdrToSdr,
+            onCheckedChange = onAllowHdrToSdrChange,
+            enabled = !running && !audioOnly,
         )
         SliderPreference(
             value = bitrateMbps,
@@ -765,8 +781,11 @@ private fun ProcessedMedia.detailText(): String {
     }
     // A silent codec swap changes what the user is looking at, so it is said out
     // loud next to the size rather than left for them to discover in a player.
-    val fallback = codecFallback ?: return size
-    return "$size · " + stringResource(R.string.media_tool_codec_fallback, codecLabel(fallback))
+    val notes = buildList {
+        codecFallback?.let { add(stringResource(R.string.media_tool_codec_fallback, codecLabel(it))) }
+        if (hdrLost) add(stringResource(R.string.media_tool_hdr_lost))
+    }
+    return (listOf(size) + notes).joinToString(" · ")
 }
 
 /** `video/hevc` reads as `HEVC` in a summary line, not as a MIME type. */

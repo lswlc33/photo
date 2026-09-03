@@ -342,6 +342,8 @@
     <string name="processing_error_gallery_publish">The result could not be published to the gallery.</string>
     <string name="processing_error_empty_output">Transcoding produced an empty file; this device may not support the required encoder.</string>
     <string name="processing_error_video_export">Video transcoding failed (%1$s); this device may not support the required encoder.</string>
+    <string name="processing_error_dolby_vision">Dolby Vision. Its metadata rides in a layer no re-encode can carry, so the file was left alone.</string>
+    <string name="processing_error_hdr_would_be_lost">HDR video. This device would hand back an SDR copy, so the file was left alone — turn on "Allow an SDR copy" to process it anyway.</string>
     <string name="processing_error_unknown">Processing failed: %1$s</string>
     <string name="media_tool_format_jpeg_desc">Widely compatible, best for photos</string>
     <string name="media_tool_format_webp_desc">Smaller files, slightly less compatible</string>
@@ -366,6 +368,9 @@
     <string name="media_tool_codec_software_desc">No hardware encoder here, so this will be slow</string>
     <string name="media_tool_codec_only_one">This device can only encode one video format</string>
     <string name="media_tool_codec_fallback">Encoded as %1$s — this device could not do the codec you picked</string>
+    <string name="media_tool_allow_hdr_sdr">Allow an SDR copy of HDR video</string>
+    <string name="media_tool_allow_hdr_sdr_summary">Off by default. HDR rarely survives a re-encode, and what comes back is a washed-out SDR file</string>
+    <string name="media_tool_hdr_lost">HDR did not survive — the result is SDR</string>
 
     <!-- Settings -->
     <string name="settings_title">Settings</string>

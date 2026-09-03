@@ -56,6 +56,7 @@ object VideoProcessor {
         resolution: VideoResolution,
         trackMode: VideoTrackMode,
         codec: VideoCodec = VideoCodec.SOURCE,
+        allowHdrToSdr: Boolean = false,
         bitrateOverride: Int? = null,
         keepOnlyIfSmaller: Boolean = true,
         onProgress: (Float) -> Unit = {},
@@ -69,10 +70,24 @@ object VideoProcessor {
         val targetBitrate = bitrateOverride
             ?.coerceIn(MIN_BITRATE, resolution.ceilingBitrate)
             ?: withContext(Dispatchers.IO) { resolveTargetBitrate(context, source, resolution) }
+        val track = withContext(Dispatchers.IO) { inspectVideoTrack(context, source) }
+        val sourceHdr = track?.hdrKind ?: HdrKind.UNKNOWN
+        // Refused before any work starts, and only for the video path: extracting
+        // audio discards the picture anyway, so HDR is not at stake there.
+        if (!audioOnly) {
+            hdrSkipReason(sourceHdr, allowHdrToSdr)?.let { reason ->
+                throw ProcessingException(
+                    when (reason) {
+                        SkipReason.DOLBY_VISION_CANNOT_SURVIVE -> R.string.processing_error_dolby_vision
+                        SkipReason.HDR_WOULD_BE_LOST -> R.string.processing_error_hdr_would_be_lost
+                    },
+                )
+            }
+        }
         val requestedMimeType = withContext(Dispatchers.IO) {
             resolveOutputMimeType(
                 requested = codec,
-                sourceMimeType = inspectVideoTrack(context, source)?.mimeType,
+                sourceMimeType = track?.mimeType,
                 encodableMimeTypes = deviceVideoEncoders().keys,
             )
         }
@@ -99,6 +114,12 @@ object VideoProcessor {
             if (outputBytes <= 0L) {
                 throw ProcessingException(R.string.processing_error_empty_output)
             }
+            // The one failure Media3 never reports: HDR going in, SDR coming out.
+            // Checked against the file rather than inferred from configuration.
+            val hdrLost = !audioOnly && hdrWasLost(
+                input = sourceHdr,
+                output = withContext(Dispatchers.IO) { inspectLocalVideoHdr(output.absolutePath) },
+            )
             if (keepOnlyIfSmaller && trackMode != VideoTrackMode.AUDIO_ONLY && outputBytes >= originalBytes) {
                 onProgress(1f)
                 return null
@@ -123,6 +144,7 @@ object VideoProcessor {
                 codecFallback = actualMimeType
                     ?.lowercase(Locale.US)
                     ?.takeIf { !audioOnly && it != requestedMimeType },
+                hdrLost = hdrLost,
             )
         } finally {
             withContext(Dispatchers.IO) { output.delete() }

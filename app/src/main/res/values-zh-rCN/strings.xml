@@ -324,6 +324,8 @@
     <string name="processing_error_gallery_publish">无法把结果发布到图库。</string>
     <string name="processing_error_empty_output">转码生成了空文件，本设备可能不支持所需的编码器。</string>
     <string name="processing_error_video_export">视频转码失败（%1$s），本设备可能不支持所需的编码器。</string>
+    <string name="processing_error_dolby_vision">这是杜比视界。它的元数据在一个重新编码带不走的层里，所以这个文件没有动。</string>
+    <string name="processing_error_hdr_would_be_lost">这是 HDR 视频。本机只会还你一个 SDR 副本，所以这个文件没有动 —— 想照压请打开「允许把 HDR 压成 SDR」。</string>
     <string name="processing_error_unknown">处理失败：%1$s</string>
     <string name="media_tool_format_jpeg_desc">兼容性最好，适合照片</string>
     <string name="media_tool_format_webp_desc">体积更小，兼容性略差</string>
@@ -348,6 +350,9 @@
     <string name="media_tool_codec_software_desc">本机没有硬件编码器，会很慢</string>
     <string name="media_tool_codec_only_one">本机只能编码一种视频格式</string>
     <string name="media_tool_codec_fallback">实际编成了 %1$s —— 本机做不到你选的那种编码</string>
+    <string name="media_tool_allow_hdr_sdr">允许把 HDR 压成 SDR</string>
+    <string name="media_tool_allow_hdr_sdr_summary">默认关闭。重新编码基本留不住 HDR，拿回来的是一个发灰的 SDR 文件</string>
+    <string name="media_tool_hdr_lost">HDR 没保住 —— 结果是 SDR</string>
 
     <!-- 设置 -->
     <string name="settings_title">设置</string>

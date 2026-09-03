@@ -25,6 +25,12 @@ data class ProcessedMedia(
      * picking HEVC and getting H.264 changes the result they are looking at.
      */
     val codecFallback: String? = null,
+    /**
+     * True when the source carried HDR and the output does not. Media3 tone-maps
+     * to SDR on its own when the device cannot edit HDR, and notifies nobody, so
+     * this is measured from the finished file.
+     */
+    val hdrLost: Boolean = false,
 ) {
     val savedBytes: Long get() = (originalBytes - outputBytes).coerceAtLeast(0L)
     val savedFraction: Float
