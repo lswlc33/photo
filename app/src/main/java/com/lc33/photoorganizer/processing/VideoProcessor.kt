@@ -17,6 +17,7 @@ import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
 import androidx.media3.transformer.VideoEncoderSettings
 import com.lc33.photoorganizer.R
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -54,6 +55,7 @@ object VideoProcessor {
         source: Uri,
         resolution: VideoResolution,
         trackMode: VideoTrackMode,
+        codec: VideoCodec = VideoCodec.SOURCE,
         bitrateOverride: Int? = null,
         keepOnlyIfSmaller: Boolean = true,
         onProgress: (Float) -> Unit = {},
@@ -67,9 +69,25 @@ object VideoProcessor {
         val targetBitrate = bitrateOverride
             ?.coerceIn(MIN_BITRATE, resolution.ceilingBitrate)
             ?: withContext(Dispatchers.IO) { resolveTargetBitrate(context, source, resolution) }
+        val requestedMimeType = withContext(Dispatchers.IO) {
+            resolveOutputMimeType(
+                requested = codec,
+                sourceMimeType = inspectVideoTrack(context, source)?.mimeType,
+                encodableMimeTypes = deviceVideoEncoders().keys,
+            )
+        }
         try {
-            try {
-                runExport(context, source, output.absolutePath, resolution, trackMode, targetBitrate, onProgress)
+            val actualMimeType = try {
+                runExport(
+                    context = context,
+                    source = source,
+                    outputPath = output.absolutePath,
+                    resolution = resolution,
+                    trackMode = trackMode,
+                    targetBitrate = targetBitrate,
+                    outputMimeType = requestedMimeType,
+                    onProgress = onProgress,
+                )
             } catch (export: ExportException) {
                 throw ProcessingException(
                     R.string.processing_error_video_export,
@@ -102,6 +120,9 @@ object VideoProcessor {
                 displayName = published.displayName,
                 originalBytes = originalBytes,
                 outputBytes = outputBytes,
+                codecFallback = actualMimeType
+                    ?.lowercase(Locale.US)
+                    ?.takeIf { !audioOnly && it != requestedMimeType },
             )
         } finally {
             withContext(Dispatchers.IO) { output.delete() }
@@ -168,8 +189,9 @@ object VideoProcessor {
         resolution: VideoResolution,
         trackMode: VideoTrackMode,
         targetBitrate: Int,
+        outputMimeType: String,
         onProgress: (Float) -> Unit,
-    ) = withContext(Dispatchers.Main) {
+    ): String? = withContext(Dispatchers.Main) {
         val videoEffects = buildList {
             resolution.shortSidePx?.let { shortSide ->
                 add(Presentation.createForShortSide(shortSide))
@@ -191,7 +213,7 @@ object VideoProcessor {
             .build()
 
         val transformer = Transformer.Builder(context)
-            .setVideoMimeType(MimeTypes.VIDEO_H264)
+            .setVideoMimeType(outputMimeType)
             .setAudioMimeType(MimeTypes.AUDIO_AAC)
             .setEncoderFactory(encoderFactory)
             .build()
@@ -211,7 +233,10 @@ object VideoProcessor {
             suspendCancellableCoroutine { continuation ->
                 val listener = object : Transformer.Listener {
                     override fun onCompleted(composition: Composition, result: ExportResult) {
-                        if (continuation.isActive) continuation.resume(Unit)
+                        // The encoder factory is built with fallback enabled, so a
+                        // requested codec the device cannot encode is silently
+                        // swapped. Read what actually came out instead of assuming.
+                        if (continuation.isActive) continuation.resume(result.videoMimeType)
                     }
 
                     override fun onError(

@@ -18,6 +18,13 @@ data class ProcessedMedia(
     val displayName: String,
     val originalBytes: Long,
     val outputBytes: Long,
+    /**
+     * The MIME type actually encoded, when the device could not honour the
+     * requested codec and Transformer quietly swapped it. Null when the output
+     * is what was asked for - a fallback is worth telling the user about, since
+     * picking HEVC and getting H.264 changes the result they are looking at.
+     */
+    val codecFallback: String? = null,
 ) {
     val savedBytes: Long get() = (originalBytes - outputBytes).coerceAtLeast(0L)
     val savedFraction: Float
