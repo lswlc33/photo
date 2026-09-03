@@ -35,7 +35,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -58,15 +57,12 @@ import com.lc33.photoorganizer.media.IndexScope
 import com.lc33.photoorganizer.media.IndexScopeMode
 import com.lc33.photoorganizer.media.MediaIndexViewModel
 import com.lc33.photoorganizer.media.MediaStatistics
-import com.lc33.photoorganizer.media.PendingMedia
 import com.lc33.photoorganizer.media.ReviewDecisionStore
 import com.lc33.photoorganizer.media.ReviewState
 import com.lc33.photoorganizer.media.shouldCompactLog
 import com.lc33.photoorganizer.media.TargetFilters
-import com.lc33.photoorganizer.media.DuplicateGroup
 import com.lc33.photoorganizer.media.ToolAnalysis
 import com.lc33.photoorganizer.media.ToolAnalyzer
-import com.lc33.photoorganizer.media.TypeFilter
 import com.lc33.photoorganizer.media.applyTargetFilters
 import com.lc33.photoorganizer.media.formatBytes
 import com.lc33.photoorganizer.media.mediaPermissionState
@@ -89,6 +85,8 @@ import com.lc33.photoorganizer.screens.tools.DuplicateGroupsScreen
 import com.lc33.photoorganizer.screens.tools.MediaToolsScreen
 import com.lc33.photoorganizer.screens.tools.ToolsScreen
 import com.lc33.photoorganizer.ui.AppPage
+import com.lc33.photoorganizer.ui.DetailScreen
+import com.lc33.photoorganizer.ui.DetailStackSaver
 import com.lc33.photoorganizer.ui.FloatingBottomBarBottomMargin
 import com.lc33.photoorganizer.ui.FloatingBottomBarHeight
 import com.lc33.photoorganizer.ui.FloatingBottomBarTopMargin
@@ -268,40 +266,46 @@ fun PhotoOrganizerApp() {
     }
 
     var selectedPage by rememberSaveable { mutableStateOf(AppPage.DASHBOARD) }
-    var selectedMode by rememberSaveable { mutableStateOf<DetailMode?>(null) }
-    var targetFilters by rememberSaveable(stateSaver = TargetFiltersSaver) { mutableStateOf(TargetFilters()) }
-    var smartQueue by rememberSaveable { mutableStateOf(false) }
+    // A stack rather than a single destination: a grid opened from a duplicate
+    // list, and the processing tools opened from that grid, are the same kind of
+    // push, so back is one pop at every depth instead of a per-screen return
+    // target. Saveable, because nothing else holds the detail layer across a
+    // rotation.
+    var detailStack by rememberSaveable(stateSaver = DetailStackSaver) {
+        mutableStateOf<List<DetailScreen>>(emptyList())
+    }
+    val detail = detailStack.lastOrNull()
     var logicalAlbums by remember {
         mutableStateOf(LogicalAlbumStore.decode(prefs.getStringSet("logical_albums", emptySet())))
     }
-    var duplicateGroup by remember { mutableStateOf<DuplicateGroup?>(null) }
-    // A group grid is reachable from both the exact and the similar list, so the
-    // back target follows whichever list opened it.
-    var groupReturnMode by rememberSaveable { mutableStateOf(DetailMode.DUPLICATES) }
-    // Only the name is held, and the album is derived from `logicalAlbums`: that
-    // keeps a single source of truth and lets the selection survive a
-    // process-death restore, which `selectedMode` already does.
-    var selectedAlbumName by rememberSaveable { mutableStateOf<String?>(null) }
-    val selectedLogicalAlbum = remember(logicalAlbums, selectedAlbumName) {
-        selectedAlbumName?.let { name -> logicalAlbums.firstOrNull { it.name == name } }
+    // Resolved from the name in the destination, so `logicalAlbums` stays the one
+    // source of truth and a rename or delete cannot leave a stale copy on screen.
+    val selectedLogicalAlbum = remember(logicalAlbums, detail) {
+        (detail as? DetailScreen.LogicalAlbumGrid)?.let { target ->
+            logicalAlbums.firstOrNull { it.name == target.albumName }
+        }
     }
     var showDiscardDialog by remember { mutableStateOf(false) }
     var pendingDiscardIds by remember { mutableStateOf<Set<Long>>(emptySet()) }
     var showAlbumDialog by remember { mutableStateOf(false) }
     var selectedMediaId by remember { mutableStateOf<Long?>(null) }
-    // Items handed from a gallery grid to the processing tools, so an analysis
-    // result can be compressed without re-picking it through the system picker.
-    var pendingProcessing by remember { mutableStateOf<List<PendingMedia>>(emptyList()) }
+
+    fun openDetail(screen: DetailScreen) {
+        detailStack = detailStack + screen
+    }
+
+    /** Swaps the open destination without deepening the stack, so back is unchanged. */
+    fun replaceDetail(screen: DetailScreen) {
+        detailStack = detailStack.dropLast(1) + screen
+    }
+
+    fun popDetail() {
+        detailStack = detailStack.dropLast(1)
+    }
 
     fun saveLogicalAlbums(albums: List<LogicalAlbum>) {
         logicalAlbums = albums.sortedBy { it.name.lowercase() }
         prefs.edit { putStringSet("logical_albums", LogicalAlbumStore.encode(logicalAlbums)) }
-    }
-
-    // A hand-off only lives as long as the tools page is open, so leaving it by
-    // any route - button, system back or the predictive back gesture - drops it.
-    LaunchedEffect(selectedMode) {
-        if (selectedMode != DetailMode.MEDIA) pendingProcessing = emptyList()
     }
 
     LaunchedEffect(rawItems, mediaIndexReady, indexScope) {
@@ -363,8 +367,9 @@ fun PhotoOrganizerApp() {
     fun compressSelection(ids: Set<Long>) {
         val items = media.filter { it.id in ids }.mapNotNull { it.toPendingMedia() }
         if (items.isEmpty()) return
-        pendingProcessing = items
-        selectedMode = DetailMode.MEDIA
+        // Pushed rather than swapped: back should return to the grid the selection
+        // was made in, which is the fourth level this stack exists for.
+        openDetail(DetailScreen.MediaProcessing(items))
     }
 
     val contentBottomPadding = floatingBottomBarContentPadding()
@@ -372,18 +377,20 @@ fun PhotoOrganizerApp() {
     val predictiveBackOffset = with(LocalDensity.current) { 72.dp.toPx() }
     val detailEnterOffset = with(LocalDensity.current) { 18.dp.toPx() }
     val detailEnterProgress by animateFloatAsState(
-        targetValue = if (selectedMode == null) 0f else 1f,
+        targetValue = if (detail == null) 0f else 1f,
         animationSpec = if (animationEnabled) spring(dampingRatio = .82f, stiffness = 440f) else snap(),
         label = "detail-enter",
     )
 
     MiuixTheme(themeController) {
         PredictiveBackHandler(
-            enabled = selectedMode != null && !showDiscardDialog && !showAlbumDialog && deleteError == null,
+            enabled = detail != null && !showDiscardDialog && !showAlbumDialog && deleteError == null,
         ) { progress ->
             try {
                 progress.collect { event -> detailBackProgress = event.progress }
-                selectedMode = null
+                // One pop per gesture, so a fourth-level screen falls back to the
+                // third rather than all the way out to the page layer.
+                popDetail()
             } catch (cancellation: CancellationException) {
                 // A cancelled gesture leaves the current screen in place.
                 throw cancellation
@@ -457,21 +464,16 @@ fun PhotoOrganizerApp() {
                         trashCount = trashCount,
                         logicalAlbums = logicalAlbums,
                         onOpenSmart = {
-                            targetFilters = TargetFilters()
-                            smartQueue = true
-                            selectedMode = DetailMode.SWIPE
+                            openDetail(DetailScreen.Swipe(filters = TargetFilters(), smartOrder = true))
                         },
                         onOpenTargeted = { filters ->
-                            targetFilters = filters
-                            smartQueue = false
-                            selectedMode = DetailMode.SWIPE
+                            openDetail(DetailScreen.Swipe(filters = filters, smartOrder = false))
                         },
-                        onOpenManual = { selectedMode = DetailMode.MANUAL },
-                        onOpenKept = { selectedMode = DetailMode.KEPT },
-                        onOpenTrash = { selectedMode = DetailMode.TRASH },
+                        onOpenManual = { openDetail(DetailScreen.Manual) },
+                        onOpenKept = { openDetail(DetailScreen.Kept) },
+                        onOpenTrash = { openDetail(DetailScreen.Trash) },
                         onOpenLogicalAlbum = { album ->
-                            selectedAlbumName = album.name
-                            selectedMode = DetailMode.LOGICAL_ALBUM
+                            openDetail(DetailScreen.LogicalAlbumGrid(album.name))
                         },
                     )
                     AppPage.TOOLS -> ToolsScreen(
@@ -485,13 +487,13 @@ fun PhotoOrganizerApp() {
                         onLargestThresholdChange = { largestThresholdMb = it },
                         onRefresh = { scanRequest++ },
                         onRequestPermission = { permissionLauncher.launch(context.photoPermissionRequest()) },
-                        onOpenDuplicates = { selectedMode = DetailMode.DUPLICATES },
-                        onOpenScreenshots = { selectedMode = DetailMode.SCREENSHOTS },
-                        onOpenLargest = { selectedMode = DetailMode.LARGEST },
-                        onOpenMediaTools = { selectedMode = DetailMode.MEDIA },
+                        onOpenDuplicates = { openDetail(DetailScreen.Duplicates) },
+                        onOpenScreenshots = { openDetail(DetailScreen.Screenshots) },
+                        onOpenLargest = { openDetail(DetailScreen.Largest) },
+                        onOpenMediaTools = { openDetail(DetailScreen.MediaProcessing(emptyList())) },
                         onAnalyzeSimilar = indexViewModel::analyzeSimilar,
                         onCancelSimilarAnalysis = indexViewModel::cancelSimilarAnalysis,
-                        onOpenSimilar = { selectedMode = DetailMode.SIMILAR },
+                        onOpenSimilar = { openDetail(DetailScreen.Similar) },
                     )
                     AppPage.SETTINGS -> SettingsScreen(
                         hasMediaPermission = hasMediaPermission,
@@ -519,7 +521,7 @@ fun PhotoOrganizerApp() {
                         onAnimationChange = { animationEnabled = it },
                         onConfirmDeleteChange = { confirmDelete = it },
                         onRequestPermission = { permissionLauncher.launch(context.photoPermissionRequest()) },
-                        onOpenAbout = { selectedMode = DetailMode.ABOUT },
+                        onOpenAbout = { openDetail(DetailScreen.About) },
                         contentBottomPadding = contentBottomPadding,
                     )
                 }
@@ -537,11 +539,13 @@ fun PhotoOrganizerApp() {
                             alpha = detailEnterProgress * (1f - detailBackProgress * .08f)
                         },
                 ) {
-                    when (selectedMode) {
-                        DetailMode.SWIPE -> {
-                            val filtered = remember(rawItems, targetFilters, smartQueue, toolAnalysis) {
-                                val scoped = applyTargetFilters(rawItems, targetFilters)
-                                if (!smartQueue) {
+                    when (detail) {
+                        is DetailScreen.Swipe -> {
+                            val filters = detail.filters
+                            val smartOrder = detail.smartOrder
+                            val filtered = remember(rawItems, filters, smartOrder, toolAnalysis) {
+                                val scoped = applyTargetFilters(rawItems, filters)
+                                if (!smartOrder) {
                                     scoped
                                 } else {
                                     smartReviewOrder(
@@ -561,60 +565,52 @@ fun PhotoOrganizerApp() {
                                 media = queue,
                                 animationEnabled = animationEnabled,
                                 title = stringResource(
-                                    if (smartQueue) R.string.organize_mode_smart else R.string.organize_mode_targeted,
+                                    if (smartOrder) R.string.organize_mode_smart else R.string.organize_mode_targeted,
                                 ),
-                                onBack = { selectedMode = null; detailBackProgress = 0f },
+                                onBack = { popDetail(); detailBackProgress = 0f },
                                 onMark = ::markMedia,
                                 onOpenAlbum = { selectedMediaId = it; showAlbumDialog = true },
                             )
                         }
-                        DetailMode.MANUAL -> ManualGridScreen(
+                        DetailScreen.Manual -> ManualGridScreen(
                             media = media,
                             defaultSortBySize = defaultSortOrder == SortOrder.SIZE,
-                            onBack = { selectedMode = null },
+                            onBack = ::popDetail,
                             onMark = ::markMedia,
                             animationEnabled = animationEnabled,
                             onCompressSelected = ::compressSelection,
                         )
-                        DetailMode.KEPT -> ManualGridScreen(
+                        DetailScreen.Kept -> ManualGridScreen(
                             media = remember(media) { media.filter { it.state == ReviewState.KEPT } },
                             defaultSortBySize = false,
-                            onBack = { selectedMode = null },
+                            onBack = ::popDetail,
                             onMark = ::markMedia,
                             animationEnabled = animationEnabled,
                             mode = MediaGridMode.KEPT,
                             onCompressSelected = ::compressSelection,
                         )
-                        DetailMode.TRASH -> ManualGridScreen(
+                        DetailScreen.Trash -> ManualGridScreen(
                             media = remember(media) { media.filter { it.state == ReviewState.TRASH_MARKED } },
                             defaultSortBySize = false,
-                            onBack = { selectedMode = null },
+                            onBack = ::popDetail,
                             onMark = ::markMedia,
                             animationEnabled = animationEnabled,
                             mode = MediaGridMode.TRASH,
                             onDeleteRequest = ::requestDiscard,
                         )
-                        DetailMode.DUPLICATES -> DuplicateGroupsScreen(
+                        DetailScreen.Duplicates -> DuplicateGroupsScreen(
                             groups = toolAnalysis.duplicates,
                             analysisReady = toolAnalysisReady,
-                            onBack = { selectedMode = null },
+                            onBack = ::popDetail,
                             onMark = ::markMedia,
-                            onOpenGroup = { group ->
-                                duplicateGroup = group
-                                groupReturnMode = DetailMode.DUPLICATES
-                                selectedMode = DetailMode.DUPLICATE_GROUP
-                            },
+                            onOpenGroup = { group -> openDetail(DetailScreen.DuplicateGroupGrid(group)) },
                         )
-                        DetailMode.SIMILAR -> DuplicateGroupsScreen(
+                        DetailScreen.Similar -> DuplicateGroupsScreen(
                             groups = indexState.similar.groups,
                             analysisReady = indexState.similar.isReady,
-                            onBack = { selectedMode = null },
+                            onBack = ::popDetail,
                             onMark = ::markMedia,
-                            onOpenGroup = { group ->
-                                duplicateGroup = group
-                                groupReturnMode = DetailMode.SIMILAR
-                                selectedMode = DetailMode.DUPLICATE_GROUP
-                            },
+                            onOpenGroup = { group -> openDetail(DetailScreen.DuplicateGroupGrid(group)) },
                             title = stringResource(R.string.tools_similar_title),
                             hint = stringResource(R.string.tools_similar_hint),
                             emptyTitle = stringResource(R.string.tools_similar_empty),
@@ -622,76 +618,77 @@ fun PhotoOrganizerApp() {
                                 pluralStringResource(R.plurals.tools_summary_similar, count, count, saved)
                             },
                         )
-                        DetailMode.DUPLICATE_GROUP -> {
-                            val group = duplicateGroup
-                            if (group == null) {
-                                // `selectedMode` is saveable but the group it points at is
-                                // not, so a process-death restore would land on an empty,
-                                // untitled grid. Fall back to the list that opened it.
-                                LaunchedEffect(Unit) { selectedMode = groupReturnMode }
-                            } else {
-                                val groupIds = remember(group) { group.items.mapTo(hashSetOf()) { it.id } }
-                                ManualGridScreen(
-                                    media = remember(media, groupIds) { media.filter { it.id in groupIds } },
-                                    defaultSortBySize = true,
-                                    onBack = { selectedMode = groupReturnMode },
-                                    onMark = ::markMedia,
-                                    animationEnabled = animationEnabled,
-                                    mode = MediaGridMode.DUPLICATE_GROUP,
-                                    onCompressSelected = ::compressSelection,
-                                )
+                        is DetailScreen.DuplicateGroupGrid -> {
+                            // No missing-group fallback: the stack carries the group,
+                            // and a restore that cannot bring it back drops this entry
+                            // so the list underneath is what shows.
+                            val groupIds = remember(detail) {
+                                detail.group.items.mapTo(hashSetOf()) { it.id }
                             }
+                            ManualGridScreen(
+                                media = remember(media, groupIds) { media.filter { it.id in groupIds } },
+                                defaultSortBySize = true,
+                                onBack = ::popDetail,
+                                onMark = ::markMedia,
+                                animationEnabled = animationEnabled,
+                                mode = MediaGridMode.DUPLICATE_GROUP,
+                                onCompressSelected = ::compressSelection,
+                            )
                         }
-                        DetailMode.SCREENSHOTS -> {
+                        DetailScreen.Screenshots -> {
                             val screenshotIds = remember(toolAnalysis) {
                                 toolAnalysis.screenshots.mapTo(hashSetOf()) { it.id }
                             }
                             ManualGridScreen(
                                 media = remember(media, screenshotIds) { media.filter { it.id in screenshotIds } },
                                 defaultSortBySize = true,
-                                onBack = { selectedMode = null },
+                                onBack = ::popDetail,
                                 onMark = ::markMedia,
                                 animationEnabled = animationEnabled,
                                 mode = MediaGridMode.SCREENSHOTS,
                                 onCompressSelected = ::compressSelection,
                             )
                         }
-                        DetailMode.LARGEST -> {
+                        DetailScreen.Largest -> {
                             val largestIds = remember(toolAnalysis) {
                                 toolAnalysis.largest.mapTo(hashSetOf()) { it.id }
                             }
                             ManualGridScreen(
                                 media = remember(media, largestIds) { media.filter { it.id in largestIds } },
                                 defaultSortBySize = true,
-                                onBack = { selectedMode = null },
+                                onBack = ::popDetail,
                                 onMark = ::markMedia,
                                 animationEnabled = animationEnabled,
                                 mode = MediaGridMode.LARGEST,
                                 onCompressSelected = ::compressSelection,
                             )
                         }
-                        DetailMode.MEDIA -> MediaToolsScreen(
+                        is DetailScreen.MediaProcessing -> MediaToolsScreen(
                             imageQuality = imageQuality,
                             videoQuality = videoQuality,
                             stripMetadata = stripMetadata,
-                            onBack = { selectedMode = null },
+                            onBack = ::popDetail,
                             onMediaCreated = { scanRequest++ },
                             onOpenResult = { uri -> openMediaViewer(context, uri) },
-                            preselected = pendingProcessing,
-                            onClearPreselected = { pendingProcessing = emptyList() },
+                            preselected = detail.preselected,
+                            // Swapped rather than popped: dropping the hand-off leaves
+                            // the tools open, which is what the button offers.
+                            onClearPreselected = {
+                                replaceDetail(DetailScreen.MediaProcessing(emptyList()))
+                            },
                         )
-                        DetailMode.LOGICAL_ALBUM -> {
-                            if (selectedLogicalAlbum == null) {
-                                // The album was deleted, or a process-death restore brought
-                                // back the mode without a resolvable album name.
-                                LaunchedEffect(Unit) { selectedMode = null }
+                        is DetailScreen.LogicalAlbumGrid -> {
+                            val album = selectedLogicalAlbum
+                            if (album == null) {
+                                // The album was deleted, or a restore brought back a name
+                                // that no longer resolves.
+                                LaunchedEffect(detail) { popDetail() }
                             } else {
-                                val album = selectedLogicalAlbum
                                 val ids = album.mediaIds
                                 ManualGridScreen(
                                     media = remember(media, ids) { media.filter { it.id in ids } },
                                     defaultSortBySize = false,
-                                    onBack = { selectedMode = null },
+                                    onBack = ::popDetail,
                                     onMark = ::markMedia,
                                     animationEnabled = animationEnabled,
                                     mode = MediaGridMode.LOGICAL_ALBUM,
@@ -707,21 +704,20 @@ fun PhotoOrganizerApp() {
                                     },
                                     onDeleteCollection = {
                                         saveLogicalAlbums(logicalAlbums.filterNot { it.name == album.name })
-                                        selectedAlbumName = null
-                                        selectedMode = null
+                                        popDetail()
                                     },
                                 )
                             }
                         }
-                        DetailMode.ABOUT -> AboutScreen(
-                            onBack = { selectedMode = null },
+                        DetailScreen.About -> AboutScreen(
+                            onBack = ::popDetail,
                         )
                         null -> Unit
                     }
                 }
             }
 
-            if (selectedMode == null) {
+            if (detail == null) {
                 GlassBottomBar(
                     backdrop = backdrop,
                     selected = selectedPage,
@@ -908,21 +904,6 @@ private fun readLegacyReviewPreferences(
     return found
 }
 
-private enum class DetailMode {
-    SWIPE,
-    MANUAL,
-    KEPT,
-    TRASH,
-    DUPLICATES,
-    SIMILAR,
-    DUPLICATE_GROUP,
-    SCREENSHOTS,
-    LARGEST,
-    MEDIA,
-    LOGICAL_ALBUM,
-    ABOUT,
-}
-
 /** Hands a freshly created file to the system gallery viewer. */
 private fun openMediaViewer(context: Context, uri: android.net.Uri) {
     val mimeType = context.contentResolver.getType(uri) ?: "image/*"
@@ -934,29 +915,6 @@ private fun openMediaViewer(context: Context, uri: android.net.Uri) {
         )
     }
 }
-
-private val TargetFiltersSaver = Saver<TargetFilters, List<String>>(
-    save = { filters ->
-        listOf(
-            filters.albumPaths.joinToString("\u001F"),
-            filters.startDateMillis?.toString().orEmpty(),
-            filters.endDateMillis?.toString().orEmpty(),
-            filters.type.name,
-            filters.minSizeBytes?.toString().orEmpty(),
-        )
-    },
-    restore = { values ->
-        runCatching {
-            TargetFilters(
-                albumPaths = values[0].takeIf(String::isNotEmpty)?.split('\u001F')?.toSet().orEmpty(),
-                startDateMillis = values[1].toLongOrNull(),
-                endDateMillis = values[2].toLongOrNull(),
-                type = TypeFilter.valueOf(values[3]),
-                minSizeBytes = values[4].toLongOrNull(),
-            )
-        }.getOrDefault(TargetFilters())
-    },
-)
 
 private fun readIndexScope(prefs: SharedPreferences): IndexScope {
     val mode = prefs.getString("index_scope_mode", null)
