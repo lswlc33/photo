@@ -43,11 +43,16 @@ Dependencies live only in `gradle/libs.versions.toml`. `settings.gradle.kts` set
 
 A Compose photo/video cleanup app (`com.example.photoorganizer`, minSdk 33, compile/target 37). No DI container, no Room, no navigation library, no persisted database — that is deliberate, and the layering below is what replaces them.
 
-### One state root, one ViewModel
+### One state root, two ViewModels
 
 `PhotoOrganizerApp.kt` is the whole application state container: it owns the `SharedPreferences` handle, the theme, the permission state, per-item review decisions (`reviewStates`), logical albums, the selected page, the selected detail screen and every app-level dialog. Screens are stateless-ish renderers that receive data and lambdas; they never read preferences or query MediaStore themselves.
 
-The one exception is `MediaIndexViewModel` (`media/MediaIndexViewModel.kt`), which owns everything expensive: the MediaStore scan, the exact-duplicate pass, the opt-in similar-photo pass, and the fingerprint cache. It exposes a single `StateFlow<MediaIndexState>`. It exists so cancellation and long IO survive recomposition — do not move that work back into composables.
+Two things are deliberately not in it, both because they must outlive recomposition and configuration changes:
+
+- `MediaIndexViewModel` (`media/MediaIndexViewModel.kt`), hoisted in the root, owns everything expensive: the MediaStore scan, the exact-duplicate pass, the opt-in similar-photo pass, and the fingerprint cache. It exposes a single `StateFlow<MediaIndexState>`.
+- `MediaBatchViewModel` (`processing/MediaBatchViewModel.kt`), obtained with `viewModel()` inside `MediaToolsScreen` because only that screen needs it, owns the transcode queue. A batch runs for minutes; on a `rememberCoroutineScope()` a rotation cancelled it silently and left an idle-looking screen.
+
+Do not move either back into composables.
 
 Data flows down as `IndexedMedia` (domain) → `UiMedia` (`toUiMedia`, adds the `ReviewState`) → screens. Decisions flow back up as lambdas.
 
