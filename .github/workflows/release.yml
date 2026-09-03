@@ -1,0 +1,177 @@
+name: Release
+
+# 打一个 v 开头的标签就发一版正式版：
+#
+#     git tag v8.0 && git push origin v8.0
+#
+# 和滚动的 nightly 预发布不同，这里产出的是用真正的发布密钥签名的 release APK，
+# 因此需要仓库里配好四个 secret（名字见下面的 env，怎么配见 AGENTS.md）。缺任何
+# 一个都直接失败 —— 不会退回 debug 签名：一个用错密钥签的包装不上用户已经装着的
+# 那一版，把它当作 release 发出去比构建失败更糟。
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+# 同一个标签只跑一份。cancel-in-progress 故意是 false：一次发布跑到一半被取消，
+# 留下的可能是一个只有说明没有 APK 的 release，比多等一轮糟得多。
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      KEYSTORE_B64: ${{ secrets.PHOTO_RELEASE_KEYSTORE_BASE64 }}
+      PHOTO_RELEASE_STORE_PASSWORD: ${{ secrets.PHOTO_RELEASE_STORE_PASSWORD }}
+      PHOTO_RELEASE_KEY_ALIAS: ${{ secrets.PHOTO_RELEASE_KEY_ALIAS }}
+      PHOTO_RELEASE_KEY_PASSWORD: ${{ secrets.PHOTO_RELEASE_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # 四个 secret 缺一不可。放在最前面：后面的每一步都要花几分钟，而少配一个
+      # secret 是最容易犯、也最容易一眼看懂的错。
+      - name: The four signing secrets are present
+        run: |
+          missing=""
+          [ -n "$KEYSTORE_B64" ] || missing="$missing PHOTO_RELEASE_KEYSTORE_BASE64"
+          [ -n "$PHOTO_RELEASE_STORE_PASSWORD" ] || missing="$missing PHOTO_RELEASE_STORE_PASSWORD"
+          [ -n "$PHOTO_RELEASE_KEY_ALIAS" ] || missing="$missing PHOTO_RELEASE_KEY_ALIAS"
+          [ -n "$PHOTO_RELEASE_KEY_PASSWORD" ] || missing="$missing PHOTO_RELEASE_KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "缺少签名 secret：$missing" >&2
+            echo "在 Settings → Secrets and variables → Actions 里补齐，四个的含义见 AGENTS.md。" >&2
+            exit 1
+          fi
+
+      # 标签和 gradle.properties 里声明的版本必须一致。不一致的话，发出去的包上
+      # 写的版本号和标签对不上，而决定能不能覆盖安装的又是包里的 versionCode。
+      #
+      # 顺带挡住「在分支上手动触发」：那时 GITHUB_REF_NAME 是分支名，最后一步会拿
+      # 它去建一个叫 master 的标签和 release。手动触发要在 Run workflow 的下拉里
+      # 选标签 —— 那是重跑一次发布的正当用法，选分支不是。
+      - name: The ref is a v tag matching the declared version
+        run: |
+          if [ "$GITHUB_REF_TYPE" != tag ]; then
+            echo "只能在标签上运行：当前 ref 是 $GITHUB_REF_TYPE $GITHUB_REF_NAME。" >&2
+            echo "手动触发时请在 Run workflow 的下拉里选一个 v 开头的标签，而不是分支。" >&2
+            exit 1
+          fi
+          case "$GITHUB_REF_NAME" in
+            v*) ;;
+            *)
+              echo "标签 $GITHUB_REF_NAME 不是 v 开头，不当作正式版。" >&2
+              exit 1
+              ;;
+          esac
+          declared=$(sed -n 's/^photoVersionName=//p' gradle.properties)
+          tagged=${GITHUB_REF_NAME#v}
+          if [ "$declared" != "$tagged" ]; then
+            echo "标签 $GITHUB_REF_NAME 与 gradle.properties 里的 photoVersionName=$declared 不一致。" >&2
+            echo "要么改标签，要么先提交一次版本号的改动。" >&2
+            exit 1
+          fi
+          echo "版本 $declared 与标签一致"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # 和 ci.yml 同样的理由：提交里的镜像地址对本地更快，对 GitHub 的 runner 很慢。
+      - name: Point the wrapper at the upstream Gradle distribution
+        run: |
+          sed -i 's#mirrors.cloud.tencent.com/Gradle/#services.gradle.org/distributions/#' \
+            gradle/wrapper/gradle-wrapper.properties
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # 正式版比 nightly 更值得先跑一遍完整检查：nightly 发错了下一次推送就覆盖掉，
+      # 正式版发出去就留在那里了。
+      - name: Unit tests
+        run: ./gradlew :app:test --console=plain
+
+      - name: Android lint
+        run: ./gradlew :app:lint --console=plain
+
+      # 密钥库以 base64 存在 secret 里，这里解回一个只存在于本次运行的临时文件。
+      # 路径写进 GITHUB_ENV，app/build.gradle.kts 会作为 PHOTO_RELEASE_STORE_FILE 读到。
+      - name: Restore the release keystore
+        run: |
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "PHOTO_RELEASE_STORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
+
+      - name: Release APK
+        run: ./gradlew :app:assembleRelease --console=plain
+
+      # 签名配置只要有一项缺失，构建就会产出 app-release-unsigned.apk 而不是报错。
+      # 所以这里真的验一遍签名，而不是相信上一步的退出码。
+      - name: The APK really is signed
+        id: apk
+        run: |
+          built=$(find app/build/outputs/apk/release -name '*.apk' | head -1)
+          case "$built" in
+            *unsigned*)
+              echo "构建产出的是未签名 APK：$built" >&2
+              exit 1
+              ;;
+          esac
+          apksigner=$(find "$ANDROID_SDK_ROOT/build-tools" -name 'apksigner' | sort -V | tail -1)
+          "$apksigner" verify --print-certs "$built"
+
+          version=$(sed -n 's/^photoVersionName=//p' gradle.properties)
+          code=$(sed -n 's/^photoVersionCode=//p' gradle.properties)
+          name="photo-organizer-v$version.apk"
+          mkdir -p artifacts
+          cp "$built" "artifacts/$name"
+          {
+            echo "version=$version"
+            echo "code=$code"
+            echo "name=$name"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: photo-organizer-release-apk
+          path: artifacts/${{ steps.apk.outputs.name }}
+          if-no-files-found: error
+
+      # gh 已经装在 runner 上，不引入第三方 action。这里创建的是正式发布，不是
+      # 预发布；标签已经存在，所以不带 --target。
+      - name: Publish the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.apk.outputs.version }}
+          VERSION_CODE: ${{ steps.apk.outputs.code }}
+          APK: ${{ steps.apk.outputs.name }}
+        run: |
+          sha=$(git rev-parse --short HEAD)
+          {
+            echo "- 版本：**v$VERSION**（versionCode \`$VERSION_CODE\`）"
+            echo "- 提交：\`$sha\`"
+            echo "- 系统要求：Android 13（API 33）及以上"
+            echo
+            echo "正式版，用项目的发布密钥签名，跑过单元测试与 lint。"
+            echo
+            echo "> 如果之前装的是 \`nightly\` 预发布里的包，它用的是 debug 密钥，签名不同，**必须先卸载再装这一版**；应用内的评审记录会随卸载一起清掉。以后正式版之间可以直接覆盖安装。"
+          } > "$RUNNER_TEMP/notes.md"
+
+          # 重跑一次发布（在标签上手动触发）时 release 已经存在，gh release create
+          # 会直接失败。存在就更新它，而不是让刚跑完的构建卡死在最后一步。
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" "artifacts/$APK" --clobber
+            gh release edit "$GITHUB_REF_NAME" \
+              --title "照片整理 v$VERSION" \
+              --notes-file "$RUNNER_TEMP/notes.md"
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              --title "照片整理 v$VERSION" \
+              --notes-file "$RUNNER_TEMP/notes.md" \
+              "artifacts/$APK"
+          fi

@@ -1,7 +1,37 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
 }
+
+// Release signing is machine-local: neither the keystore nor its passwords ever
+// enter this repository. The four values come from environment variables - what
+// the Release workflow sets from its secrets - or from
+// ~/.android/photo-organizer-release.properties for a local release build.
+//
+// When any of the four is missing the signing config is simply not created, so
+// `assembleRelease` stops at an unsigned APK. That failure is deliberate and
+// loud: an APK signed by any other key cannot update the one people already
+// installed, so silently substituting one would be worse than not building.
+val localReleaseProperties = Properties().apply {
+    val propertiesFile = file("${System.getProperty("user.home")}/.android/photo-organizer-release.properties")
+    if (propertiesFile.isFile) propertiesFile.inputStream().use { input -> load(input) }
+}
+
+fun releaseCredential(environmentName: String, propertyName: String): String? =
+    providers.environmentVariable(environmentName).orNull ?: localReleaseProperties.getProperty(propertyName)
+
+val releaseStoreFile = releaseCredential("PHOTO_RELEASE_STORE_FILE", "storeFile")
+val releaseStorePassword = releaseCredential("PHOTO_RELEASE_STORE_PASSWORD", "storePassword")
+val releaseKeyAlias = releaseCredential("PHOTO_RELEASE_KEY_ALIAS", "keyAlias")
+val releaseKeyPassword = releaseCredential("PHOTO_RELEASE_KEY_PASSWORD", "keyPassword")
+val releaseSigningConfigured = listOf(
+    releaseStoreFile,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { it != null }
 
 // Declared in gradle.properties so a release bump is a one-line, reviewable
 // commit rather than an edit buried in this file. The environment variables
@@ -28,27 +58,39 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = rootProject.file(requireNotNull(releaseStoreFile))
+                storePassword = requireNotNull(releaseStorePassword)
+                keyAlias = requireNotNull(releaseKeyAlias)
+                keyPassword = requireNotNull(releaseKeyPassword)
+            }
+        }
+    }
+
     buildTypes {
-        // No release signing config is declared here: the keystore and its
-        // passwords are machine-local, so on a machine that has none
-        // `assembleRelease` stops at app-release-unsigned.apk. That is the loud
-        // failure - an unsigned APK cannot be installed at all, and silently
-        // substituting another key would publish something the last release
-        // cannot be updated from.
+        // Signed only where the credentials above exist - a tagged Release run,
+        // or a local release build. Everywhere else this ends at
+        // app-release-unsigned.apk, which cannot be installed at all.
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.findByName("release")
         }
 
         // What the rolling `nightly` prerelease publishes, and the only variant
-        // that is both installable and small. It is `release` in every way that
-        // affects the shipped code - R8, resource shrinking, not debuggable -
-        // and differs only in being signed by the debug key that every Android
-        // SDK generates locally, so it needs no keystore and no secret.
+        // that is installable without a keystore. It is `release` in every way
+        // that affects the shipped code - R8, resource shrinking, not debuggable
+        // - and differs only in being signed by the debug key that every Android
+        // SDK generates locally, so it needs no secret at all.
+        //
+        // initWith copies the release signing config too, so the override below
+        // has to come after it.
         //
         // The debug build is not a distributable: it bundles the Compose tooling
-        // and skips R8, which makes it about 17x larger (76 MB against 4.4 MB).
+        // and skips R8, which makes it about 16x larger (76 MB against 4.8 MB).
         create("nightly") {
             initWith(getByName("release"))
             signingConfig = signingConfigs.getByName("debug")
