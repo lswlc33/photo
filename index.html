@@ -3,11 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>照片整理 — 在手机上把相册过一遍</title>
-<meta name="description" content="照片整理是一个本地相册清理工具：索引照片与视频，检出重复项、相似画面、截屏与大文件，逐项决定留还是不留，并在本机完成压缩重编码。它的 AndroidManifest 里没有 INTERNET 权限。">
+<title>照片整理 — 在手机上整理相册</title>
+<meta name="description" content="照片整理是一个本地相册清理工具：索引照片与视频，检出重复项、相似画面、截屏与大文件，逐项决定去留，并在本机完成压缩与重编码。它的 AndroidManifest 里没有 INTERNET 权限。">
 <meta name="color-scheme" content="light">
-<meta property="og:title" content="照片整理 — 在手机上把相册过一遍">
-<meta property="og:description" content="本地相册清理工具。没有 INTERNET 权限，照片没有出去的路。">
+<meta property="og:title" content="照片整理 — 在手机上整理相册">
+<meta property="og:description" content="本地相册清理工具。没有 INTERNET 权限，照片不会离开设备。">
 <meta property="og:type" content="website">
 <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -428,13 +428,13 @@ footer a:hover{border-bottom-color:var(--teal)}
     </h1>
 
     <p class="hero-thesis stagger" style="animation-delay:.22s">
-      在手机上把相册过一遍。重复的、截屏、太大的，一项一项决定留还是不留。
+      在手机上整理相册。重复项、截屏、大文件，逐项决定去留。
     </p>
 
     <div class="manifest stagger" style="animation-delay:.34s">
       <div class="manifest-head">
         <span>AndroidManifest.xml</span>
-        <span>3 / 3</span>
+        <span>应用自身声明 3 条</span>
       </div>
 
       <div class="perm stagger" style="animation-delay:.46s">
@@ -459,7 +459,7 @@ footer a:hover{border-bottom-color:var(--teal)}
       </div>
 
       <p class="manifest-foot">
-        这是应用自己的清单文件里<b>全部的权限声明</b>。装到手机上的那个包还会多三条，是 Media3 与 androidx 合并进来的（<code>ACCESS_NETWORK_STATE</code>、<code>WAKE_LOCK</code>，和一条只在应用内部用的动态广播权限）——里面没有 <code>INTERNET</code>，而没有 <code>INTERNET</code>，查得到网络状态也发不出去任何东西。没有统计、没有崩溃上报、没有云——<b>照片没有出去的路</b>。
+        这是应用自身声明的<b>全部权限</b>。实际安装的 APK 还会包含 Media3 与 AndroidX 合并引入的三条权限（<code>ACCESS_NETWORK_STATE</code>、<code>WAKE_LOCK</code>，以及一条仅供应用内部使用的动态广播权限），其中不含 <code>INTERNET</code> —— 没有 <code>INTERNET</code>，即使能读取网络状态也无法发出任何数据。不包含统计分析、崩溃上报或云服务，<b>照片不会离开设备</b>。
       </p>
     </div>
 
@@ -467,7 +467,7 @@ footer a:hover{border-bottom-color:var(--teal)}
       <a class="cta cta-primary" href="https://github.com/lswlc33/photo/releases/tag/nightly">下载 APK</a>
       <a class="cta cta-ghost" href="https://github.com/lswlc33/photo">查看源码</a>
     </div>
-    <p class="cta-note stagger" style="animation-delay:1.06s">v8.0 · Android 13 及以上 · 约 5 MB，随 master 每次提交刷新。它用 Android SDK 本机生成的 debug 密钥签名，所以安装时系统会问一次是否允许未知来源。</p>
+    <p class="cta-note stagger" style="animation-delay:1.06s">v8.0 · Android 13 及以上 · 约 5 MB（已压缩），随 master 每次提交刷新。它用 Android SDK 本机生成的 debug 密钥签名，所以安装时系统会问一次是否允许未知来源。</p>
   </div>
 </header>
 
@@ -476,13 +476,13 @@ footer a:hover{border-bottom-color:var(--teal)}
 <section class="band">
   <div class="wrap split rise">
     <div>
-      <p class="eyebrow">Index</p>
+      <p class="eyebrow">索引</p>
       <h2>先看清有多少</h2>
       <p class="lead">
         首页把图库摊开：照片、视频、截屏各多少张、占多少空间，来自几个目录，还有多少没过目。
       </p>
       <p class="muted">
-        重复副本能腾出多少空间，首页直接给出数字。重复副本、截屏、大文件三项合起来的「可释放空间」在工具页上，点进去能看到它由哪些文件组成——不是一个含义不明的「清理」按钮；重叠的文件只算一次，所以那是个上限，不是三项相加。授权只给了部分照片时，界面会一直标着这件事，因为那意味着统计本身是不完整的。
+        重复副本能腾出多少空间，首页直接给出数字。重复副本、截屏、大文件三项合起来的「可释放空间」在工具页上，点进去能看到它由哪些文件组成——不是含义模糊的一键清理；重叠的文件只算一次，所以那是个上限，不是三项相加。授权只给了部分照片时，界面会一直标着这件事，因为那意味着统计本身是不完整的。
       </p>
     </div>
     <img class="split-shot" src="assets/screens/home.png" alt="首页仪表盘：本地图库 145 项、58.1 MB，下面是照片、视频、截屏、目录四块统计" width="1080" height="1920" loading="lazy">
@@ -492,13 +492,13 @@ footer a:hover{border-bottom-color:var(--teal)}
 <section class="band-tight">
   <div class="wrap split split-flip rise">
     <div>
-      <p class="eyebrow">Triage</p>
+      <p class="eyebrow">取舍</p>
       <h2>三种取舍方式</h2>
       <p class="lead">
         每一项最后只有两个结果：保留，或弃置。两个集合随时能回看，也随时能改主意。
       </p>
       <p class="muted">
-        决定被记在一个只追加的日志里，所以标记一项的开销和图库多大无关。同一张照片被换掉之后，它旧的决定会自动失效，不会把新文件按旧判断处理。
+        决定被记在一个只追加的日志里，所以标记一项的开销与库大小无关。同一张照片被换掉之后，它旧的决定会自动失效，不会把新文件按旧判断处理。
       </p>
     </div>
     <img class="split-shot" src="assets/screens/organize.png" alt="整理页：整理进度 20%，已保留 11、已弃置 18、待整理 116，下面是智能模式、定向模式、手动模式三行" width="1080" height="1920" loading="lazy">
@@ -506,17 +506,17 @@ footer a:hover{border-bottom-color:var(--teal)}
 
   <div class="wrap cards rise">
     <div class="card card-teal">
-      <span class="card-tag">Smart</span>
+      <span class="card-tag">智能</span>
       <h3>智能模式</h3>
       <p>按收益排队：先问重复副本，再问截屏，再问大文件，最后才是其余项目。删掉一张能省多少空间，决定它排第几个出现。</p>
     </div>
     <div class="card card-sea">
-      <span class="card-tag">Targeted</span>
+      <span class="card-tag">定向</span>
       <h3>定向模式</h3>
       <p>按相册、日期区间、类型（照片／视频／动态照片／截屏）和最小体积筛一遍再看。只想清 2023 年那个下载目录，就只看它。</p>
     </div>
     <div class="card card-sun">
-      <span class="card-tag">Manual</span>
+      <span class="card-tag">手动</span>
       <h3>手动模式</h3>
       <p>三列网格，进入批量选择模式后可以连续点选、一次标记一批。按日期排序时按天分组；按大小排序时按月份分组、每月里大的在前——最占空间的那几张会落在同一屏，而不是被打散成一条全库长队。</p>
     </div>
@@ -525,7 +525,7 @@ footer a:hover{border-bottom-color:var(--teal)}
 
 <section class="band">
   <div class="wrap rise">
-    <p class="eyebrow">Dedupe</p>
+    <p class="eyebrow">去重</p>
     <h2>它怎么知道哪些是重复的</h2>
     <p class="lead">
       同一张照片的两份副本，字节数必然相同。所以先按字节大小分桶——只有落在同一个桶里的文件才值得算 SHA-256。
@@ -574,17 +574,17 @@ footer a:hover{border-bottom-color:var(--teal)}
 
     <div class="cards">
       <div class="card card-coral">
-        <span class="card-tag">Similar</span>
+        <span class="card-tag">相似</span>
         <h3>相似照片是另一回事</h3>
         <p>连拍、重新编码、缩放过的同一个画面，字节完全不同。这一项用感知哈希（dHash）比较画面本身，因此必须解码每一张图片——所以它不会自动跑，要你在工具页里主动开始，随时可以取消，算过的结果会留到下次启动。</p>
       </div>
       <div class="card card-teal">
-        <span class="card-tag">Cache</span>
+        <span class="card-tag">缓存</span>
         <h3>算过的不再算第二遍</h3>
         <p>两种哈希都按「URI + 大小 + 修改时间」缓存，并写进一个纯文本文件。这个文件坏了或读不出来，只会让下一次重新算一遍，不会变成一个需要你处理的错误。</p>
       </div>
       <div class="card card-sea">
-        <span class="card-tag">Cancel</span>
+        <span class="card-tag">取消</span>
         <h3>随时能停下</h3>
         <p>扫描和哈希的每一层循环都在检查取消状态。切走页面、重新扫描、改索引范围都会立刻生效，一次被放弃的扫描不会在几秒后把过期结果盖回界面上。</p>
       </div>
@@ -595,10 +595,10 @@ footer a:hover{border-bottom-color:var(--teal)}
 <section class="band-tight">
   <div class="wrap split rise">
     <div>
-      <p class="eyebrow">Transcode</p>
+      <p class="eyebrow">转码</p>
       <h2>删不掉的，可以压小</h2>
       <p class="lead">
-        图片能转 JPEG／WebP／PNG、限制长边、调质量、保留或清除 Exif；视频能转 1080p／720p／480p、限码率、只留视频或只提取音频。
+        图片可转换为 JPEG / WebP / PNG，并限制长边、调整质量、保留或清除 Exif；视频可转换为 1080p / 720p / 480p，并限制码率、仅保留视频或仅提取音频。
       </p>
       <p class="muted">
         转码用的是设备自己的硬件编解码器，应用里没有任何原生二进制文件——所以它在每一种 ABI 上都能跑，包括 x86_64 模拟器。
@@ -609,23 +609,23 @@ footer a:hover{border-bottom-color:var(--teal)}
 
   <div class="wrap cards rise">
     <div class="card card-sea">
-      <span class="card-tag">Never in place</span>
+      <span class="card-tag">源文件不动</span>
       <h3>源文件永不修改</h3>
       <p>处理全程在缓存目录里进行，成品写进 <code>Pictures｜Movies｜Music/Photo Organizer</code>。原来那张照片从头到尾没被碰过。</p>
     </div>
     <div class="card card-sun">
-      <span class="card-tag">Bail out</span>
-      <h3>变大就放弃</h3>
+      <span class="card-tag">变大即弃</span>
+      <h3>输出更大时放弃</h3>
       <p>输出比输入还大时，结果直接丢掉，并告诉你原文件更小。压缩不该让文件变大，那种结果不值得留下来占地方。</p>
     </div>
     <div class="card card-coral">
-      <span class="card-tag">Clean failure</span>
-      <h3>失败会清干净</h3>
+      <span class="card-tag">失败清理</span>
+      <h3>失败自动清理</h3>
       <p>任何一步出错，已经写出去的半成品会被删掉，不会在相册里留下一个打不开的文件。错误信息是本地化的，不是一串异常堆栈。</p>
     </div>
     <div class="card card-teal">
-      <span class="card-tag">12 MP</span>
-      <h3>宁可报错，不悄悄降质</h3>
+      <span class="card-tag">1200 万像素</span>
+      <h3>超限直接报错</h3>
       <p>不带缩放的解码超过 1200 万像素会直接报错。悄悄降采样等于在你没同意的情况下改了画质。</p>
     </div>
   </div>
@@ -634,7 +634,7 @@ footer a:hover{border-bottom-color:var(--teal)}
 <section class="band-tight">
   <div class="wrap">
     <div class="nots rise">
-      <p class="eyebrow eyebrow-on-dark">Boundaries</p>
+      <p class="eyebrow eyebrow-on-dark">边界</p>
       <h2>它不会做的四件事</h2>
       <p class="nots-lead">一个清理相册的应用能造成的最大伤害，是删掉你本来想留的东西。所以下面这四条是写死的，不是设置项。</p>
 
@@ -661,7 +661,7 @@ footer a:hover{border-bottom-color:var(--teal)}
 <section class="band">
   <div class="wrap split split-flip rise">
     <div>
-      <p class="eyebrow">Open source</p>
+      <p class="eyebrow">开源</p>
       <h2>用了谁的东西，写在应用里</h2>
       <p class="lead">
         「关于」页除了版本号，还写清楚它做什么、不做什么，以及发布版运行时用到的每一个第三方项目和它自己声明的许可证。
@@ -690,7 +690,7 @@ footer a:hover{border-bottom-color:var(--teal)}
 
 <section class="band-tight" id="build">
   <div class="wrap rise">
-    <p class="eyebrow">Build</p>
+    <p class="eyebrow">构建</p>
     <h2>自己构建</h2>
     <p class="lead">一个 Gradle 模块，没有私有仓库，也没有需要预先准备的原生依赖。</p>
 

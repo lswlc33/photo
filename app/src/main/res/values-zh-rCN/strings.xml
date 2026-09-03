@@ -192,7 +192,7 @@
     <string name="tools_similar_start_summary">点按开始比对画面内容，每张照片读取一次</string>
     <string name="tools_similar_progress">正在比对 %1$d / %2$d</string>
     <string name="tools_similar_empty">未发现相似照片。</string>
-    <string name="tools_similar_hint">连拍、重新编码和缩放后的同一画面会归为一组。这些副本并非完全相同，弃置前请先查看。</string>
+    <string name="tools_similar_hint">连拍、重新编码和缩放后的同一画面会归为一组。这些副本并非完全相同，删除前请先确认。</string>
     <plurals name="tools_summary_similar">
         <item quantity="other">%1$d 组相似照片 · 可释放 %2$s</item>
     </plurals>
@@ -259,7 +259,7 @@
 
     <!-- 媒体处理 -->
     <string name="media_tools_title">媒体处理</string>
-    <string name="media_tools_intro">照片使用系统图像编码器重新编码，视频使用设备硬件编解码器转码。全部在本机完成，不会修改原文件。</string>
+    <string name="media_tools_intro">图片由系统图像编码器重新编码，视频由设备硬件编解码器转码。全程本地进行，原文件保持不变。</string>
     <string name="media_tool_compress_image_title">图片压缩</string>
     <string name="media_tool_compress_video_title">视频压缩</string>
     <string name="processing_running">处理中…</string>
@@ -274,14 +274,14 @@
     <string name="media_tool_keep_exif">保留拍摄信息</string>
     <string name="media_tool_keep_exif_summary">将日期、相机与 GPS 信息复制到结果（仅 JPEG）</string>
     <string name="media_tool_keep_smaller">仅保留更小的结果</string>
-    <string name="media_tool_keep_smaller_summary">当结果比原文件更大时直接放弃，避免浪费空间</string>
+    <string name="media_tool_keep_smaller_summary">当结果比原文件更大时直接放弃，避免占用额外空间</string>
     <plurals name="media_tool_skipped_count">
         <item quantity="other">%1$d 项已跳过（结果更大）</item>
     </plurals>
     <string name="media_tool_bitrate">目标码率</string>
     <string name="media_tool_bitrate_auto">自动</string>
     <string name="media_tool_bitrate_value">%1$s Mbps</string>
-    <string name="media_tool_bitrate_hint">自动会挑一个明显低于源码率的值。</string>
+    <string name="media_tool_bitrate_hint">自动选择一个显著低于源码率的目标值。</string>
     <string name="media_tool_pick_images">选择照片</string>
     <string name="media_tool_pick_videos">选择视频</string>
     <plurals name="media_tool_pick_summary">
@@ -324,8 +324,8 @@
     <string name="processing_error_gallery_publish">无法把结果发布到图库。</string>
     <string name="processing_error_empty_output">转码生成了空文件，本设备可能不支持所需的编码器。</string>
     <string name="processing_error_video_export">视频转码失败（%1$s），本设备可能不支持所需的编码器。</string>
-    <string name="processing_error_dolby_vision">这是杜比视界。它的元数据在一个重新编码带不走的层里，所以这个文件没有动。</string>
-    <string name="processing_error_hdr_would_be_lost">这是 HDR 视频。本机只会还你一个 SDR 副本，所以这个文件没有动 —— 想照压请打开「允许把 HDR 压成 SDR」。</string>
+    <string name="processing_error_dolby_vision">这是杜比视界视频。它的元数据位于重新编码无法携带的图层中，因此该文件未作处理。</string>
+    <string name="processing_error_hdr_would_be_lost">这是 HDR 视频。本设备只能输出 SDR 副本，因此该文件未作处理 —— 如仍要压缩，请打开「允许把 HDR 压成 SDR」。</string>
     <string name="processing_error_unknown">处理失败：%1$s</string>
     <string name="media_tool_format_jpeg_desc">兼容性最好，适合照片</string>
     <string name="media_tool_format_webp_desc">体积更小，兼容性略差</string>
@@ -343,16 +343,16 @@
     <string name="media_tool_codec_h264">H.264</string>
     <string name="media_tool_codec_hevc">HEVC（H.265）</string>
     <string name="media_tool_codec_av1">AV1</string>
-    <string name="media_tool_codec_source_desc">本机编得动就沿用原本的编码，编不动改用 H.264</string>
-    <string name="media_tool_codec_h264_desc">哪里都能播；同画质下比 HEVC 大</string>
-    <string name="media_tool_codec_hevc_desc">同画质下明显更小；老播放器可能打不开</string>
-    <string name="media_tool_codec_av1_desc">体积最小、编码最慢；需要较新的播放器</string>
-    <string name="media_tool_codec_software_desc">本机没有硬件编码器，会很慢</string>
-    <string name="media_tool_codec_only_one">本机只能编码一种视频格式</string>
-    <string name="media_tool_codec_fallback">实际编成了 %1$s —— 本机做不到你选的那种编码</string>
+    <string name="media_tool_codec_source_desc">本设备支持时沿用原编码，否则改用 H.264</string>
+    <string name="media_tool_codec_h264_desc">兼容所有播放器；同画质下体积大于 HEVC</string>
+    <string name="media_tool_codec_hevc_desc">同画质下体积明显更小；较旧的播放器可能无法打开</string>
+    <string name="media_tool_codec_av1_desc">体积最小、编码最慢；需要较新的播放器支持</string>
+    <string name="media_tool_codec_software_desc">本设备没有硬件编码器，编码速度较慢</string>
+    <string name="media_tool_codec_only_one">本设备只能编码一种视频格式</string>
+    <string name="media_tool_codec_fallback">实际编码为 %1$s —— 本设备不支持所选编码</string>
     <string name="media_tool_allow_hdr_sdr">允许把 HDR 压成 SDR</string>
-    <string name="media_tool_allow_hdr_sdr_summary">默认关闭。重新编码基本留不住 HDR，拿回来的是一个发灰的 SDR 文件</string>
-    <string name="media_tool_hdr_lost">HDR 没保住 —— 结果是 SDR</string>
+    <string name="media_tool_allow_hdr_sdr_summary">默认关闭。重新编码通常无法保留 HDR，输出会是一个色彩变淡的 SDR 文件</string>
+    <string name="media_tool_hdr_lost">HDR 未能保留，输出为 SDR</string>
 
     <!-- 设置 -->
     <string name="settings_title">设置</string>
@@ -429,7 +429,7 @@
     <string name="about_feature_cleanup_title">截屏与大文件</string>
     <string name="about_feature_cleanup_summary">两者都会给出删除后可释放空间的合计。大文件阈值可在 5 到 100 MB 之间选择。</string>
     <string name="about_feature_processing_title">本机媒体处理</string>
-    <string name="about_feature_processing_summary">图片可转 JPEG、WebP 或 PNG，并限制长边、指定质量、决定是否保留 Exif。视频可转 1080p、720p 或 480p 并限制码率，也可只取音频。产物比原文件更大时直接放弃而不保存。</string>
+    <string name="about_feature_processing_summary">图片可转 JPEG、WebP 或 PNG，并限制长边、指定质量、决定是否保留 Exif。视频可转 1080p、720p 或 480p 并限制码率，也可只取音频。产物大于原文件时自动放弃。</string>
     <string name="about_feature_privacy_title">无网络，不覆盖</string>
     <string name="about_feature_privacy_summary">应用没有申请网络权限，数据无法离开设备。源文件永不修改——处理只写新文件——删除也一律经由 Android 自己的确认对话框。</string>
     <string name="about_open_source_section">源代码与开源许可</string>

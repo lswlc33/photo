@@ -3,7 +3,7 @@
 [![CI](https://github.com/lswlc33/photo/actions/workflows/ci.yml/badge.svg)](https://github.com/lswlc33/photo/actions/workflows/ci.yml)
 [![Pages](https://github.com/lswlc33/photo/actions/workflows/pages.yml/badge.svg)](https://github.com/lswlc33/photo/actions/workflows/pages.yml)
 
-本地相册整理工具。扫描设备上的照片与视频，帮助逐张做出取舍，检出重复项、相似画面、截屏与大文件，并在本机完成压缩重编码。
+本地相册整理工具。扫描设备上的照片与视频，帮助逐张做出取舍，检出重复项、相似画面、截屏与大文件，并在本机完成压缩与重编码。
 
 全部处理都在设备上进行：应用**没有申请网络权限**，任何照片、缩略图或统计数据都不会离开设备。
 
@@ -32,7 +32,7 @@
 - **精确重复** —— 先按字节大小分桶，只对同尺寸候选做 SHA-256，因此普通图库几乎不需要读盘。
 - **相似照片** —— 感知哈希（dHash）检出连拍、重新编码或缩放后的同一画面。该项按需启动，因为需要解码每一张图片；过程可随时取消，结果会缓存到下次启动。
 - **截屏** / **大文件** —— 阈值可在 5/10/20/50/100 MB 间选择。
-- **媒体处理** —— 图片可转 JPEG/WebP/PNG、限制长边、调整质量、保留或清除 Exif；视频可转 1080p/720p/480p、限制码率、仅保留视频或仅提取音频。**源文件永不修改**，产物写入 `Pictures|Movies|Music/Photo Organizer`，并且在体积反而变大时自动放弃。
+- **媒体处理** —— 图片可转 JPEG/WebP/PNG、限制长边、调整质量、保留或清除 Exif；视频可转 1080p/720p/480p、限制码率、仅保留视频或仅提取音频。**源文件永不修改**，产物写入 `Pictures|Movies|Music/Photo Organizer`，并在输出体积更大时自动放弃。
 
 **设置** 主题（跟随系统/浅色/深色）、滑动动画、删除前确认、默认排序、图片与视频的默认质量、元数据处理，以及索引范围（全部相册／排除指定相册／仅指定相册）。「关于」页除版本信息外，还列出应用做什么、不做什么，以及用到的每一个第三方开源项目及其许可证。
 
@@ -40,7 +40,9 @@
 
 当前版本 **v8.0**（`versionCode 8`）。
 
-[nightly 预发布](https://github.com/lswlc33/photo/releases/tag/nightly)跟着 master 走：每次推送都自动构建，检查通过后把新的 APK 刷新到同一个位置。它是 **nightly 构建** —— 代码压缩、资源压缩和「不可调试」都和正式版一致（约 5 MB），唯一的区别是用 Android SDK 在本机生成的 debug 密钥签名，因为仓库里不放发布密钥。它可以直接安装，安装时系统会问一次是否允许安装未知来源的应用；相邻两次构建用的是同一把密钥，所以新版直接覆盖装就行，不必先卸载。
+[nightly 预发布](https://github.com/lswlc33/photo/releases/tag/nightly)跟着 master 走：每次推送都自动构建，检查通过后把新的 APK 刷新到同一个位置。它是 **nightly 构建** —— 代码压缩、资源压缩和「不可调试」都和正式版一致（约 5 MB），唯一的区别是用 Android SDK 在本机生成的 debug 密钥签名，因为仓库里不放发布密钥。
+
+它可以直接安装，安装时系统会问一次是否允许安装未知来源的应用。相邻两次构建用的是同一把密钥，所以新版直接覆盖安装即可，不必先卸载。
 
 正式版另发：打一个 `v` 开头的标签会触发一次用发布密钥签名的构建，产物出现在 [Releases](https://github.com/lswlc33/photo/releases) 页。两种包的签名不同，**从 nightly 换到正式版需要先卸载**，应用内的评审记录会随卸载一起清掉。
 

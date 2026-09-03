@@ -68,7 +68,7 @@
     </plurals>
     <string name="dashboard_duplicate_pending">Detection has not run yet</string>
     <string name="next_safety">Safety check</string>
-    <string name="dashboard_safety_normal">Permissions, index and original-file guard are healthy</string>
+    <string name="dashboard_safety_normal">Permissions, index and original-file protection are properly configured</string>
     <string name="dashboard_safety_limited">Only selected media is indexed; review access in Settings</string>
 
     <!-- Organize -->
@@ -83,7 +83,7 @@
     <string name="organize_mode_targeted">Targeted mode</string>
     <string name="organize_mode_targeted_summary">Filter by album, date, type and size</string>
     <string name="organize_mode_manual">Manual mode</string>
-    <string name="organize_mode_manual_summary">Gallery grid with a dedicated batch-selection mode</string>
+    <string name="organize_mode_manual_summary">Date-grouped grid with batch selection</string>
     <string name="manual_mode_title">Manual mode</string>
     <string name="organize_marked_title">Marked content</string>
     <string name="organize_marked_trash">Discarded</string>
@@ -197,7 +197,7 @@
     <string name="tools_similar_start_summary">Tap to compare picture content; each photo is read once</string>
     <string name="tools_similar_progress">Comparing %1$d of %2$d</string>
     <string name="tools_similar_empty">No similar photos detected.</string>
-    <string name="tools_similar_hint">Groups the same shot across bursts, re-encodes and resizes. Review a group before discarding: the copies are not byte-identical.</string>
+    <string name="tools_similar_hint">Groups the same shot across bursts, re-encodes and resizes. Confirm a group before deleting: the copies are not byte-identical.</string>
     <plurals name="tools_summary_similar">
         <item quantity="one">%1$d similar group · %2$s could be freed</item>
         <item quantity="other">%1$d similar groups · %2$s could be freed</item>
@@ -270,7 +270,7 @@
 
     <!-- Media tools -->
     <string name="media_tools_title">Media tools</string>
-    <string name="media_tools_intro">Photos are re-encoded by the platform image encoder and videos by the device hardware codecs. Everything runs locally and originals stay untouched.</string>
+    <string name="media_tools_intro">Images are re-encoded by the platform image encoder and videos by the device hardware codecs. Everything runs locally and the originals stay unchanged.</string>
     <string name="media_tool_compress_image_title">Image compression</string>
     <string name="media_tool_compress_video_title">Video compression</string>
     <string name="processing_running">Processing…</string>
@@ -285,7 +285,7 @@
     <string name="media_tool_keep_exif">Keep capture info</string>
     <string name="media_tool_keep_exif_summary">Copy date, camera and GPS tags into the result (JPEG only)</string>
     <string name="media_tool_keep_smaller">Keep only smaller results</string>
-    <string name="media_tool_keep_smaller_summary">Discard a result that would be larger than the source file</string>
+    <string name="media_tool_keep_smaller_summary">Discard a result larger than the source file, to avoid using extra space</string>
     <plurals name="media_tool_skipped_count">
         <item quantity="one">%1$d skipped because the result was larger</item>
         <item quantity="other">%1$d skipped because the result was larger</item>
@@ -293,7 +293,7 @@
     <string name="media_tool_bitrate">Target bitrate</string>
     <string name="media_tool_bitrate_auto">Auto</string>
     <string name="media_tool_bitrate_value">%1$s Mbps</string>
-    <string name="media_tool_bitrate_hint">Auto picks a target clearly below the source.</string>
+    <string name="media_tool_bitrate_hint">Auto selects a target bitrate significantly below the source.</string>
     <string name="media_tool_pick_images">Choose photos</string>
     <string name="media_tool_pick_videos">Choose videos</string>
     <plurals name="media_tool_pick_summary">
@@ -342,8 +342,8 @@
     <string name="processing_error_gallery_publish">The result could not be published to the gallery.</string>
     <string name="processing_error_empty_output">Transcoding produced an empty file; this device may not support the required encoder.</string>
     <string name="processing_error_video_export">Video transcoding failed (%1$s); this device may not support the required encoder.</string>
-    <string name="processing_error_dolby_vision">Dolby Vision. Its metadata rides in a layer no re-encode can carry, so the file was left alone.</string>
-    <string name="processing_error_hdr_would_be_lost">HDR video. This device would hand back an SDR copy, so the file was left alone — turn on "Allow an SDR copy" to process it anyway.</string>
+    <string name="processing_error_dolby_vision">Dolby Vision video. Its metadata lives in a layer no re-encode can carry, so the file was left unprocessed.</string>
+    <string name="processing_error_hdr_would_be_lost">HDR video. This device can only produce an SDR copy, so the file was left unprocessed — turn on "Allow an SDR copy" to compress it anyway.</string>
     <string name="processing_error_unknown">Processing failed: %1$s</string>
     <string name="media_tool_format_jpeg_desc">Widely compatible, best for photos</string>
     <string name="media_tool_format_webp_desc">Smaller files, slightly less compatible</string>
@@ -361,16 +361,16 @@
     <string name="media_tool_codec_h264">H.264</string>
     <string name="media_tool_codec_hevc">HEVC (H.265)</string>
     <string name="media_tool_codec_av1">AV1</string>
-    <string name="media_tool_codec_source_desc">Keep the source codec where this device can encode it, otherwise H.264</string>
-    <string name="media_tool_codec_h264_desc">Plays everywhere; larger than HEVC at the same quality</string>
-    <string name="media_tool_codec_hevc_desc">Clearly smaller than H.264 at the same quality; older players may refuse it</string>
-    <string name="media_tool_codec_av1_desc">Smallest files, slowest to encode; needs a recent player</string>
-    <string name="media_tool_codec_software_desc">No hardware encoder here, so this will be slow</string>
+    <string name="media_tool_codec_source_desc">Keep the source codec when this device supports it, otherwise H.264</string>
+    <string name="media_tool_codec_h264_desc">Compatible with all players; larger than HEVC at the same quality</string>
+    <string name="media_tool_codec_hevc_desc">Noticeably smaller than H.264 at the same quality; older players may not open it</string>
+    <string name="media_tool_codec_av1_desc">Smallest files, slowest to encode; needs a recent player to play back</string>
+    <string name="media_tool_codec_software_desc">No hardware encoder on this device; encoding is slower</string>
     <string name="media_tool_codec_only_one">This device can only encode one video format</string>
-    <string name="media_tool_codec_fallback">Encoded as %1$s — this device could not do the codec you picked</string>
+    <string name="media_tool_codec_fallback">Encoded as %1$s — this device does not support the selected codec</string>
     <string name="media_tool_allow_hdr_sdr">Allow an SDR copy of HDR video</string>
-    <string name="media_tool_allow_hdr_sdr_summary">Off by default. HDR rarely survives a re-encode, and what comes back is a washed-out SDR file</string>
-    <string name="media_tool_hdr_lost">HDR did not survive — the result is SDR</string>
+    <string name="media_tool_allow_hdr_sdr_summary">Off by default. A re-encode usually cannot preserve HDR, and the output is a faded SDR file</string>
+    <string name="media_tool_hdr_lost">HDR was not preserved; the output is SDR</string>
 
     <!-- Settings -->
     <string name="settings_title">Settings</string>
@@ -450,7 +450,7 @@
     <string name="about_feature_cleanup_title">Screenshots and large files</string>
     <string name="about_feature_cleanup_summary">Both are listed with a running total of what deleting them would free. The large-file threshold is selectable between 5 and 100 MB.</string>
     <string name="about_feature_processing_title">Local media processing</string>
-    <string name="about_feature_processing_summary">Images convert to JPEG, WebP or PNG with a long-edge limit, a quality target and optional Exif. Videos convert to 1080p, 720p or 480p with a bitrate ceiling, or hand back only their audio. A result larger than its source is discarded rather than saved.</string>
+    <string name="about_feature_processing_summary">Images convert to JPEG, WebP or PNG with a long-edge limit, a quality target and optional Exif. Videos convert to 1080p, 720p or 480p with a bitrate ceiling, or hand back only their audio. A result larger than its source is discarded automatically.</string>
     <string name="about_feature_privacy_title">No network, no overwrites</string>
     <string name="about_feature_privacy_summary">The app declares no internet permission, so nothing can leave the device. Source files are never modified — processing writes a new file — and deletion always goes through Android\'s own confirmation dialog.</string>
     <string name="about_open_source_section">Source code and licenses</string>
