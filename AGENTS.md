@@ -26,7 +26,7 @@ Use the Gradle wrapper so local and CI builds use the pinned Gradle version:
 .\gradlew.bat :app:lint                 # Run Android lint checks
 ```
 
-`tools/verify.sh` runs test, lint, and `assembleNightly` in one go — the full gate that the per-commit hook skips for speed, and the same three steps CI runs. It builds `nightly` rather than `debug` on purpose: that is the variant CI publishes, and it is the only one that runs R8, so a missing keep rule fails here instead of after the push. `tools/verify-history.sh [base]` replays that build across every commit in a range inside a scratch worktree, so it can prove the history is bisectable without rewriting it.
+`tools/verify.sh` runs test, lint, and `assembleNightly` in one go — the full gate that the per-commit hook skips for speed, and the same three steps CI runs. It builds `nightly` rather than `debug` on purpose: `nightly` is the variant CI publishes, and it is the cheapest one that runs R8 (`release` runs it too but cannot be signed on most machines), so a missing keep rule fails here instead of after the push. `tools/verify-history.sh [base]` replays only `:app:test` across every commit in a range inside a scratch worktree — enough to prove the history is bisectable, and quick enough to actually run, which replaying R8 over every commit would not be.
 
 Use Android Studio for device runs and Compose previews. Keep generated `app/build/` output out of reviews.
 
