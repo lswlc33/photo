@@ -50,12 +50,22 @@ internal object GalleryWriter {
     const val VIDEO_FOLDER = "Movies/Photo Organizer"
     const val AUDIO_FOLDER = "Music/Photo Organizer"
 
+    /**
+     * Chunk size for the whole-file copies below.
+     *
+     * Kotlin's `DEFAULT_BUFFER_SIZE` is 8 KB, which for a multi-megabyte video
+     * means hundreds of reads through a binder-backed descriptor. 64 KB keeps the
+     * cancellation check frequent enough to stay responsive - one chunk is well
+     * under a millisecond - while cutting the per-chunk overhead eightfold.
+     */
+    private const val StreamBufferBytes = 64 * 1024
+
     suspend fun copyToCache(context: Context, source: Uri, prefix: String): File {
         val target = File.createTempFile(prefix, ".bin", context.cacheDir)
         try {
             context.contentResolver.openInputStream(source)?.use { input ->
                 target.outputStream().use { output ->
-                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    val buffer = ByteArray(StreamBufferBytes)
                     while (true) {
                         currentCoroutineContext().ensureActive()
                         val read = input.read(buffer)
@@ -193,7 +203,7 @@ internal object GalleryWriter {
         try {
             resolver.openOutputStream(uri, "w")?.use { output ->
                 file.inputStream().use { input ->
-                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                    val buffer = ByteArray(StreamBufferBytes)
                     while (true) {
                         currentCoroutineContext().ensureActive()
                         val read = input.read(buffer)

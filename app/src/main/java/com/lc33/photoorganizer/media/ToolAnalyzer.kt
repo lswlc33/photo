@@ -78,6 +78,14 @@ data class ToolAnalysis(
 object ToolAnalyzer {
     private const val MEGABYTE: Long = 1024L * 1024L
 
+    /**
+     * Chunk size for [contentHash]. Kotlin's `DEFAULT_BUFFER_SIZE` is 8 KB, which
+     * for a duplicate pass that digests whole media files is hundreds of reads per
+     * candidate; 64 KB still checks for cancellation often enough to stop
+     * promptly.
+     */
+    private const val HashBufferBytes = 64 * 1024
+
     /** Default "large file" cut-off, also the first entry of [LargestThresholdOptions]. */
     const val DefaultLargestThresholdBytes: Long = 5L * MEGABYTE
 
@@ -161,7 +169,7 @@ object ToolAnalyzer {
         return try {
             resolver.openInputStream(uri)?.use { input ->
                 val digest = java.security.MessageDigest.getInstance("SHA-256")
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                val buffer = ByteArray(HashBufferBytes)
                 while (true) {
                     checkActive()
                     val read = input.read(buffer)
