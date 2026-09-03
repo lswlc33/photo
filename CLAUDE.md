@@ -19,7 +19,7 @@ One Gradle module, `:app`. Always use the wrapper (`gradlew.bat` from PowerShell
 Single test class or single test method:
 
 ```bash
-./gradlew :app:testDebugUnitTest --tests 'com.example.photoorganizer.media.SmartQueueTest'
+./gradlew :app:testDebugUnitTest --tests 'com.lc33.photoorganizer.media.SmartQueueTest'
 ./gradlew :app:testDebugUnitTest --tests '*SmartQueueTest.sortsEachBucketByDescendingSize'
 ```
 
@@ -41,7 +41,7 @@ Dependencies live only in `gradle/libs.versions.toml`. `settings.gradle.kts` set
 
 ## Architecture
 
-A Compose photo/video cleanup app (`com.example.photoorganizer`, minSdk 33, compile/target 37). No DI container, no Room, no navigation library, no persisted database — that is deliberate, and the layering below is what replaces them.
+A Compose photo/video cleanup app (`com.lc33.photoorganizer`, minSdk 33, compile/target 37). No DI container, no Room, no navigation library, no persisted database — that is deliberate, and the layering below is what replaces them.
 
 ### One state root, two ViewModels
 

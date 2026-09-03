@@ -46,11 +46,11 @@ val appVersionName = providers.environmentVariable("PHOTO_VERSION_NAME").orNull
     ?: "1.0.0"
 
 android {
-    namespace = "com.example.photoorganizer"
+    namespace = "com.lc33.photoorganizer"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "com.example.photoorganizer"
+        applicationId = "com.lc33.photoorganizer"
         minSdk = 33
         targetSdk = 37
         versionCode = appVersionCode

@@ -80,7 +80,7 @@ Windows 的 PowerShell / cmd 下用 `.\gradlew.bat`。
 只跑某个类或某个方法：
 
 ```bash
-./gradlew :app:testDebugUnitTest --tests 'com.example.photoorganizer.media.SmartQueueTest'
+./gradlew :app:testDebugUnitTest --tests 'com.lc33.photoorganizer.media.SmartQueueTest'
 ./gradlew :app:testDebugUnitTest --tests '*SmartQueueTest.sortsEachBucketByDescendingSize'
 ```
 
@@ -104,7 +104,7 @@ Windows 的 PowerShell / cmd 下用 `.\gradlew.bat`。
 
 ## 代码结构
 
-单模块 `:app`，包名 `com.example.photoorganizer`：
+单模块 `:app`，包名 `com.lc33.photoorganizer`：
 
 | 目录 | 职责 |
 |---|---|
