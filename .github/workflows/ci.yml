@@ -33,11 +33,6 @@ jobs:
       version: ${{ steps.apk.outputs.version }}
       code: ${{ steps.apk.outputs.code }}
       apk: ${{ steps.apk.outputs.name }}
-    env:
-      KEYSTORE_B64: ${{ secrets.PHOTO_RELEASE_KEYSTORE_BASE64 }}
-      PHOTO_RELEASE_STORE_PASSWORD: ${{ secrets.PHOTO_RELEASE_STORE_PASSWORD }}
-      PHOTO_RELEASE_KEY_ALIAS: ${{ secrets.PHOTO_RELEASE_KEY_ALIAS }}
-      PHOTO_RELEASE_KEY_PASSWORD: ${{ secrets.PHOTO_RELEASE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -65,6 +60,13 @@ jobs:
             # 新分支的第一次推送，或者手动触发：只检查当前这一个提交。
             tools/check-commit-language.sh
           fi
+
+      # 和提交信息检查同一个道理，也一样便宜：workflow 文件解析不了的时候，GitHub 会
+      # 0 秒失败、一个 job 都不跑，于是下面所有检查和 nightly 发布都被静默跳过。这一步
+      # 挡不住 ci.yml 自己（它坏掉时这个 workflow 根本不会启动），但挡得住 pages.yml
+      # 和 release.yml —— 那两个坏掉的话，除了发布当天没人会发现。
+      - name: Workflow files parse
+        run: tools/check-workflows.sh
 
       - uses: actions/setup-java@v6
         with:

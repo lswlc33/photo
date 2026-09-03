@@ -120,13 +120,13 @@ Windows 的 PowerShell / cmd 下用 `.\gradlew.bat`。
 
 ## 参与开发
 
-克隆后启用一次仓库自带的提交钩子（`pre-commit` 编译并跑单元测试，`commit-msg` 要求提交信息用中文撰写，没有跳过开关）：
+克隆后启用一次仓库自带的提交钩子（`pre-commit` 先检查 workflow 文件、再编译并跑单元测试，`commit-msg` 要求提交信息用中文撰写，没有跳过开关）：
 
 ```bash
 git config core.hooksPath .githooks
 ```
 
-推之前可以自己先跑一遍 CI 跑的那三步：
+推之前可以自己先跑一遍 CI 跑的那几步：
 
 ```bash
 tools/verify.sh

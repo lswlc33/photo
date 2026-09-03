@@ -12,6 +12,11 @@
 # compile errors as well as test failures. Lint is deliberately not run here
 # (~50 s); use tools/verify.sh before a release instead.
 #
+# tools/check-workflows.sh runs first and costs nothing. It is here rather than
+# only in CI because a workflow file GitHub cannot parse fails the run in 0 s
+# without starting a job: the file that broke CI is the file its own CI cannot
+# check.
+#
 # Escape hatch for a deliberate work-in-progress commit:
 #
 #     SKIP_VERIFY=1 git commit ...
@@ -23,6 +28,15 @@ if [ -n "$SKIP_VERIFY" ]; then
 fi
 
 cd "$(git rev-parse --show-toplevel)"
+
+# First, because it takes milliseconds: see the header for why CI cannot be the
+# gate for its own workflow file.
+echo "pre-commit: tools/check-workflows.sh"
+if ! tools/check-workflows.sh; then
+    echo
+    echo "pre-commit: workflow check failed - commit aborted."
+    exit 1
+fi
 
 echo "pre-commit: ./gradlew :app:test"
 if ! ./gradlew :app:test --console=plain --quiet; then

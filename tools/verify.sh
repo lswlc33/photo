@@ -7,6 +7,10 @@ set -e
 
 cd "$(git rev-parse --show-toplevel)"
 
+echo "==> tools/check-workflows.sh"
+tools/check-workflows.sh
+
+echo
 echo "==> :app:test"
 ./gradlew :app:test --console=plain
 
