@@ -85,17 +85,21 @@ object VideoProcessor {
                 onProgress(1f)
                 return null
             }
-            val uri = withContext(Dispatchers.IO) {
+            val published = withContext(Dispatchers.IO) {
+                val name = OutputNaming.compressedName(
+                    GalleryWriter.displayName(context, source),
+                    if (audioOnly) "m4a" else "mp4",
+                )
                 if (audioOnly) {
-                    GalleryWriter.publishAudio(context, output)
+                    GalleryWriter.publishAudio(context, output, name)
                 } else {
-                    GalleryWriter.publishVideo(context, output)
+                    GalleryWriter.publishVideo(context, output, name)
                 }
             }
             onProgress(1f)
             return ProcessedMedia(
-                uri = uri,
-                displayName = output.name,
+                uri = published.uri,
+                displayName = published.displayName,
                 originalBytes = originalBytes,
                 outputBytes = outputBytes,
             )

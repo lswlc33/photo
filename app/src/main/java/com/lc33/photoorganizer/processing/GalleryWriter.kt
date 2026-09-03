@@ -24,6 +24,9 @@ data class ProcessedMedia(
         get() = if (originalBytes <= 0L) 0f else (savedBytes.toFloat() / originalBytes).coerceIn(0f, 1f)
 }
 
+/** A published output: where it landed, and the name it actually got. */
+internal data class PublishedFile(val uri: Uri, val displayName: String)
+
 /**
  * Shared MediaStore plumbing for processing jobs. Outputs always land in the
  * app's own gallery folders and source files are never touched.
@@ -95,37 +98,82 @@ internal object GalleryWriter {
         )?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
     }.getOrNull() ?: uri.lastPathSegment ?: uri.toString()
 
-    suspend fun publishImage(context: Context, file: File, mimeType: String): Uri {
-        val values = ContentValues().apply {
-            put(MediaStore.Images.Media.DISPLAY_NAME, file.name)
-            put(MediaStore.Images.Media.MIME_TYPE, mimeType)
-            put(MediaStore.Images.Media.RELATIVE_PATH, IMAGE_FOLDER)
-            put(MediaStore.Images.Media.IS_PENDING, 1)
-        }
-        return publish(context, MediaStore.Images.Media.getContentUri("external_primary"), values, file)
-    }
+    suspend fun publishImage(
+        context: Context,
+        file: File,
+        mimeType: String,
+        displayName: String,
+    ): PublishedFile = publish(
+        context = context,
+        collection = MediaStore.Images.Media.getContentUri("external_primary"),
+        folder = IMAGE_FOLDER,
+        mimeType = mimeType,
+        displayName = displayName,
+        file = file,
+    )
 
-    suspend fun publishVideo(context: Context, file: File, mimeType: String = "video/mp4"): Uri {
-        val values = ContentValues().apply {
-            put(MediaStore.Video.Media.DISPLAY_NAME, file.name)
-            put(MediaStore.Video.Media.MIME_TYPE, mimeType)
-            put(MediaStore.Video.Media.RELATIVE_PATH, VIDEO_FOLDER)
-            put(MediaStore.Video.Media.IS_PENDING, 1)
-        }
-        return publish(context, MediaStore.Video.Media.getContentUri("external_primary"), values, file)
-    }
+    suspend fun publishVideo(
+        context: Context,
+        file: File,
+        displayName: String,
+        mimeType: String = "video/mp4",
+    ): PublishedFile = publish(
+        context = context,
+        collection = MediaStore.Video.Media.getContentUri("external_primary"),
+        folder = VIDEO_FOLDER,
+        mimeType = mimeType,
+        displayName = displayName,
+        file = file,
+    )
 
-    suspend fun publishAudio(context: Context, file: File, mimeType: String = "audio/mp4"): Uri {
-        val values = ContentValues().apply {
-            put(MediaStore.Audio.Media.DISPLAY_NAME, file.name)
-            put(MediaStore.Audio.Media.MIME_TYPE, mimeType)
-            put(MediaStore.Audio.Media.RELATIVE_PATH, AUDIO_FOLDER)
-            put(MediaStore.Audio.Media.IS_PENDING, 1)
-        }
-        return publish(context, MediaStore.Audio.Media.getContentUri("external_primary"), values, file)
-    }
+    suspend fun publishAudio(
+        context: Context,
+        file: File,
+        displayName: String,
+        mimeType: String = "audio/mp4",
+    ): PublishedFile = publish(
+        context = context,
+        collection = MediaStore.Audio.Media.getContentUri("external_primary"),
+        folder = AUDIO_FOLDER,
+        mimeType = mimeType,
+        displayName = displayName,
+        file = file,
+    )
 
-    private suspend fun publish(context: Context, collection: Uri, values: ContentValues, file: File): Uri {
+    /**
+     * True when [folder] already holds a file called [name].
+     *
+     * Without this MediaStore silently renames the insert to `name (1)`, which
+     * left the reported name and the file in the gallery disagreeing.
+     */
+    private fun isNameTaken(context: Context, collection: Uri, folder: String, name: String): Boolean =
+        runCatching {
+            context.contentResolver.query(
+                collection,
+                arrayOf(MediaStore.MediaColumns._ID),
+                "${MediaStore.MediaColumns.RELATIVE_PATH}=? AND ${MediaStore.MediaColumns.DISPLAY_NAME}=?",
+                arrayOf("$folder/", name),
+                null,
+            )?.use { cursor -> cursor.moveToFirst() }
+        }.getOrNull() ?: false
+
+    private suspend fun publish(
+        context: Context,
+        collection: Uri,
+        folder: String,
+        mimeType: String,
+        displayName: String,
+        file: File,
+    ): PublishedFile {
+        val resolved = OutputNaming.resolveNameCollision(displayName) { candidate ->
+            isNameTaken(context, collection, folder, candidate)
+        }
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, resolved)
+            put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, folder)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
         val resolver = context.contentResolver
         val uri = resolver.insert(collection, values)
             ?: throw ProcessingException(R.string.processing_error_gallery_insert)
@@ -146,7 +194,9 @@ internal object GalleryWriter {
             if (resolver.update(uri, values, null, null) <= 0) {
                 throw ProcessingException(R.string.processing_error_gallery_publish)
             }
-            return uri
+            // Read the name back rather than trusting the requested one: a
+            // concurrent insert can still make MediaStore pick a different one.
+            return PublishedFile(uri = uri, displayName = displayName(context, uri))
         } catch (t: Throwable) {
             resolver.delete(uri, null, null)
             throw t

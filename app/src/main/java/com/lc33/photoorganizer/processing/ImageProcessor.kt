@@ -87,11 +87,19 @@ object ImageProcessor {
                 onProgress(1f)
                 return@withContext null
             }
-            val uri = GalleryWriter.publishImage(context, output, format.mimeType)
+            val published = GalleryWriter.publishImage(
+                context = context,
+                file = output,
+                mimeType = format.mimeType,
+                displayName = OutputNaming.compressedName(
+                    GalleryWriter.displayName(context, source),
+                    format.extension,
+                ),
+            )
             onProgress(1f)
             ProcessedMedia(
-                uri = uri,
-                displayName = output.name,
+                uri = published.uri,
+                displayName = published.displayName,
                 originalBytes = originalBytes,
                 outputBytes = outputBytes,
             )
