@@ -24,10 +24,20 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      KEYSTORE_B64: ${{ secrets.PHOTO_RELEASE_KEYSTORE_BASE64 }}
+      PHOTO_RELEASE_STORE_PASSWORD: ${{ secrets.PHOTO_RELEASE_STORE_PASSWORD }}
+      PHOTO_RELEASE_KEY_ALIAS: ${{ secrets.PHOTO_RELEASE_KEY_ALIAS }}
+      PHOTO_RELEASE_KEY_PASSWORD: ${{ secrets.PHOTO_RELEASE_KEY_PASSWORD }}
     outputs:
       version: ${{ steps.apk.outputs.version }}
       code: ${{ steps.apk.outputs.code }}
       apk: ${{ steps.apk.outputs.name }}
+    env:
+      KEYSTORE_B64: ${{ secrets.PHOTO_RELEASE_KEYSTORE_BASE64 }}
+      PHOTO_RELEASE_STORE_PASSWORD: ${{ secrets.PHOTO_RELEASE_STORE_PASSWORD }}
+      PHOTO_RELEASE_KEY_ALIAS: ${{ secrets.PHOTO_RELEASE_KEY_ALIAS }}
+      PHOTO_RELEASE_KEY_PASSWORD: ${{ secrets.PHOTO_RELEASE_KEY_PASSWORD }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -82,32 +92,61 @@ jobs:
       - name: Android lint
         run: ./gradlew :app:lint --console=plain
 
-      # 干净的 runner 上没有 ~/.android/debug.keystore，AGP 会当场生成一把新的，
-      # 于是每次构建出来的 nightly 签名都不一样：装新的会被系统当成另一个来源的
-      # 应用而拒绝，只能先卸载 —— 连带把已有的评审记录一起清掉。把这把密钥缓存
-      # 下来复用，覆盖安装就是一次正常的更新。
-      # 它不是发布密钥，而是 Android 给调试构建用的默认密钥，口令本来就是公开的。
-      - name: Reuse one debug signing key across builds
-        uses: actions/cache@v6
-        with:
-          path: ~/.android/debug.keystore
-          key: android-debug-keystore
+      # nightly 和正式版用同一把发布密钥，所以两者可以互相覆盖安装 —— 换来换去都不必
+      # 卸载，应用内的评审记录也不会被清掉。密钥库以 base64 存在 secret 里，这里解回
+      # 一个只存在于本次运行的临时文件，路径写进 GITHUB_ENV 供 build.gradle.kts 读取。
+      #
+      # 派生仓库发来的 PR 读不到 secret，那时这一步跳过、构建产出未签名的 APK。可以
+      # 接受：那个产物只是用来证明「这次改动能构建」，不会发布。
+      - name: Restore the release keystore
+        if: env.KEYSTORE_B64 != ''
+        run: |
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          echo "PHOTO_RELEASE_STORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
-      # 发出去的是 nightly 变体：它 initWith(release)，R8、资源压缩、不可调试都和
-      # release 一样，区别只是用上面那把 debug 密钥签名 —— 仓库里没有 release 密钥，
-      # 而未签名的 release APK 根本装不上。debug 变体不适合发布：它带着 Compose 的
-      # 调试工具、也没跑 R8，体积是 nightly 的十几倍。
+      # master 上的产物是要发出去的，所以这里缺密钥必须当场失败，而不是发一个装不上
+      # 的未签名包。别的分支不发布，缺就缺了。
+      - name: A published nightly needs all four signing secrets
+        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+        run: |
+          missing=""
+          [ -n "$KEYSTORE_B64" ] || missing="$missing PHOTO_RELEASE_KEYSTORE_BASE64"
+          [ -n "$PHOTO_RELEASE_STORE_PASSWORD" ] || missing="$missing PHOTO_RELEASE_STORE_PASSWORD"
+          [ -n "$PHOTO_RELEASE_KEY_ALIAS" ] || missing="$missing PHOTO_RELEASE_KEY_ALIAS"
+          [ -n "$PHOTO_RELEASE_KEY_PASSWORD" ] || missing="$missing PHOTO_RELEASE_KEY_PASSWORD"
+          if [ -n "$missing" ]; then
+            echo "缺少签名 secret：$missing" >&2
+            echo "在 Settings → Secrets and variables → Actions 里补齐，四个的含义见 AGENTS.md。" >&2
+            exit 1
+          fi
+
+      # 发出去的是 nightly 变体：它 initWith(release)，R8、资源压缩、不可调试和签名
+      # 都和 release 一致，区别只是它构建自 master 的任意一个提交而不是一个标签。
+      # debug 变体不适合发布：它带着 Compose 的调试工具、也没跑 R8，体积是十几倍。
       - name: Nightly APK
         run: ./gradlew :app:assembleNightly --console=plain
 
       # 版本号只在 gradle.properties 里声明一次，这里读它而不是再抄一遍。
       # 产物名带上版本和短 SHA：一个下载下来的 APK 要能自己说明它是哪次构建。
+      #
+      # 签名配置缺失时 AGP 不会报错，只会产出 *-unsigned.apk，所以要发布的那个真的
+      # 验一遍签名，而不是相信 assembleNightly 的退出码。
       - name: Name the APK after the version and the commit
         id: apk
         run: |
           version=$(sed -n 's/^photoVersionName=//p' gradle.properties)
           code=$(sed -n 's/^photoVersionCode=//p' gradle.properties)
           built=$(find app/build/outputs/apk/nightly -name '*.apk' | head -1)
+          if [ -n "$KEYSTORE_B64" ]; then
+            case "$built" in
+              *unsigned*)
+                echo "有签名密钥却产出了未签名 APK：$built" >&2
+                exit 1
+                ;;
+            esac
+            apksigner=$(find "$ANDROID_SDK_ROOT/build-tools" -name 'apksigner' | sort -V | tail -1)
+            "$apksigner" verify --print-certs "$built"
+          fi
           name="photo-organizer-v$version-$(git rev-parse --short HEAD).apk"
           mkdir -p artifacts
           cp "$built" "artifacts/$name"
@@ -171,7 +210,7 @@ jobs:
             echo "- 构建：nightly · CI #$RUN_NUMBER"
             echo "- 系统要求：Android 13（API 33）及以上"
             echo
-            echo "> 这是 **nightly 构建**：代码压缩、资源压缩和「不可调试」都和 release 版一致，唯一的区别是用 Android SDK 本地生成的 debug 密钥签名 —— 仓库里不放 release 密钥。所以它下载下来可以直接安装，系统会问一次是否允许安装未知来源的应用。万一覆盖安装被系统拒绝，说明 CI 缓存的那把 debug 密钥换过了，先卸载旧版再装。"
+            echo "> **nightly 构建**：代码压缩、资源压缩、「不可调试」和签名密钥都和正式版一致，区别只是它构建自 master 的任意一个提交。因此 nightly 与正式版之间可以直接覆盖安装，不需要卸载。"
           } > "$RUNNER_TEMP/notes.md"
 
           gh release delete nightly --yes --cleanup-tag || true

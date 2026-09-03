@@ -4,10 +4,9 @@ name: Release
 #
 #     git tag v8.0 && git push origin v8.0
 #
-# 和滚动的 nightly 预发布不同，这里产出的是用真正的发布密钥签名的 release APK，
-# 因此需要仓库里配好四个 secret（名字见下面的 env，怎么配见 AGENTS.md）。缺任何
-# 一个都直接失败 —— 不会退回 debug 签名：一个用错密钥签的包装不上用户已经装着的
-# 那一版，把它当作 release 发出去比构建失败更糟。
+# 和滚动的 nightly 预发布用的是同一把发布密钥，区别只是这里构建自一个标签、发的是
+# 正式版而不是预发布。四个 secret 缺任何一个都直接失败 —— 一个用错密钥签的包装不上
+# 用户已经装着的那一版，把它当作 release 发出去比构建失败更糟。
 on:
   push:
     tags: ['v*']
@@ -160,7 +159,7 @@ jobs:
             echo
             echo "正式版，用项目的发布密钥签名，跑过单元测试与 lint。"
             echo
-            echo "> 如果之前装的是 \`nightly\` 预发布里的包，它用的是 debug 密钥，签名不同，**必须先卸载再装这一版**；应用内的评审记录会随卸载一起清掉。以后正式版之间可以直接覆盖安装。"
+            echo "> nightly 预发布用的是同一把密钥，所以两者之间可以直接覆盖安装，不需要卸载。"
           } > "$RUNNER_TEMP/notes.md"
 
           # 重跑一次发布（在标签上手动触发）时 release 已经存在，gh release create

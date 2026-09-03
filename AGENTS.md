@@ -52,9 +52,9 @@ Because a commit that does not compile is only ever found by bisecting into it l
 
 Follow the subject with a body that states what changed, why, and which validation commands were run; note emulator verification for UI changes. Split unrelated work into separate commits and keep generated files out of the change.
 
-Pushing publishes. `ci.yml` runs the commit-message check, test, lint, and `assembleNightly` on every push to any branch and on every pull request; on `master` a second job then hands the APK that build just produced to the rolling `nightly` prerelease, so what people download is the file that passed the checks rather than a rebuild of it. That APK is the `nightly` variant declared in `app/build.gradle.kts`: `initWith(release)` plus the debug signing config, so it is minified, resource-shrunk and not debuggable like a release build, yet installable without any keystore. The `debug` variant is not a distributable: it bundles the Compose tooling and skips R8, which makes it roughly 16x larger (76 MB against 4.8 MB). CI caches the runner's debug key between runs so a new nightly installs over the previous one instead of forcing an uninstall. A change under `index.html` or `assets/` also redeploys the landing page.
+Pushing publishes. `ci.yml` runs the commit-message check, test, lint, and `assembleNightly` on every push to any branch and on every pull request; on `master` a second job then hands the APK that build just produced to the rolling `nightly` prerelease, so what people download is the file that passed the checks rather than a rebuild of it. That APK is the `nightly` variant declared in `app/build.gradle.kts`: plain `initWith(release)`, so it is minified, resource-shrunk, not debuggable and signed with the same release key. The `debug` variant is not a distributable: it bundles the Compose tooling and skips R8, which makes it roughly 16x larger (76 MB against 4.8 MB). A change under `index.html` or `assets/` also redeploys the landing page.
 
-A full release is a separate, deliberate act: push a `v` tag (`git tag v8.0 && git push origin v8.0`) and `release.yml` builds `assembleRelease` signed with the project's real key, verifies with `apksigner` that the result is actually signed, and publishes it as a non-prerelease. It is the only workflow that needs secrets — the four `PHOTO_RELEASE_*` values described under Security & Configuration Tips — and it fails loudly when one is missing rather than falling back to another key. Because the nightly and release keys differ, moving from a nightly to a release requires an uninstall, which also clears the review-decision log; say so in the release notes. Everything else uses the run's own `GITHUB_TOKEN` and needs no PAT.
+A full release is a separate, deliberate act: push a `v` tag (`git tag v8.0 && git push origin v8.0`) and `release.yml` builds `assembleRelease`, verifies with `apksigner` that the result is actually signed, and publishes it as a non-prerelease. Both `ci.yml` and `release.yml` read the four `PHOTO_RELEASE_*` secrets described under Security & Configuration Tips, and both fail loudly when one is missing rather than falling back to another key — except that `ci.yml` tolerates their absence on a fork PR, where the resulting APK is unsigned and never published. Because the two use the same key, a nightly and a release install over each other and the review-decision log survives the switch. `pages.yml` uses the run's own `GITHUB_TOKEN` and needs no PAT.
 
 `core.autocrlf` is deliberately `false` so the LF line endings in the tree survive round-trips. Do not re-enable it, or every file will show up as fully rewritten.
 
@@ -73,11 +73,11 @@ Do not commit secrets, keystores, or machine-specific `local.properties` values.
 
 If any one of the four is absent the `release` signing config is not created and `assembleRelease` produces an unsigned APK — deliberately, because an APK signed with a substitute key cannot update an installed one.
 
-`release.yml` reads the same four from repository secrets, except that the keystore travels as base64 because a secret is text:
+`ci.yml` and `release.yml` read the same four from repository secrets, except that the keystore travels as base64 because a secret is text:
 
 | Secret | Value |
 |---|---|
-| `PHOTO_RELEASE_KEYSTORE_BASE64` | the `.jks` file, base64-encoded on one line; the workflow decodes it into `$RUNNER_TEMP` and points `PHOTO_RELEASE_STORE_FILE` at it |
+| `PHOTO_RELEASE_KEYSTORE_BASE64` | the `.jks` file, base64-encoded on one line; each workflow decodes it into `$RUNNER_TEMP` and points `PHOTO_RELEASE_STORE_FILE` at it |
 | `PHOTO_RELEASE_STORE_PASSWORD` | same value as above |
 | `PHOTO_RELEASE_KEY_ALIAS` | same value as above |
 | `PHOTO_RELEASE_KEY_PASSWORD` | same value as above |

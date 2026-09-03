@@ -7,13 +7,14 @@ plugins {
 
 // Release signing is machine-local: neither the keystore nor its passwords ever
 // enter this repository. The four values come from environment variables - what
-// the Release workflow sets from its secrets - or from
-// ~/.android/photo-organizer-release.properties for a local release build.
+// the CI and Release workflows set from their secrets - or from
+// ~/.android/photo-organizer-release.properties for a local build.
 //
 // When any of the four is missing the signing config is simply not created, so
-// `assembleRelease` stops at an unsigned APK. That failure is deliberate and
-// loud: an APK signed by any other key cannot update the one people already
-// installed, so silently substituting one would be worse than not building.
+// `assembleRelease` and `assembleNightly` stop at an unsigned APK. That failure is
+// deliberate and loud: an APK signed by any other key cannot update the one people
+// already installed, so silently substituting one would be worse than not
+// building.
 val localReleaseProperties = Properties().apply {
     val propertiesFile = file("${System.getProperty("user.home")}/.android/photo-organizer-release.properties")
     if (propertiesFile.isFile) propertiesFile.inputStream().use { input -> load(input) }
@@ -70,9 +71,10 @@ android {
     }
 
     buildTypes {
-        // Signed only where the credentials above exist - a tagged Release run,
-        // or a local release build. Everywhere else this ends at
-        // app-release-unsigned.apk, which cannot be installed at all.
+        // Signed only where the credentials above exist - a tagged Release run, a
+        // master build on CI, or a local build with the properties file.
+        // Everywhere else this ends at app-release-unsigned.apk, which cannot be
+        // installed at all.
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -80,20 +82,23 @@ android {
             signingConfig = signingConfigs.findByName("release")
         }
 
-        // What the rolling `nightly` prerelease publishes, and the only variant
-        // that is installable without a keystore. It is `release` in every way
-        // that affects the shipped code - R8, resource shrinking, not debuggable
-        // - and differs only in being signed by the debug key that every Android
-        // SDK generates locally, so it needs no secret at all.
+        // What the rolling `nightly` prerelease publishes. It is `release` in every
+        // way that matters - R8, resource shrinking, not debuggable, and the same
+        // signing key - and differs only in being built from any commit on master
+        // rather than from a tag.
         //
-        // initWith copies the release signing config too, so the override below
-        // has to come after it.
+        // initWith copies the release signing config, which is the point: a
+        // nightly and a release install over each other, so moving between them
+        // never asks for an uninstall and never clears the review log.
+        //
+        // With the credentials absent this ends at an unsigned APK, exactly as
+        // `release` does. `assembleNightly` still runs R8, which is what the local
+        // verify gate wants from it.
         //
         // The debug build is not a distributable: it bundles the Compose tooling
         // and skips R8, which makes it about 16x larger (76 MB against 4.8 MB).
         create("nightly") {
             initWith(getByName("release"))
-            signingConfig = signingConfigs.getByName("debug")
         }
     }
 

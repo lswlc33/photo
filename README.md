@@ -40,11 +40,11 @@
 
 当前版本 **v8.0**（`versionCode 8`）。
 
-[nightly 预发布](https://github.com/lswlc33/photo/releases/tag/nightly)跟着 master 走：每次推送都自动构建，检查通过后把新的 APK 刷新到同一个位置。它是 **nightly 构建** —— 代码压缩、资源压缩和「不可调试」都和正式版一致（约 5 MB），唯一的区别是用 Android SDK 在本机生成的 debug 密钥签名，因为仓库里不放发布密钥。
+[nightly 预发布](https://github.com/lswlc33/photo/releases/tag/nightly)跟着 master 走：每次推送都自动构建，检查通过后把新的 APK 刷新到同一个位置。它是 **nightly 构建** —— 代码压缩、资源压缩、「不可调试」和签名密钥都和正式版一致（约 5 MB），区别只是它构建自 master 的任意一个提交。
 
-它可以直接安装，安装时系统会问一次是否允许安装未知来源的应用。相邻两次构建用的是同一把密钥，所以新版直接覆盖安装即可，不必先卸载。
+安装时系统会问一次是否允许安装未知来源的应用。
 
-正式版另发：打一个 `v` 开头的标签会触发一次用发布密钥签名的构建，产物出现在 [Releases](https://github.com/lswlc33/photo/releases) 页。两种包的签名不同，**从 nightly 换到正式版需要先卸载**，应用内的评审记录会随卸载一起清掉。
+正式版另发：打一个 `v` 开头的标签会触发一次构建，产物出现在 [Releases](https://github.com/lswlc33/photo/releases) 页。两者用同一把密钥，所以 nightly 与正式版之间可以直接覆盖安装，不需要卸载。
 
 ## 环境要求
 
@@ -70,7 +70,7 @@ Windows 的 PowerShell / cmd 下用 `.\gradlew.bat`。
 
 版本号在 `gradle.properties` 的 `photoVersionCode` / `photoVersionName` 里声明。
 
-三个构建变体：`debug` 是本地开发用的，体积大且可调试；`release` 走完整的代码压缩，并且只在配好了发布密钥时才签名，否则产出装不上的未签名 APK；`nightly` 与 `release` 的配置完全相同，只是改用本机的 debug 密钥签名，因此既小又能直接安装，预发布页上的就是它。发布密钥怎么配见 `AGENTS.md`。
+三个构建变体：`debug` 是本地开发用的，体积大且可调试；`release` 走完整的代码压缩，并且只在配好了发布密钥时才签名，否则产出装不上的未签名 APK；`nightly` 与 `release` 的配置完全相同（含签名密钥），只是构建自 master 的任意一个提交而不是标签，预发布页上的就是它。发布密钥怎么配见 `AGENTS.md`。
 
 ## 测试
 
