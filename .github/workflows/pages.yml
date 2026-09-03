@@ -28,9 +28,9 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
 
       # 只把介绍页需要的东西放进去，Android 源码不必上传到 Pages。
       # .nojekyll 让 Jekyll 完全不参与，省掉一层不需要的处理。
@@ -41,9 +41,13 @@ jobs:
           cp -r assets _site/
           touch _site/.nojekyll
 
-      - uses: actions/upload-pages-artifact@v3
+      # include-hidden-files 从 v4 起默认成了 false，产物打包时会 --exclude 掉所有
+      # dotfile —— 上面那个 .nojekyll 会静默地不再进去。这里显式打开，保住和升级前
+      # 一字不差的产物内容。
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
+          include-hidden-files: true
 
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5

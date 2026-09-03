@@ -33,7 +33,7 @@ jobs:
       PHOTO_RELEASE_KEY_ALIAS: ${{ secrets.PHOTO_RELEASE_KEY_ALIAS }}
       PHOTO_RELEASE_KEY_PASSWORD: ${{ secrets.PHOTO_RELEASE_KEY_PASSWORD }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # 四个 secret 缺一不可。放在最前面：后面的每一步都要花几分钟，而少配一个
       # secret 是最容易犯、也最容易一眼看懂的错。
@@ -79,7 +79,7 @@ jobs:
           fi
           echo "版本 $declared 与标签一致"
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
@@ -90,7 +90,8 @@ jobs:
           sed -i 's#mirrors.cloud.tencent.com/Gradle/#services.gradle.org/distributions/#' \
             gradle/wrapper/gradle-wrapper.properties
 
-      - uses: gradle/actions/setup-gradle@v4
+      # 和 ci.yml 同样停在 v5，理由写在那边。
+      - uses: gradle/actions/setup-gradle@v5
 
       # 正式版比 nightly 更值得先跑一遍完整检查：nightly 发错了下一次推送就覆盖掉，
       # 正式版发出去就留在那里了。
@@ -136,7 +137,7 @@ jobs:
             echo "name=$name"
           } >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: photo-organizer-release-apk
           path: artifacts/${{ steps.apk.outputs.name }}

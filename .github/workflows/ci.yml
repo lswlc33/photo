@@ -29,7 +29,7 @@ jobs:
       code: ${{ steps.apk.outputs.code }}
       apk: ${{ steps.apk.outputs.name }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # 提交信息检查要看整段推送范围，浅克隆里看不到推送前的那个提交。
           fetch-depth: 0
@@ -56,7 +56,7 @@ jobs:
             tools/check-commit-language.sh
           fi
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
@@ -70,7 +70,11 @@ jobs:
             gradle/wrapper/gradle-wrapper.properties
           grep distributionUrl gradle/wrapper/gradle-wrapper.properties
 
-      - uses: gradle/actions/setup-gradle@v4
+      # 停在 v5 而不是最新的 v6：v6 把缓存实现拆成了闭源的 gradle-actions-caching，
+      # 用它就等于接受 Gradle 自己的 Terms of Use（公开仓库不收费，但那是另一份条款）。
+      # v5 已经是 Node 24，升级的目的就达到了，所以不必为此换许可。想要 v6 那套更强的
+      # 缓存就升上去，或者升上去再写 cache-provider: basic 留在 MIT 那一侧。
+      - uses: gradle/actions/setup-gradle@v5
 
       - name: Unit tests
         run: ./gradlew :app:test --console=plain
@@ -84,7 +88,7 @@ jobs:
       # 下来复用，覆盖安装就是一次正常的更新。
       # 它不是发布密钥，而是 Android 给调试构建用的默认密钥，口令本来就是公开的。
       - name: Reuse one debug signing key across builds
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.android/debug.keystore
           key: android-debug-keystore
@@ -113,14 +117,14 @@ jobs:
             echo "name=$name"
           } >> "$GITHUB_OUTPUT"
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: photo-organizer-apk
           path: artifacts/${{ steps.apk.outputs.name }}
           if-no-files-found: error
 
       # 失败时报告比日志有用得多，所以无论成败都上传。
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: reports
@@ -139,9 +143,9 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: photo-organizer-apk
           path: artifacts
