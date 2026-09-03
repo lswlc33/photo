@@ -45,22 +45,28 @@ A Compose photo/video cleanup app (`com.lc33.photoorganizer`, minSdk 33, compile
 
 ### One state root, two ViewModels
 
-`PhotoOrganizerApp.kt` is the whole application state container: it owns the `SharedPreferences` handle, the theme, the permission state, per-item review decisions (`reviewStates`), logical albums, the selected page, the selected detail screen and every app-level dialog. Screens are stateless-ish renderers that receive data and lambdas; they never read preferences or query MediaStore themselves.
+`PhotoOrganizerApp.kt` is the whole application state container: it owns the `SharedPreferences` handle, the theme, the permission state, per-item review decisions (`reviewStates`), logical albums, the selected page, the detail stack and every app-level dialog. Screens are stateless-ish renderers that receive data and lambdas; they never read preferences or query MediaStore themselves.
 
-Two things are deliberately not in it, both because they must outlive recomposition and configuration changes:
+Two things are deliberately not held as composition state, both because they must outlive recomposition and configuration changes. Both are hoisted in the root with `viewModel()` and passed down:
 
-- `MediaIndexViewModel` (`media/MediaIndexViewModel.kt`), hoisted in the root, owns everything expensive: the MediaStore scan, the exact-duplicate pass, the opt-in similar-photo pass, and the fingerprint cache. It exposes a single `StateFlow<MediaIndexState>`.
-- `MediaBatchViewModel` (`processing/MediaBatchViewModel.kt`), obtained with `viewModel()` inside `MediaToolsScreen` because only that screen needs it, owns the transcode queue. A batch runs for minutes; on a `rememberCoroutineScope()` a rotation cancelled it silently and left an idle-looking screen.
+- `MediaIndexViewModel` (`media/MediaIndexViewModel.kt`) owns everything expensive: the MediaStore scan, the exact-duplicate pass, the opt-in similar-photo pass, and the fingerprint cache. It exposes a single `StateFlow<MediaIndexState>`.
+- `MediaBatchViewModel` (`processing/MediaBatchViewModel.kt`) owns the transcode queue. A batch runs for minutes; on a `rememberCoroutineScope()` a rotation cancelled it silently and left an idle-looking screen. It used to be obtained with `viewModel()` inside `MediaToolsScreen`; with no navigation library that resolved to the same Activity store, but it made the queue's survival look like a property of that screen rather than a decision of the state root.
 
-Do not move either back into composables.
+Do not move either back into a composable, and do not scope the batch one to the detail screen: popping the tools screen must not end a running transcode.
 
 Data flows down as `IndexedMedia` (domain) → `UiMedia` (`toUiMedia`, adds the `ReviewState`) → screens. Decisions flow back up as lambdas.
 
-### Two-level navigation, no NavHost
+### Page layer plus a detail stack, no NavHost
 
-`AppPage` (`ui/AppPage.kt`) is the four bottom-bar pages. `DetailMode` — a *private* enum at the bottom of `PhotoOrganizerApp.kt` — is the full-screen detail layer stacked on top of the page layer; `selectedMode = null` means "no detail open". Adding a screen means adding a `DetailMode` entry plus a branch in the `when (selectedMode)` block. Back is handled by `PredictiveBackHandler` in the root, not per screen.
+`AppPage` (`ui/AppPage.kt`) is the four bottom-bar pages. `DetailScreen` (`ui/DetailScreen.kt`) is a sealed interface of full-screen destinations stacked on top of the page layer; the root holds them as `detailStack: List<DetailScreen>` and an empty stack means "no detail open". Adding a screen means adding a `DetailScreen` member, a branch in the `when (detail)` block, and — if it takes arguments — a case in `encodeDetailScreen`/`decodeDetailScreen`.
 
-`ManualGridScreen` is reused for all seven grid-shaped detail modes; `MediaGridMode` selects which selection actions its toolbar offers.
+A destination carries its own arguments (`Swipe` holds the `TargetFilters` and whether the queue is smart-ordered, `DuplicateGroupGrid` holds the group, `LogicalAlbumGrid` the album name, `MediaProcessing` the handed-over selection). That is the point of the sealed interface: the previous `DetailMode` enum said which screen was open while four sibling `remember`s said what it should show, so every push had to keep two pieces of state in step and every pop had to clear the second one.
+
+Because it is a stack, a destination opened from another destination — a duplicate group grid opened from the duplicate list, the processing tools opened from that grid's selection — pops back to its opener with no per-screen return target. `PredictiveBackHandler` in the root pops exactly one entry per gesture, so every depth behaves the same way; back is never handled per screen.
+
+`DetailStackSaver` keeps the stack across configuration changes and process death. Its codec is plain functions over strings with a JVM test (`DetailScreenSaverTest`), because the interesting rule is what happens to entries that cannot be restored: a group is derived analysis output with no id to look it up by, so that entry — and everything pushed above it — is dropped, landing the user on the list that opened it. A `MediaProcessing` entry is restored without its preselection.
+
+`ManualGridScreen` is reused for all seven grid-shaped destinations; `MediaGridMode` selects which selection actions its toolbar offers.
 
 ### Index and fingerprint pipeline
 
