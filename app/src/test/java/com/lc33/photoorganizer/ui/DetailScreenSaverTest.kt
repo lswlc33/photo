@@ -1,6 +1,5 @@
 package com.lc33.photoorganizer.ui
 
-import com.lc33.photoorganizer.media.DuplicateGroup
 import com.lc33.photoorganizer.media.TargetFilters
 import com.lc33.photoorganizer.media.TypeFilter
 import org.junit.Assert.assertEquals
@@ -69,23 +68,32 @@ class DetailScreenSaverTest {
     }
 
     @Test
-    fun aGroupGridIsDroppedAndLeavesTheListThatOpenedIt() {
-        val stack = listOf(
-            DetailScreen.Duplicates,
-            DetailScreen.DuplicateGroupGrid(DuplicateGroup("hash", emptyList())),
-        )
+    fun aGroupGridSurvivesOnItsIds() {
+        // Rotation saves through this same codec, so a group grid that could not be
+        // restored dropped every screen above it on a mere configuration change.
+        val target = DetailScreen.DuplicateGroupGrid(setOf(12L, -34L, 56L))
 
-        assertEquals(listOf(DetailScreen.Duplicates), roundTrip(stack))
+        assertEquals(listOf(target), roundTrip(listOf(target)))
     }
 
     @Test
-    fun screensAboveADroppedOneGoWithIt() {
-        // Being inside the tools that a group grid opened is not a state that can
-        // be rendered once the group is gone, so the stack truncates rather than
-        // closing the gap.
+    fun afourLevelStackSurvivesIntact() {
+        val stack = listOf(
+            DetailScreen.Duplicates,
+            DetailScreen.DuplicateGroupGrid(setOf(1L, 2L, 3L, 4L)),
+            DetailScreen.MediaProcessing(emptyList()),
+        )
+
+        assertEquals(stack, roundTrip(stack))
+    }
+
+    @Test
+    fun anEmptyGroupIsDroppedAndTakesTheScreensAboveIt() {
+        // A group always has at least two members, so no ids means a corrupt record
+        // rather than an empty grid worth rendering.
         val stack = listOf(
             DetailScreen.Similar,
-            DetailScreen.DuplicateGroupGrid(DuplicateGroup("hash", emptyList())),
+            DetailScreen.DuplicateGroupGrid(emptySet()),
             DetailScreen.MediaProcessing(emptyList()),
         )
 

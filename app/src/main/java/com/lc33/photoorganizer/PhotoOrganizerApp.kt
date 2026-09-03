@@ -61,6 +61,7 @@ import com.lc33.photoorganizer.media.ReviewDecisionStore
 import com.lc33.photoorganizer.media.ReviewState
 import com.lc33.photoorganizer.media.shouldCompactLog
 import com.lc33.photoorganizer.media.TargetFilters
+import com.lc33.photoorganizer.media.DuplicateGroup
 import com.lc33.photoorganizer.media.ToolAnalysis
 import com.lc33.photoorganizer.media.ToolAnalyzer
 import com.lc33.photoorganizer.media.applyTargetFilters
@@ -612,14 +613,14 @@ fun PhotoOrganizerApp() {
                             analysisReady = toolAnalysisReady,
                             onBack = ::popDetail,
                             onMark = ::markMedia,
-                            onOpenGroup = { group -> openDetail(DetailScreen.DuplicateGroupGrid(group)) },
+                            onOpenGroup = { group -> openDetail(group.toGridDestination()) },
                         )
                         DetailScreen.Similar -> DuplicateGroupsScreen(
                             groups = indexState.similar.groups,
                             analysisReady = indexState.similar.isReady,
                             onBack = ::popDetail,
                             onMark = ::markMedia,
-                            onOpenGroup = { group -> openDetail(DetailScreen.DuplicateGroupGrid(group)) },
+                            onOpenGroup = { group -> openDetail(group.toGridDestination()) },
                             title = stringResource(R.string.tools_similar_title),
                             hint = stringResource(R.string.tools_similar_hint),
                             emptyTitle = stringResource(R.string.tools_similar_empty),
@@ -628,12 +629,7 @@ fun PhotoOrganizerApp() {
                             },
                         )
                         is DetailScreen.DuplicateGroupGrid -> {
-                            // No missing-group fallback: the stack carries the group,
-                            // and a restore that cannot bring it back drops this entry
-                            // so the list underneath is what shows.
-                            val groupIds = remember(detail) {
-                                detail.group.items.mapTo(hashSetOf()) { it.id }
-                            }
+                            val groupIds = detail.mediaIds
                             ManualGridScreen(
                                 media = remember(media, groupIds) { media.filter { it.id in groupIds } },
                                 defaultSortBySize = true,
@@ -913,6 +909,15 @@ private fun readLegacyReviewPreferences(
     }
     return found
 }
+
+/**
+ * The grid destination for a group.
+ *
+ * Only the ids travel: that is all the grid needs, and it keeps the destination
+ * restorable across a rotation, which a group full of `IndexedMedia` is not.
+ */
+private fun DuplicateGroup.toGridDestination(): DetailScreen.DuplicateGroupGrid =
+    DetailScreen.DuplicateGroupGrid(items.mapTo(hashSetOf()) { it.id })
 
 /** Hands a freshly created file to the system gallery viewer. */
 private fun openMediaViewer(context: Context, uri: android.net.Uri) {

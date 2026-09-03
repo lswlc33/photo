@@ -1,7 +1,6 @@
 package com.lc33.photoorganizer.ui
 
 import androidx.compose.runtime.saveable.Saver
-import com.lc33.photoorganizer.media.DuplicateGroup
 import com.lc33.photoorganizer.media.PendingMedia
 import com.lc33.photoorganizer.media.TargetFilters
 import com.lc33.photoorganizer.media.TypeFilter
@@ -38,12 +37,15 @@ sealed interface DetailScreen {
     /**
      * The members of one duplicate or similar group.
      *
-     * The group is held rather than an id because it is derived analysis output,
-     * not an indexed entity - there is nothing to look it up by. It is also why
-     * this destination cannot be restored after process death; see
-     * [decodeDetailStack].
+     * Holds the ids rather than the [com.lc33.photoorganizer.media.DuplicateGroup]
+     * it came from, because that is all the grid needs - it filters the library by
+     * them - and because a group is derived analysis output holding
+     * `IndexedMedia`, which cannot be written to a bundle. Carrying the group made
+     * this destination unrestorable, and since a rotation saves through the same
+     * codec as process death, rotating anywhere above it dropped the user two
+     * screens.
      */
-    data class DuplicateGroupGrid(val group: DuplicateGroup) : DetailScreen
+    data class DuplicateGroupGrid(val mediaIds: Set<Long>) : DetailScreen
 
     data object Screenshots : DetailScreen
 
@@ -72,6 +74,7 @@ sealed interface DetailScreen {
 
 private const val FieldSeparator = '\u001E'
 private const val AlbumSeparator = '\u001F'
+private const val IdSeparator = ','
 
 private const val TagSwipe = "swipe"
 private const val TagManual = "manual"
@@ -103,7 +106,10 @@ internal fun encodeDetailScreen(screen: DetailScreen): String = when (screen) {
     DetailScreen.Similar -> TagSimilar
     // Only the tag: an analysis group is not addressable, so there is nothing to
     // write that could bring it back.
-    is DetailScreen.DuplicateGroupGrid -> TagDuplicateGroup
+    is DetailScreen.DuplicateGroupGrid -> listOf(
+        TagDuplicateGroup,
+        screen.mediaIds.joinToString(IdSeparator.toString()),
+    ).joinToString(FieldSeparator.toString())
     DetailScreen.Screenshots -> TagScreenshots
     DetailScreen.Largest -> TagLargest
     // The screen is restored, the hand-off is not. A preselection is a transient
@@ -137,7 +143,11 @@ internal fun decodeDetailScreen(encoded: String): DetailScreen? {
         TagTrash -> DetailScreen.Trash
         TagDuplicates -> DetailScreen.Duplicates
         TagSimilar -> DetailScreen.Similar
-        TagDuplicateGroup -> null
+        TagDuplicateGroup -> fields.getOrNull(1)
+            ?.split(IdSeparator)
+            ?.mapNotNull(String::toLongOrNull)
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { ids -> DetailScreen.DuplicateGroupGrid(ids.toSet()) }
         TagScreenshots -> DetailScreen.Screenshots
         TagLargest -> DetailScreen.Largest
         TagMediaProcessing -> DetailScreen.MediaProcessing(emptyList())
@@ -154,8 +164,11 @@ internal fun decodeDetailScreen(encoded: String): DetailScreen? {
  *
  * Truncates at the first entry that cannot be restored instead of skipping it:
  * being "inside" a destination whose opener was lost is not a state the app can
- * render, so a duplicate-group grid that no longer has its group takes the
- * screens above it with it and leaves the user on the list that opened it.
+ * render, so a destination that no longer decodes takes the screens above it with
+ * it. Every destination in use today does decode - what a restore drops is a
+ * [DetailScreen.MediaProcessing] preselection, not the screen - so this is the
+ * guard for a corrupt bundle or a stack written by a newer version, not a routine
+ * path.
  */
 internal fun decodeDetailStack(encoded: List<String>): List<DetailScreen> {
     val restored = ArrayList<DetailScreen>(encoded.size)
