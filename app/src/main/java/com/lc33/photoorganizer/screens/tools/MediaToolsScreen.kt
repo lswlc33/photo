@@ -44,9 +44,13 @@ import com.lc33.photoorganizer.processing.ImageResizeOption
 import com.lc33.photoorganizer.processing.MediaBatchViewModel
 import com.lc33.photoorganizer.processing.ProcessedMedia
 import com.lc33.photoorganizer.processing.ProcessingException
+import com.lc33.photoorganizer.processing.VideoCodec
 import com.lc33.photoorganizer.processing.VideoQuality
 import com.lc33.photoorganizer.processing.VideoResolution
 import com.lc33.photoorganizer.processing.VideoTrackMode
+import com.lc33.photoorganizer.processing.availableVideoCodecs
+import com.lc33.photoorganizer.processing.deviceVideoEncoders
+import java.util.Locale
 import com.lc33.photoorganizer.ui.PreferenceGroup
 import com.lc33.photoorganizer.ui.components.CompactTextButton
 import com.lc33.photoorganizer.ui.components.ErrorCard
@@ -118,6 +122,7 @@ fun MediaToolsScreen(
         mutableStateOf(videoQuality.toDefaultResolution())
     }
     var trackMode by rememberSaveable { mutableStateOf(VideoTrackMode.VIDEO_AND_AUDIO) }
+    var videoCodec by rememberSaveable { mutableStateOf(VideoCodec.SOURCE) }
     var bitrateMbps by rememberSaveable { mutableFloatStateOf(0f) }
 
     var showActionsPopup by rememberSaveable { mutableStateOf(false) }
@@ -211,6 +216,32 @@ fun MediaToolsScreen(
         }
     }
 
+    // Only offer codecs this device can actually encode. Transformer treats an
+    // impossible request as a fallback rather than an error, so without this the
+    // user picks AV1, waits out the export and silently gets H.264. The probe is
+    // a MediaCodecList walk, so it is remembered rather than repeated.
+    val codecOptions = remember(resources) {
+        val encoders = deviceVideoEncoders()
+        availableVideoCodecs(encoders).map { option ->
+            ToolOption(
+                value = option.codec,
+                title = resources.getString(option.codec.labelRes()),
+                summary = when {
+                    option.codec == VideoCodec.SOURCE ->
+                        resources.getString(R.string.media_tool_codec_source_desc)
+                    !option.hardware ->
+                        resources.getString(R.string.media_tool_codec_software_desc)
+                    else -> resources.getString(option.codec.descriptionRes())
+                },
+            )
+        }
+    }
+    // A codec that was available when the choice was made can disappear from the
+    // list; fall back rather than sending a request nothing can honour.
+    LaunchedEffect(codecOptions) {
+        if (codecOptions.none { it.value == videoCodec }) videoCodec = VideoCodec.SOURCE
+    }
+
     // The screen only describes the work; running it belongs to the ViewModel, so a
     // rotation can no longer cancel a transcode that has been going for minutes.
     val imageRequest = {
@@ -226,6 +257,7 @@ fun MediaToolsScreen(
         BatchRequest.Videos(
             resolution = videoResolution,
             trackMode = trackMode,
+            codec = videoCodec,
             bitrateOverride = bitrateMbps
                 .takeIf { it > 0f && trackMode != VideoTrackMode.AUDIO_ONLY }
                 ?.times(1_000_000f)
@@ -333,10 +365,13 @@ fun MediaToolsScreen(
             VideoToolOptions(
                 resolutionOptions = resolutionOptions,
                 trackOptions = trackOptions,
+                codecOptions = codecOptions,
                 resolution = videoResolution,
                 onResolutionChange = { videoResolution = it },
                 trackMode = trackMode,
                 onTrackModeChange = { trackMode = it },
+                codec = videoCodec,
+                onCodecChange = { videoCodec = it },
                 bitrateMbps = bitrateMbps,
                 onBitrateChange = { bitrateMbps = it },
                 bitrateCeilingMbps = bitrateCeilingMbps,
@@ -492,10 +527,13 @@ private fun ImageToolOptions(
 private fun VideoToolOptions(
     resolutionOptions: List<ToolOption<VideoResolution>>,
     trackOptions: List<ToolOption<VideoTrackMode>>,
+    codecOptions: List<ToolOption<VideoCodec>>,
     resolution: VideoResolution,
     onResolutionChange: (VideoResolution) -> Unit,
     trackMode: VideoTrackMode,
     onTrackModeChange: (VideoTrackMode) -> Unit,
+    codec: VideoCodec,
+    onCodecChange: (VideoCodec) -> Unit,
     bitrateMbps: Float,
     onBitrateChange: (Float) -> Unit,
     bitrateCeilingMbps: Float,
@@ -519,6 +557,20 @@ private fun VideoToolOptions(
             selected = trackMode,
             enabled = !running,
             onSelect = onTrackModeChange,
+        )
+        ToolSpinnerPreference(
+            title = stringResource(R.string.media_tool_codec),
+            options = if (codecOptions.size > 1) {
+                codecOptions
+            } else {
+                // One entry is a statement about the device, not a choice; say why
+                // instead of showing a picker that cannot pick anything.
+                codecOptions.map { it.copy(summary = stringResource(R.string.media_tool_codec_only_one)) }
+            },
+            selected = codec,
+            // There is no video track left to encode when extracting audio.
+            enabled = !running && !audioOnly && codecOptions.size > 1,
+            onSelect = onCodecChange,
         )
         SliderPreference(
             value = bitrateMbps,
@@ -696,20 +748,30 @@ private fun <T> ToolSpinnerPreference(
 }
 
 @Composable
-private fun ProcessedMedia.detailText(): String = when {
-    originalBytes <= 0L -> formatBytes(outputBytes)
-    outputBytes >= originalBytes -> stringResource(
-        R.string.media_tool_grew_detail,
-        formatBytes(originalBytes),
-        formatBytes(outputBytes),
-    )
-    else -> stringResource(
-        R.string.media_tool_saved_detail,
-        formatBytes(originalBytes),
-        formatBytes(outputBytes),
-        (savedFraction * 100).roundToInt(),
-    )
+private fun ProcessedMedia.detailText(): String {
+    val size = when {
+        originalBytes <= 0L -> formatBytes(outputBytes)
+        outputBytes >= originalBytes -> stringResource(
+            R.string.media_tool_grew_detail,
+            formatBytes(originalBytes),
+            formatBytes(outputBytes),
+        )
+        else -> stringResource(
+            R.string.media_tool_saved_detail,
+            formatBytes(originalBytes),
+            formatBytes(outputBytes),
+            (savedFraction * 100).roundToInt(),
+        )
+    }
+    // A silent codec swap changes what the user is looking at, so it is said out
+    // loud next to the size rather than left for them to discover in a player.
+    val fallback = codecFallback ?: return size
+    return "$size · " + stringResource(R.string.media_tool_codec_fallback, codecLabel(fallback))
 }
+
+/** `video/hevc` reads as `HEVC` in a summary line, not as a MIME type. */
+private fun codecLabel(mimeType: String): String =
+    mimeType.substringAfter('/').uppercase(Locale.US)
 
 private fun VideoTrackMode.labelRes(): Int = when (this) {
     VideoTrackMode.VIDEO_AND_AUDIO -> R.string.media_tool_track_both
@@ -728,6 +790,20 @@ private fun VideoResolution.descriptionRes(): Int = when (this) {
     VideoResolution.P1080 -> R.string.media_tool_resolution_1080_desc
     VideoResolution.P720 -> R.string.media_tool_resolution_720_desc
     VideoResolution.P480 -> R.string.media_tool_resolution_480_desc
+}
+
+private fun VideoCodec.labelRes(): Int = when (this) {
+    VideoCodec.SOURCE -> R.string.media_tool_keep_original
+    VideoCodec.H264 -> R.string.media_tool_codec_h264
+    VideoCodec.HEVC -> R.string.media_tool_codec_hevc
+    VideoCodec.AV1 -> R.string.media_tool_codec_av1
+}
+
+private fun VideoCodec.descriptionRes(): Int = when (this) {
+    VideoCodec.SOURCE -> R.string.media_tool_codec_source_desc
+    VideoCodec.H264 -> R.string.media_tool_codec_h264_desc
+    VideoCodec.HEVC -> R.string.media_tool_codec_hevc_desc
+    VideoCodec.AV1 -> R.string.media_tool_codec_av1_desc
 }
 
 private fun VideoQuality.toDefaultResolution(): VideoResolution = when (this) {

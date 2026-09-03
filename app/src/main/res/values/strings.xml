@@ -355,6 +355,17 @@
     <string name="media_tool_track_both_desc">Keep the video and audio tracks</string>
     <string name="media_tool_track_video_desc">Drop the audio track</string>
     <string name="media_tool_track_audio_desc">Export the audio track as M4A</string>
+    <string name="media_tool_codec">Video codec</string>
+    <string name="media_tool_codec_h264">H.264</string>
+    <string name="media_tool_codec_hevc">HEVC (H.265)</string>
+    <string name="media_tool_codec_av1">AV1</string>
+    <string name="media_tool_codec_source_desc">Keep the source codec where this device can encode it, otherwise H.264</string>
+    <string name="media_tool_codec_h264_desc">Plays everywhere; larger than HEVC at the same quality</string>
+    <string name="media_tool_codec_hevc_desc">Clearly smaller than H.264 at the same quality; older players may refuse it</string>
+    <string name="media_tool_codec_av1_desc">Smallest files, slowest to encode; needs a recent player</string>
+    <string name="media_tool_codec_software_desc">No hardware encoder here, so this will be slow</string>
+    <string name="media_tool_codec_only_one">This device can only encode one video format</string>
+    <string name="media_tool_codec_fallback">Encoded as %1$s — this device could not do the codec you picked</string>
 
     <!-- Settings -->
     <string name="settings_title">Settings</string>

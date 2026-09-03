@@ -33,6 +33,7 @@ sealed interface BatchRequest {
     data class Videos(
         val resolution: VideoResolution,
         val trackMode: VideoTrackMode,
+        val codec: VideoCodec,
         val bitrateOverride: Int?,
         val keepOnlyIfSmaller: Boolean,
     ) : BatchRequest
@@ -229,6 +230,7 @@ class MediaBatchViewModel(application: Application) : AndroidViewModel(applicati
         source = source,
         resolution = request.resolution,
         trackMode = request.trackMode,
+        codec = request.codec,
         bitrateOverride = request.bitrateOverride,
         keepOnlyIfSmaller = request.keepOnlyIfSmaller,
         onProgress = onProgress,
