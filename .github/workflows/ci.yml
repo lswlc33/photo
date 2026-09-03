@@ -29,10 +29,6 @@ jobs:
       PHOTO_RELEASE_STORE_PASSWORD: ${{ secrets.PHOTO_RELEASE_STORE_PASSWORD }}
       PHOTO_RELEASE_KEY_ALIAS: ${{ secrets.PHOTO_RELEASE_KEY_ALIAS }}
       PHOTO_RELEASE_KEY_PASSWORD: ${{ secrets.PHOTO_RELEASE_KEY_PASSWORD }}
-    outputs:
-      version: ${{ steps.apk.outputs.version }}
-      code: ${{ steps.apk.outputs.code }}
-      apk: ${{ steps.apk.outputs.name }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -133,11 +129,14 @@ jobs:
       #
       # 签名配置缺失时 AGP 不会报错，只会产出 *-unsigned.apk，所以要发布的那个真的
       # 验一遍签名，而不是相信 assembleNightly 的退出码。
+      #
+      # 名字不经 job outputs 交给下一个 job：GitHub 认为一个 job 输出里含有某个 secret
+      # 的值时，会静默地把它变成空字符串（日志里只有一条 "Skip output ... since it may
+      # contain secret" 注解），于是发布那一步拿着空文件名去上传。prerelease 自己在下载
+      # 下来的目录里找这个 APK，版本号也自己读同一个 gradle.properties。
       - name: Name the APK after the version and the commit
-        id: apk
         run: |
           version=$(sed -n 's/^photoVersionName=//p' gradle.properties)
-          code=$(sed -n 's/^photoVersionCode=//p' gradle.properties)
           built=$(find app/build/outputs/apk/nightly -name '*.apk' | head -1)
           if [ -n "$KEYSTORE_B64" ]; then
             case "$built" in
@@ -149,19 +148,13 @@ jobs:
             apksigner=$(find "$ANDROID_SDK_ROOT/build-tools" -name 'apksigner' | sort -V | tail -1)
             "$apksigner" verify --print-certs "$built"
           fi
-          name="photo-organizer-v$version-$(git rev-parse --short HEAD).apk"
           mkdir -p artifacts
-          cp "$built" "artifacts/$name"
-          {
-            echo "version=$version"
-            echo "code=$code"
-            echo "name=$name"
-          } >> "$GITHUB_OUTPUT"
+          cp "$built" "artifacts/photo-organizer-v$version-$(git rev-parse --short HEAD).apk"
 
       - uses: actions/upload-artifact@v7
         with:
           name: photo-organizer-apk
-          path: artifacts/${{ steps.apk.outputs.name }}
+          path: artifacts/*.apk
           if-no-files-found: error
 
       # 失败时报告比日志有用得多，所以无论成败都上传。
@@ -196,18 +189,27 @@ jobs:
       - name: Refresh the rolling nightly prerelease
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VERSION: ${{ needs.build.outputs.version }}
-          VERSION_CODE: ${{ needs.build.outputs.code }}
-          APK: ${{ needs.build.outputs.apk }}
           RUN_NUMBER: ${{ github.run_number }}
         run: |
+          # APK 在上一步下载下来的目录里，版本号来自这次检出的 gradle.properties ——
+          # 两个 job 检出的是同一个提交，所以不必经 job outputs 传（理由见 build 里
+          # 那段注释）。三个值缺一个就在删掉现有预发布之前失败：把发布删掉再发现发不
+          # 出来，留下的是一个连下载都没有的 nightly。
+          apk=$(find artifacts -name '*.apk' | head -1)
+          version=$(sed -n 's/^photoVersionName=//p' gradle.properties)
+          code=$(sed -n 's/^photoVersionCode=//p' gradle.properties)
+          if [ ! -f "$apk" ] || [ -z "$version" ] || [ -z "$code" ]; then
+            echo "发布前的检查没过：apk=[$apk] version=[$version] code=[$code]" >&2
+            exit 1
+          fi
+
           # 先赋值再 echo：提交标题里的反引号不会在双引号里被当成命令展开。
           sha=$(git rev-parse --short HEAD)
           subject=$(git log -1 --pretty=%s)
           {
             echo "master 最新提交的自动构建，每次推送刷新。"
             echo
-            echo "- 版本：**v$VERSION**（versionCode \`$VERSION_CODE\`）"
+            echo "- 版本：**v$version**（versionCode \`$code\`）"
             echo "- 提交：\`$sha\` — $subject"
             echo "- 构建：nightly · CI #$RUN_NUMBER"
             echo "- 系统要求：Android 13（API 33）及以上"
@@ -218,7 +220,7 @@ jobs:
           gh release delete nightly --yes --cleanup-tag || true
           gh release create nightly \
             --target "$GITHUB_SHA" \
-            --title "照片整理 v$VERSION · 构建 #$RUN_NUMBER" \
+            --title "照片整理 v$version · 构建 #$RUN_NUMBER" \
             --prerelease \
             --notes-file "$RUNNER_TEMP/notes.md" \
-            "artifacts/$APK"
+            "$apk"
