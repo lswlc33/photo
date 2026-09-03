@@ -33,7 +33,6 @@ import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lc33.photoorganizer.R
 import com.lc33.photoorganizer.media.PendingMedia
 import com.lc33.photoorganizer.media.formatBytes
@@ -91,6 +90,7 @@ private data class ToolOption<T>(
 /** Local image and video processing. Source media is never modified. */
 @Composable
 fun MediaToolsScreen(
+    batchViewModel: MediaBatchViewModel,
     imageQuality: Int,
     videoQuality: VideoQuality,
     stripMetadata: Boolean,
@@ -103,7 +103,6 @@ fun MediaToolsScreen(
     val context = LocalContext.current
     val resources = LocalResources.current
     val snackbarHostState = remember { SnackbarHostState() }
-    val batchViewModel: MediaBatchViewModel = viewModel()
     val batch by batchViewModel.state.collectAsState()
     val running = batch.running
     val results = batch.results

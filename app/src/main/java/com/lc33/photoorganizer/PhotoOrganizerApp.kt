@@ -71,6 +71,7 @@ import com.lc33.photoorganizer.media.reviewKey
 import com.lc33.photoorganizer.media.smartReviewOrder
 import com.lc33.photoorganizer.media.toPendingMedia
 import com.lc33.photoorganizer.media.toUiMedia
+import com.lc33.photoorganizer.processing.MediaBatchViewModel
 import com.lc33.photoorganizer.processing.VideoQuality
 import com.lc33.photoorganizer.screens.dashboard.DashboardScreen
 import com.lc33.photoorganizer.screens.dashboard.DashboardState
@@ -155,6 +156,14 @@ fun PhotoOrganizerApp() {
     val hasMediaPermission = permissionState.hasAccess
     val indexViewModel: MediaIndexViewModel = viewModel()
     val indexState by indexViewModel.state.collectAsState()
+    // Hoisted here rather than obtained inside MediaToolsScreen so the state root
+    // is actually the root. Both ViewModels resolve to the Activity's store either
+    // way - there is no navigation library to scope them - but reaching for
+    // `viewModel()` inside a screen made a transcode's survival across a detail
+    // pop look like a property of that screen instead of a deliberate decision.
+    // It has to stay a ViewModel: on a `rememberCoroutineScope()` a rotation
+    // cancelled a minutes-long transcode silently.
+    val batchViewModel: MediaBatchViewModel = viewModel()
     var scanRequest by remember { mutableIntStateOf(0) }
     // An immutable map rather than a SnapshotStateMap: a state map has no
     // per-key observability, so reading it in this scope invalidated the whole
@@ -664,6 +673,7 @@ fun PhotoOrganizerApp() {
                             )
                         }
                         is DetailScreen.MediaProcessing -> MediaToolsScreen(
+                            batchViewModel = batchViewModel,
                             imageQuality = imageQuality,
                             videoQuality = videoQuality,
                             stripMetadata = stripMetadata,
