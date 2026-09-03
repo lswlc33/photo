@@ -1,8 +1,6 @@
 package com.lc33.photoorganizer.media
 
-import android.content.ContentUris
 import android.net.Uri
-import android.provider.MediaStore
 
 /** Review decision attached to a media item, persisted per item id. */
 enum class ReviewState { UNREVIEWED, KEPT, TRASH_MARKED }
@@ -62,15 +60,6 @@ fun UiMedia.toPendingMedia(): PendingMedia? = uri?.let { source ->
         isVideo = isVideo,
         sizeBytes = sizeBytes,
     )
-}
-
-fun IndexedMedia.contentUri(): Uri {
-    val collection = if (type == IndexedMediaType.VIDEO) {
-        MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-    } else {
-        MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-    }
-    return ContentUris.withAppendedId(collection, rawMediaId(id))
 }
 
 private fun isRawMedia(displayName: String, mimeType: String): Boolean {

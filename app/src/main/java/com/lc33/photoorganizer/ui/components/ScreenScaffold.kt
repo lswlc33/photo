@@ -155,12 +155,6 @@ fun ScreenLazyColumn(
     }
 }
 
-/** Small text action used in top app bars. */
-@Composable
-fun BarTextAction(text: String, enabled: Boolean = true, onClick: () -> Unit) {
-    TextButton(text = text, onClick = onClick, enabled = enabled)
-}
-
 /** Pull-to-refresh wiring produced by [rememberRefreshBridge]. */
 class RefreshBridge(val isRefreshing: Boolean, val onRefresh: () -> Unit)
 

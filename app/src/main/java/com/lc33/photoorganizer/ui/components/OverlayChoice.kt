@@ -14,61 +14,6 @@ import top.yukonga.miuix.kmp.basic.PopupPositionProvider
 import top.yukonga.miuix.kmp.overlay.OverlayListPopup
 import com.lc33.photoorganizer.ui.TrackOverlayPopup
 
-/**
- * Single-choice MIUIX overlay popup anchored to the row that opened it.
- *
- * Follows the OverlayListPopup contract: the popup is placed inside the page
- * Scaffold so MiuixPopupHost can render it, and every option is a standard
- * [DropdownImpl] row inside [ListPopupColumn]. Since the popup is anchored to a
- * specific row, renderInRootScaffold stays false so it is positioned against
- * [anchor] instead of the whole window.
- */
-@Composable
-fun <T> OverlayChoicePopup(
-    show: Boolean,
-    options: List<T>,
-    selected: T,
-    label: (T) -> Int,
-    onSelect: (T) -> Unit,
-    onDismissRequest: () -> Unit,
-    alignment: PopupPositionProvider.Align = PopupPositionProvider.Align.End,
-    minWidth: Dp = 200.dp,
-    anchor: @Composable () -> Unit,
-) {
-    // MIUIX registers its own NavigationEventDispatcher handler, but this app
-    // hosts a standalone dispatcher, so the platform back gesture is bridged
-    // here to make sure back dismisses the popup instead of leaving the screen.
-    BackHandler(enabled = show, onBack = onDismissRequest)
-    // The popup host draws below the floating glass bottom bar, so publish the
-    // open state and let the root composition move the bar out of the way.
-    TrackOverlayPopup(show)
-    Box {
-        anchor()
-        OverlayListPopup(
-            show = show,
-            alignment = alignment,
-            onDismissRequest = onDismissRequest,
-            minWidth = minWidth,
-            renderInRootScaffold = false,
-        ) {
-            ListPopupColumn {
-                options.forEachIndexed { index, option ->
-                    DropdownImpl(
-                        text = stringResource(label(option)),
-                        optionSize = options.size,
-                        isSelected = option == selected,
-                        index = index,
-                        onSelectedIndexChange = {
-                            onDismissRequest()
-                            onSelect(option)
-                        },
-                    )
-                }
-            }
-        }
-    }
-}
-
 /** One actionable row inside an [OverlayActionPopup]. */
 data class OverlayAction(
     val labelRes: Int,

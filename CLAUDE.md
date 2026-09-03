@@ -93,7 +93,7 @@ Invariants worth preserving:
 
 MIUIX component library for structure and theming, Kyant Backdrop for the glass bottom bar. Do not hand-build shells:
 
-- New pages use `ScreenColumn` (`ui/components/ScreenScaffold.kt`) — MIUIX `Scaffold` + collapsing `TopAppBar` + `LazyColumn`, with optional pull-to-refresh via `rememberRefreshBridge`. Grouped settings use `PreferenceGroup`; single-choice popups use the `OverlayChoicePopup` / `OverlaySpinnerChoicePopup` / `OverlayActionPopup` wrappers.
+- New pages use `ScreenColumn` (`ui/components/ScreenScaffold.kt`) — MIUIX `Scaffold` + collapsing `TopAppBar` + `LazyColumn`, with optional pull-to-refresh via `rememberRefreshBridge`. Grouped settings use `PreferenceGroup`; single-choice popups use the `OverlaySpinnerChoicePopup` / `OverlayActionPopup` wrappers.
 - Reserve room for the floating bar with `floatingBottomBarContentPadding()`, and keep controls clear of cutouts with `systemClearance()`.
 - **The backdrop capture `Box` must never be an ancestor of `GlassBottomBar`.** A bar sampling a backdrop that contains itself makes the render tree cyclic and crashes at draw time.
 - MIUIX overlays render inside a `Scaffold`'s popup host, which sits *below* the floating bar. Every overlay therefore pairs with `TrackOverlayPopup(show)`, and the root slides the bar out of the way while the count is non-zero. The overlay wrappers already do this; a hand-rolled overlay must.
