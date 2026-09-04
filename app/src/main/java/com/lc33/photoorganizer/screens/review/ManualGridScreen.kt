@@ -140,12 +140,29 @@ enum class MediaGridMode {
 private val SelectionToolbarClearance = 84.dp
 
 /**
+ * Width of the fast-scroll strip, and therefore the grid's right-hand inset.
+ *
+ * One value for both on purpose. They were two literals - 50 dp of grid padding
+ * against a 44 dp strip - and the 6 dp neither of them accounted for turned into a
+ * dead channel: with the track centred in the strip, the thumb ended up 25 dp from
+ * the last tile and 19 dp from the screen edge, which reads as a misalignment rather
+ * than a margin. Equal now, so the thumb sits centred in the space reserved for it.
+ *
+ * 44 dp is also the touch target. Keeping the inset no smaller than it means the
+ * strip never overlaps the rightmost tile column, so grabbing the scrollbar and
+ * tapping a photo can never be the same gesture.
+ */
+private val ScrubberWidth = 44.dp
+
+/**
  * Three tiles per row, fixed rather than adaptive.
  *
- * `Adaptive(96.dp)` looked right but landed on two columns on a 360 dp-wide screen:
- * the 50 dp reserved for the scrubber left 298 dp, and three 96 dp tiles plus their
- * spacing need 302 dp. Missing by four dp meant every phone in that range got half
- * the density it should have, which is exactly the failure mode `Adaptive` hides.
+ * `Adaptive(96.dp)` is a near miss at this width and would stay one padding tweak
+ * away from breaking: on a 360 dp screen the [ScrubberWidth] inset and the 12 dp
+ * start padding leave 304 dp, and three 96 dp tiles plus their spacing need 302 dp.
+ * Two dp of headroom is not a layout decision, it is luck - and when it runs out
+ * `Adaptive` silently halves the density instead of failing, which is the failure
+ * mode it hides. Fixed says what the screen should show.
  */
 private const val GridColumns = 3
 
@@ -694,7 +711,12 @@ private fun ManualGridTiles(
             .overScrollVertical()
             .nestedScroll(scrollBehavior.nestedScrollConnection),
         columns = GridCells.Fixed(GridColumns),
-        contentPadding = PaddingValues(start = 12.dp, end = 50.dp, top = 8.dp, bottom = bottomPadding),
+        contentPadding = PaddingValues(
+            start = 12.dp,
+            end = ScrubberWidth,
+            top = 8.dp,
+            bottom = bottomPadding,
+        ),
         horizontalArrangement = Arrangement.spacedBy(7.dp),
         verticalArrangement = Arrangement.spacedBy(7.dp),
     ) {
@@ -753,7 +775,7 @@ private fun BoxScope.ManualGridDateScrubber(
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier
                 .align(Alignment.CenterEnd)
-                .padding(end = 48.dp)
+                .padding(end = ScrubberWidth + 4.dp)
                 .background(
                     MiuixTheme.colorScheme.surfaceContainer.copy(alpha = .96f),
                     RoundedCornerShape(8.dp),
@@ -866,7 +888,7 @@ private fun ManualGridScrubber(
 
     Box(
         modifier
-            .width(44.dp)
+            .width(ScrubberWidth)
             .fillMaxHeight()
             .padding(vertical = 8.dp)
             .onSizeChanged { trackHeightPx = it.height.toFloat() }
