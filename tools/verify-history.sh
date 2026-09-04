@@ -16,11 +16,11 @@
 #
 # The scratch worktree is reused across commits so its build/ directory keeps
 # builds incremental; expect the first commit to be slow and the rest to be fast.
-set -e
+set -eu
 
 cd "$(git rev-parse --show-toplevel)"
 
-base="$1"
+base="${1:-}"
 if [ -n "$base" ]; then
     range="$base..HEAD"
 else
@@ -33,13 +33,21 @@ if [ -z "$commits" ]; then
     exit 0
 fi
 
-worktree="../photo-verify-worktree"
+# A fresh directory per run, not a fixed sibling path.
+#
+# This used to be `../photo-verify-worktree` with a `git worktree remove --force` before
+# the add - so a script whose header calls itself non-destructive would silently discard
+# the uncommitted work of any worktree that happened to be registered at that path,
+# including one created by Agent Manager. mktemp -d cannot collide with anything, and
+# cleanup only ever removes the directory this run created.
+worktree=$(mktemp -d "${TMPDIR:-/tmp}/photo-verify.XXXXXX")
+rmdir "$worktree"
 cleanup() {
     git worktree remove --force "$worktree" 2>/dev/null || true
+    rm -rf "$worktree"
 }
 trap cleanup EXIT
 
-cleanup
 git worktree add --detach "$worktree" HEAD >/dev/null
 
 # local.properties holds the machine-local SDK path and is gitignored, so the

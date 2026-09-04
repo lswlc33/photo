@@ -82,7 +82,7 @@ Cancellation is cooperative throughout: every hashing loop takes a `checkActive:
 
 `processing/` re-encodes media with platform APIs only — `ImageProcessor` uses `Bitmap`/`BitmapFactory` + `ExifInterface`, `VideoProcessor` uses Media3 `Transformer` with the device's hardware codecs. There is no native binary, so both work on every ABI including x86_64 emulators.
 
-`MediaBatchViewModel` drives it as a five-phase run (`BatchPhase`): IDLE, RUNNING, REVIEW, COMMITTING, DONE. Nothing reaches MediaStore during RUNNING — the processors write into `StagingArea` (`cacheDir/processing`) and hand back a `StagedMedia`. The user compares each result against its source on `ProcessingReviewScreen`, and only COMMITTING copies what they accepted into the gallery. That is four destinations (settings, picker, progress, review) reading one run, which is why the settings live in the ViewModel as `ProcessingSettings` rather than in the page that edits them.
+`MediaBatchViewModel` drives it as a five-phase run (`BatchPhase`): IDLE, RUNNING, REVIEW, COMMITTING, DONE. Nothing reaches MediaStore during RUNNING — the processors write into `StagingArea` (`noBackupFilesDir/processing`) and hand back a `StagedMedia`. The user compares each result against its source on `ProcessingReviewScreen`, and only COMMITTING copies what they accepted into the gallery. That is four destinations (settings, picker, progress, review) reading one run, which is why the settings live in the ViewModel as `ProcessingSettings` rather than in the page that edits them.
 
 Invariants worth preserving:
 
@@ -91,7 +91,7 @@ Invariants worth preserving:
 - **Output names replicate the source's.** `OutputNaming.compressedName` keeps the name and appends `-z<N>`, counting compression passes rather than stacking suffixes. Collisions in the target folder reuse the same increment.
 - `keepOnlyIfSmaller` makes both processors return `null` — not an error — when the output would be larger than the input.
 - Failures raise `ProcessingException`, which carries a `@StringRes` message plus format args so the UI renders it in the user's language.
-- `ImageProcessingLimits` caps an un-resized decode at 12 MP; exceeding it throws rather than silently downsampling.
+- `ImageProcessingLimits` refuses an un-resized decode over 12 MP, and bounds a resized one by a share of the heap; a result the budget pushed below the requested long edge is reported through `StagedMedia.resizeShortfallPx` rather than delivered quietly.
 - `Transformer` needs a Looper, so `runExport` runs on `Dispatchers.Main` with a sibling coroutine polling `getProgress`.
 - HDR and Dolby Vision are refused up front rather than tone-mapped, and the output is re-inspected afterwards because a silent tone-map is the one failure Media3 never reports.
 - Staged files are deleted when a result is rejected, committed or superseded, and swept from `StagingArea` when the ViewModel is constructed — the only thing that can outlive a run is a process death, and the review set that named those files dies with it.

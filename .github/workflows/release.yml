@@ -12,6 +12,11 @@ on:
     tags: ['v*']
   workflow_dispatch:
 
+# 和 ci.yml 同样的理由：默认的 `bash -e` 漏掉管道里的失败，也接受未定义变量。
+defaults:
+  run:
+    shell: bash -euo pipefail {0}
+
 # 同一个标签只跑一份。cancel-in-progress 故意是 false：一次发布跑到一半被取消，
 # 留下的可能是一个只有说明没有 APK 的 release，比多等一轮糟得多。
 concurrency:
@@ -84,6 +89,7 @@ jobs:
           java-version: '17'
 
       # 和 ci.yml 同样的理由：提交里的镜像地址对本地更快，对 GitHub 的 runner 很慢。
+      # 换的只是主机，校验和那一行保留。
       - name: Point the wrapper at the upstream Gradle distribution
         run: |
           sed -i 's#mirrors.cloud.tencent.com/Gradle/#services.gradle.org/distributions/#' \

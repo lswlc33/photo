@@ -76,6 +76,34 @@ android {
         versionName = appVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField("String", "BUILD_SHA", "\"$appBuildSha\"")
+
+        // The two locales locales_config.xml declares, and nothing else. Without this
+        // the APK carries every AndroidX and Media3 translation - dozens of languages
+        // the app itself does not offer - which is pure size in a 4.8 MB download.
+        @Suppress("DEPRECATION")
+        resourceConfigurations += listOf("zh-rCN", "en")
+    }
+
+    // The Java level is pinned rather than inherited from whatever JDK happens to be
+    // installed: CI runs Temurin 17, and a local JDK 21 or 25 would otherwise compile
+    // against different defaults than the machine that produces the published APK.
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlin {
+        compilerOptions {
+            jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
+        }
+    }
+
+    // Google's encrypted dependency block is aimed at Play's security scanning. This
+    // APK is distributed from GitHub Releases, where nothing reads it, and it is bytes
+    // in the download that cannot be reproduced from the source tree.
+    dependenciesInfo {
+        includeInApk = false
+        includeInBundle = false
     }
 
     signingConfigs {
@@ -131,6 +159,8 @@ android {
     packaging {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
+
+
 }
 
 dependencies {

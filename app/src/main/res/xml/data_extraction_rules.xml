@@ -1,9 +1,34 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+    Nothing is backed up.
+
+    sharedpref was already excluded, but the two files that actually matter live
+    in filesDir, and filesDir is in the default backup set: every line of
+    media-fingerprints.tsv is "content URI + size + mtime + content hash", and
+    review-decisions.tsv embeds the URI, size and modified time in its keys.
+    Together they are a metadata index of the user's entire photo library, and the
+    default rules would carry it off the device through the backup transport and
+    through device-to-device transfer. For an app whose claim is that it does not
+    use the network, that is the one egress that must not exist.
+
+    The file domain is excluded here as well as android:allowBackup="false" in the
+    manifest. The manifest attribute is the real switch; this file is the second
+    line, so that turning the switch back on for some other reason cannot take
+    these two files with it. Both blocks are needed: cloud-backup covers the cloud
+    transport, device-transfer covers a direct transfer to a new phone, and
+    omitting either one is the same as omitting both.
+-->
 <data-extraction-rules>
     <cloud-backup>
         <exclude domain="sharedpref" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="external" path="." />
     </cloud-backup>
     <device-transfer>
         <exclude domain="sharedpref" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="external" path="." />
     </device-transfer>
 </data-extraction-rules>

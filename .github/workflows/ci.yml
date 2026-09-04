@@ -16,7 +16,16 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # master 上不取消：发布那一步是「先删掉 nightly，再重建」，两次快速推送可以在这个窗口
+  # 里把第一次运行掐掉，于是 nightly 被删了却没重建，下载页上什么都没有。release.yml
+  # 设 false 就是为了避免这件事。别的分支取消掉没有损失。
+  cancel-in-progress: ${{ github.ref != 'refs/heads/master' }}
+
+# 默认的 `bash -e` 会漏掉管道中间的失败，也接受未定义变量 —— 下面几步都在用
+# `x=$(cmd | head -1)` 这种写法，失败在那里是看不见的。
+defaults:
+  run:
+    shell: bash -euo pipefail {0}
 
 permissions:
   contents: read
@@ -25,15 +34,18 @@ jobs:
   build:
     runs-on: ubuntu-latest
     env:
-      KEYSTORE_B64: ${{ secrets.PHOTO_RELEASE_KEYSTORE_BASE64 }}
-      PHOTO_RELEASE_STORE_PASSWORD: ${{ secrets.PHOTO_RELEASE_STORE_PASSWORD }}
-      PHOTO_RELEASE_KEY_ALIAS: ${{ secrets.PHOTO_RELEASE_KEY_ALIAS }}
-      PHOTO_RELEASE_KEY_PASSWORD: ${{ secrets.PHOTO_RELEASE_KEY_PASSWORD }}
+      # 只有 master 上的构建会被发布，也只有它需要真的签名。这个标志把「要不要签」收成
+      # 一个条件，四个 secret 则挂在真正用到它们的 step 上而不是整个 job 上：挂在 job
+      # 上时，Gradle 以及它加载的每一个插件和依赖，都能在自己的进程环境里读到密钥库路径
+      # 和三个密码 —— 在每一次分支推送和每一个同仓 PR 上都是。
+      SIGNED: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/master' }}
     steps:
       - uses: actions/checkout@v7
         with:
           # 提交信息检查要看整段推送范围，浅克隆里看不到推送前的那个提交。
           fetch-depth: 0
+          # Gradle 在同一个工作区里跑，没有理由让它够得到那个仍然有效的 token。
+          persist-credentials: false
 
       # 提交信息必须用中文写（AGENTS.md 的 Commit Guidelines）。放在最前面：一条
       # 写错语言的提交信息推上来之后只能靠改写历史纠正，所以早失败比晚失败便宜，
@@ -69,14 +81,15 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      # gradle-wrapper.properties 指向腾讯云镜像，那对本地构建更快，但 GitHub
-      # 的 runner 在境外，从那个镜像拉 Gradle 发行版会很慢。这里只在 CI 的工作
-      # 副本里换回官方地址，提交里的镜像地址保持不变。
+      # gradle-wrapper.properties 指向腾讯云镜像，那对本地构建更快，但 GitHub 的 runner
+      # 在境外，从那个镜像拉 Gradle 发行版会很慢。这里只在 CI 的工作副本里换回官方地址，
+      # 提交里的镜像地址保持不变 —— 换的是主机，distributionSha256Sum 那一行原样保留，
+      # 所以两条路线拉到的必须是同一个发行版。
       - name: Point the wrapper at the upstream Gradle distribution
         run: |
           sed -i 's#mirrors.cloud.tencent.com/Gradle/#services.gradle.org/distributions/#' \
             gradle/wrapper/gradle-wrapper.properties
-          grep distributionUrl gradle/wrapper/gradle-wrapper.properties
+          grep -E 'distributionUrl|distributionSha256Sum' gradle/wrapper/gradle-wrapper.properties
 
       # 停在 v5 而不是最新的 v6：v6 把缓存实现拆成了闭源的 gradle-actions-caching，
       # 用它就等于接受 Gradle 自己的 Terms of Use（公开仓库不收费，但那是另一份条款）。
@@ -97,15 +110,26 @@ jobs:
       # 派生仓库发来的 PR 读不到 secret，那时这一步跳过、构建产出未签名的 APK。可以
       # 接受：那个产物只是用来证明「这次改动能构建」，不会发布。
       - name: Restore the release keystore
-        if: env.KEYSTORE_B64 != ''
+        if: env.SIGNED == 'true'
+        env:
+          KEYSTORE_B64: ${{ secrets.PHOTO_RELEASE_KEYSTORE_BASE64 }}
         run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "缺少 PHOTO_RELEASE_KEYSTORE_BASE64" >&2
+            exit 1
+          fi
           printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
           echo "PHOTO_RELEASE_STORE_FILE=$RUNNER_TEMP/release.jks" >> "$GITHUB_ENV"
 
       # master 上的产物是要发出去的，所以这里缺密钥必须当场失败，而不是发一个装不上
       # 的未签名包。别的分支不发布，缺就缺了。
       - name: A published nightly needs all four signing secrets
-        if: github.event_name != 'pull_request' && github.ref == 'refs/heads/master'
+        if: env.SIGNED == 'true'
+        env:
+          KEYSTORE_B64: ${{ secrets.PHOTO_RELEASE_KEYSTORE_BASE64 }}
+          PHOTO_RELEASE_STORE_PASSWORD: ${{ secrets.PHOTO_RELEASE_STORE_PASSWORD }}
+          PHOTO_RELEASE_KEY_ALIAS: ${{ secrets.PHOTO_RELEASE_KEY_ALIAS }}
+          PHOTO_RELEASE_KEY_PASSWORD: ${{ secrets.PHOTO_RELEASE_KEY_PASSWORD }}
         run: |
           missing=""
           [ -n "$KEYSTORE_B64" ] || missing="$missing PHOTO_RELEASE_KEYSTORE_BASE64"
@@ -122,6 +146,10 @@ jobs:
       # 都和 release 一致，区别只是它构建自 master 的任意一个提交而不是一个标签。
       # debug 变体不适合发布：它带着 Compose 的调试工具、也没跑 R8，体积是十几倍。
       - name: Nightly APK
+        env:
+          PHOTO_RELEASE_STORE_PASSWORD: ${{ secrets.PHOTO_RELEASE_STORE_PASSWORD }}
+          PHOTO_RELEASE_KEY_ALIAS: ${{ secrets.PHOTO_RELEASE_KEY_ALIAS }}
+          PHOTO_RELEASE_KEY_PASSWORD: ${{ secrets.PHOTO_RELEASE_KEY_PASSWORD }}
         run: ./gradlew :app:assembleNightly --console=plain
 
       # 版本号只在 gradle.properties 里声明一次，这里读它而不是再抄一遍。
@@ -137,8 +165,16 @@ jobs:
       - name: Name the APK after the version and the commit
         run: |
           version=$(sed -n 's/^photoVersionName=//p' gradle.properties)
-          built=$(find app/build/outputs/apk/nightly -name '*.apk' | head -1)
-          if [ -n "$KEYSTORE_B64" ]; then
+          built=$(find app/build/outputs/apk/nightly -name '*.apk' -print -quit)
+          # 两个都要非空。少了任何一个，产物名会变成 photo-organizer-v-<sha>.apk，而
+          # ReleaseFeed 的 -v(\d+…) 正则从那里取不到版本，于是每个 dev 客户端都静默退化
+          # 成只比对提交 —— 不报错、也不容易发现。prerelease job 检查了 version，这一步
+          # 之前没有。
+          if [ -z "$version" ] || [ -z "$built" ]; then
+            echo "读不到版本号或找不到 APK：version='$version' apk='$built'" >&2
+            exit 1
+          fi
+          if [ "$SIGNED" = "true" ]; then
             case "$built" in
               *unsigned*)
                 echo "有签名密钥却产出了未签名 APK：$built" >&2
@@ -195,7 +231,7 @@ jobs:
           # 两个 job 检出的是同一个提交，所以不必经 job outputs 传（理由见 build 里
           # 那段注释）。三个值缺一个就在删掉现有预发布之前失败：把发布删掉再发现发不
           # 出来，留下的是一个连下载都没有的 nightly。
-          apk=$(find artifacts -name '*.apk' | head -1)
+          apk=$(find artifacts -name '*.apk' -print -quit)
           version=$(sed -n 's/^photoVersionName=//p' gradle.properties)
           code=$(sed -n 's/^photoVersionCode=//p' gradle.properties)
           if [ ! -f "$apk" ] || [ -z "$version" ] || [ -z "$code" ]; then

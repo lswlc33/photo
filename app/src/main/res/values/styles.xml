@@ -1,10 +1,16 @@
 <resources>
+    <!--
+        statusBarColor and navigationBarColor are gone from here on purpose: they are
+        no-ops from API 35 onwards, and MainActivity already calls enableEdgeToEdge(),
+        which is what actually makes both bars transparent. Two mechanisms for one
+        outcome, one of which does nothing on the versions this app targets, is one too
+        many. The windowLight* flags stay because AppTheme keeps them in sync with the
+        resolved theme at runtime and these are the values for the very first frame.
+    -->
     <style name="Theme.PhotoOrganizer" parent="android:style/Theme.Material.Light.NoActionBar">
         <item name="android:fontFamily">sans</item>
         <item name="android:windowLightStatusBar">true</item>
         <item name="android:windowLightNavigationBar">true</item>
-        <item name="android:statusBarColor">@android:color/transparent</item>
-        <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowActionModeOverlay">true</item>
     </style>
 </resources>

@@ -13,11 +13,18 @@
 # a broken ci.yml is exactly the file that never gets to run. That leaves the
 # local hook as the only place this can be caught before the push.
 #
-# What is checked: the two mistakes that make the file be rejected outright and
-# that no build can otherwise reveal - a mapping key defined twice among its
-# siblings (`env:` given once before `outputs:` and once after), and a tab used
-# for indentation. This is deliberately not a YAML parser and not actionlint:
-# it is an indentation walk over the shapes these three files actually use.
+# What is checked: the mistakes that make the file be rejected outright and that
+# no build can otherwise reveal - a mapping key defined twice among its siblings
+# (`env:` given once before `outputs:` and once after), a tab used for
+# indentation, an unbalanced `${{ }}`, and a job with no `steps:` or `uses:`.
+# This is deliberately not a YAML parser and not actionlint: it is an
+# indentation walk over the shapes these three files actually use.
+#
+# The last two were added after a hand-edit truncated a `${{ ... }}` mid-expression
+# and took the following `steps:` key with it. The duplicate-key walk passed it -
+# the file was still shaped like YAML - and only reading the line by eye caught it.
+# Both checks are a few lines of awk and cover the two ways an edit can silently
+# remove structure rather than break it.
 #
 # Usage:
 #     tools/check-workflows.sh                 # every .github/workflows/*.yml
@@ -104,6 +111,48 @@ for file in "$@"; do
             if (value ~ /^[|>][0-9]*[+-]?[ \t]*(#.*)?$/) block = indent
         }
         END { exit bad }
+    ' "$file" || failed=1
+
+    # An expression that opens on a line has to close on it: GitHub rejects the
+    # file outright, and the truncated remainder can silently swallow the next key.
+    awk -v file="$file" '
+        {
+            line = $0
+            sub(/\r$/, "", line)
+            opens = gsub(/\$\{\{/, "&", line)
+            closes = gsub(/\}\}/, "&", line)
+            if (opens != closes) {
+                printf "%s:%d: ${{ }} 没有闭合\n", file, FNR > "/dev/stderr"
+                bad = 1
+            }
+        }
+        END { exit bad }
+    ' "$file" || failed=1
+
+    # Every job needs steps: or uses:. Losing it is what a truncated value above
+    # the key does, and the result is a file GitHub will not run.
+    awk -v file="$file" '
+        /^jobs:[ \t]*$/ { injobs = 1; next }
+        injobs && /^[^ \t#]/ { injobs = 0 }
+        injobs && /^  [A-Za-z_][A-Za-z0-9_-]*:[ \t]*$/ {
+            if (job != "" && !found) {
+                printf "%s:%d: job %s 没有 steps:\n", file, jobline, job > "/dev/stderr"
+                bad = 1
+            }
+            job = $1
+            sub(/:$/, "", job)
+            jobline = FNR
+            found = 0
+            next
+        }
+        injobs && /^    (steps|uses):/ { found = 1 }
+        END {
+            if (job != "" && !found) {
+                printf "%s:%d: job %s 没有 steps:\n", file, jobline, job > "/dev/stderr"
+                bad = 1
+            }
+            exit bad
+        }
     ' "$file" || failed=1
 done
 
