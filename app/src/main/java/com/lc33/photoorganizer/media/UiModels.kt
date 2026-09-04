@@ -41,15 +41,20 @@ fun IndexedMedia.toUiMedia(state: ReviewState): UiMedia = UiMedia(
 )
 
 /**
- * A library item handed from a gallery grid to the processing tools, so the user
- * can compress what an analysis just surfaced instead of re-picking it through
- * the system picker.
+ * A library item handed to the processing pipeline, carrying everything the
+ * pipeline needs to put the result back where it belongs: the bytes to read, the
+ * name to derive an output name from, and the folder to write that output into.
+ *
+ * [relativePath] is the reason this is not just a `Uri`. A compressed copy belongs
+ * beside its original - in `Movies/` for a clip, in the album a photo was filed
+ * under - and the source's own `RELATIVE_PATH` is the only place that is recorded.
  */
 data class PendingMedia(
     val uri: Uri,
     val displayName: String,
     val isVideo: Boolean,
     val sizeBytes: Long,
+    val relativePath: String? = null,
 )
 
 /** Null when the item has no resolvable content [Uri] and cannot be processed. */
@@ -59,6 +64,7 @@ fun UiMedia.toPendingMedia(): PendingMedia? = uri?.let { source ->
         displayName = displayName,
         isVideo = isVideo,
         sizeBytes = sizeBytes,
+        relativePath = relativePath,
     )
 }
 

@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Compress
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Lock
@@ -37,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.net.toUri
+import com.lc33.photoorganizer.BuildConfig
 import com.lc33.photoorganizer.R
 import com.lc33.photoorganizer.ui.PreferenceGroup
 import com.lc33.photoorganizer.ui.components.ScreenColumn
@@ -93,7 +95,14 @@ fun AboutScreen(onBack: () -> Unit) {
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = stringResource(R.string.settings_version_summary, versionName),
+                // The commit, not just the version: every dev build declares the
+                // same version, so on that channel this line is the only thing
+                // that identifies which build is installed.
+                text = stringResource(
+                    R.string.settings_update_build,
+                    versionName,
+                    BuildConfig.BUILD_SHA,
+                ),
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 fontSize = 13.sp,
             )
@@ -197,6 +206,15 @@ private val FeatureCards = listOf(
         accent = { DangerRed },
         titleRes = R.string.about_feature_privacy_title,
         summaryRes = R.string.about_feature_privacy_summary,
+    ),
+    // Deliberately the last card and deliberately explicit: the app now declares
+    // a network permission, and a privacy claim that skipped over that would be
+    // worth less than no claim at all.
+    Feature(
+        icon = Icons.Default.CloudOff,
+        accent = { AccentOrange },
+        titleRes = R.string.about_network_title,
+        summaryRes = R.string.about_network_summary,
     ),
 )
 

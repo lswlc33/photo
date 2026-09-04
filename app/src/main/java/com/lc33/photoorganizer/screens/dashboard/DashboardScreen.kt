@@ -101,6 +101,8 @@ fun DashboardScreen(
                 Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.dashboard_refresh_cd))
             }
         },
+        helpTitle = stringResource(R.string.dashboard_help_title),
+        helpMessage = stringResource(R.string.dashboard_help_message),
     ) {
         when (state) {
             DashboardState.NoPermission -> PermissionDashboard(onRequestPermission)

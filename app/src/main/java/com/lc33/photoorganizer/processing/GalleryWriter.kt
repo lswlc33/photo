@@ -6,43 +6,30 @@ import android.net.Uri
 import android.provider.MediaStore
 import com.lc33.photoorganizer.R
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 
-/** Result of a completed local processing job. */
+/** A staged output that has been copied into the gallery. */
 data class ProcessedMedia(
     val uri: Uri,
     val displayName: String,
+    /** The folder it actually landed in, which is not the source's when that was refused. */
+    val folder: String,
     val originalBytes: Long,
     val outputBytes: Long,
-    /**
-     * The MIME type actually encoded, when the device could not honour the
-     * requested codec and Transformer quietly swapped it. Null when the output
-     * is what was asked for - a fallback is worth telling the user about, since
-     * picking HEVC and getting H.264 changes the result they are looking at.
-     */
-    val codecFallback: String? = null,
-    /**
-     * True when the source carried HDR and the output does not. Media3 tone-maps
-     * to SDR on its own when the device cannot edit HDR, and notifies nobody, so
-     * this is measured from the finished file.
-     */
-    val hdrLost: Boolean = false,
+    /** True when [folder] is the app's own rather than the source's. */
+    val relocated: Boolean = false,
 ) {
     val savedBytes: Long get() = (originalBytes - outputBytes).coerceAtLeast(0L)
     val savedFraction: Float
         get() = if (originalBytes <= 0L) 0f else (savedBytes.toFloat() / originalBytes).coerceIn(0f, 1f)
 }
 
-/** A published output: where it landed, and the name it actually got. */
-internal data class PublishedFile(val uri: Uri, val displayName: String)
-
 /**
- * Shared MediaStore plumbing for processing jobs. Outputs always land in the
- * app's own gallery folders and source files are never touched.
+ * Shared MediaStore plumbing for processing jobs.
+ *
+ * Two jobs: get a source into a local file the platform decoders can open, and get
+ * an accepted output back out into the gallery. Source files are only ever read.
  */
 internal object GalleryWriter {
 
@@ -60,8 +47,12 @@ internal object GalleryWriter {
      */
     private const val StreamBufferBytes = 64 * 1024
 
+    /**
+     * Copies [source] into the staging directory so `BitmapFactory` and
+     * `ExifInterface`, which both want a real file, can open it.
+     */
     suspend fun copyToCache(context: Context, source: Uri, prefix: String): File {
-        val target = File.createTempFile(prefix, ".bin", context.cacheDir)
+        val target = File.createTempFile(prefix, ".bin", StagingArea.directory(context))
         try {
             context.contentResolver.openInputStream(source)?.use { input ->
                 target.outputStream().use { output ->
@@ -82,14 +73,6 @@ internal object GalleryWriter {
             target.delete()
             throw t
         }
-    }
-
-    fun cacheFile(context: Context, prefix: String, extension: String): File =
-        File(context.cacheDir, stampedName(prefix, extension))
-
-    fun stampedName(prefix: String, extension: String): String {
-        val stamp = SimpleDateFormat("yyyyMMdd_HHmmss_SSS", Locale.US).format(Date())
-        return "${prefix}_$stamp.$extension"
     }
 
     /** Best-effort byte size of a content uri, used to report savings. */
@@ -121,53 +104,111 @@ internal object GalleryWriter {
         )?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
     }.getOrNull() ?: uri.lastPathSegment ?: uri.toString()
 
-    suspend fun publishImage(
+    /**
+     * Copies an accepted output into the gallery, beside the file it came from.
+     *
+     * [onProgress] reports the copy of this one file, so a several-hundred-megabyte
+     * video does not look stuck.
+     */
+    suspend fun commit(
         context: Context,
-        file: File,
-        mimeType: String,
-        displayName: String,
-    ): PublishedFile = publish(
-        context = context,
-        collection = MediaStore.Images.Media.getContentUri("external_primary"),
-        folder = IMAGE_FOLDER,
-        mimeType = mimeType,
-        displayName = displayName,
-        file = file,
-    )
+        staged: StagedMedia,
+        onProgress: (Float) -> Unit = {},
+    ): ProcessedMedia {
+        val preferred = resolveOutputFolder(staged.source.relativePath, staged.kind)
+        val fallback = defaultOutputFolder(staged.kind)
+        val sourceFolder = normalizeFolder(staged.source.relativePath)
+        return try {
+            write(context, staged, preferred, relocated = preferred != sourceFolder, onProgress)
+        } catch (rejected: IllegalArgumentException) {
+            // MediaStore only reports that a collection will not take this
+            // top-level directory by throwing from insert, so the app's own folder
+            // is a second attempt rather than a pre-emptive downgrade.
+            if (preferred == fallback) {
+                throw ProcessingException(R.string.processing_error_gallery_insert, cause = rejected)
+            }
+            write(context, staged, fallback, relocated = true, onProgress)
+        }
+    }
 
-    suspend fun publishVideo(
+    private suspend fun write(
         context: Context,
-        file: File,
-        displayName: String,
-        mimeType: String = "video/mp4",
-    ): PublishedFile = publish(
-        context = context,
-        collection = MediaStore.Video.Media.getContentUri("external_primary"),
-        folder = VIDEO_FOLDER,
-        mimeType = mimeType,
-        displayName = displayName,
-        file = file,
-    )
+        staged: StagedMedia,
+        folder: String,
+        relocated: Boolean,
+        onProgress: (Float) -> Unit,
+    ): ProcessedMedia {
+        val collection = collectionFor(staged.kind)
+        val resolved = OutputNaming.resolveNameCollision(staged.outputName) { candidate ->
+            isNameTaken(context, collection, folder, candidate)
+        }
+        val values = ContentValues().apply {
+            put(MediaStore.MediaColumns.DISPLAY_NAME, resolved)
+            put(MediaStore.MediaColumns.MIME_TYPE, staged.outputMimeType)
+            put(MediaStore.MediaColumns.RELATIVE_PATH, folder)
+            put(MediaStore.MediaColumns.IS_PENDING, 1)
+        }
+        val resolver = context.contentResolver
+        val uri = resolver.insert(collection, values)
+            ?: throw ProcessingException(R.string.processing_error_gallery_insert)
+        try {
+            val total = staged.file.length().coerceAtLeast(1L)
+            var written = 0L
+            // Reported per whole percent rather than per chunk. At 64 KB a chunk a
+            // 100 MB video is 1600 progress callbacks, and each one is a state write
+            // the review list recomposes against.
+            var reportedPercent = -1
+            resolver.openOutputStream(uri, "w")?.use { output ->
+                staged.file.inputStream().use { input ->
+                    val buffer = ByteArray(StreamBufferBytes)
+                    while (true) {
+                        currentCoroutineContext().ensureActive()
+                        val read = input.read(buffer)
+                        if (read < 0) break
+                        output.write(buffer, 0, read)
+                        written += read
+                        val percent = (written * 100 / total).toInt().coerceIn(0, 100)
+                        if (percent != reportedPercent) {
+                            reportedPercent = percent
+                            onProgress(percent / 100f)
+                        }
+                    }
+                }
+            } ?: throw ProcessingException(R.string.processing_error_gallery_write)
+            values.clear()
+            values.put(MediaStore.MediaColumns.IS_PENDING, 0)
+            if (resolver.update(uri, values, null, null) <= 0) {
+                throw ProcessingException(R.string.processing_error_gallery_publish)
+            }
+            // Read the name back rather than trusting the requested one: a
+            // concurrent insert can still make MediaStore pick a different one.
+            return ProcessedMedia(
+                uri = uri,
+                displayName = displayName(context, uri),
+                folder = folder,
+                originalBytes = staged.originalBytes,
+                outputBytes = staged.outputBytes,
+                relocated = relocated,
+            )
+        } catch (t: Throwable) {
+            resolver.delete(uri, null, null)
+            throw t
+        }
+    }
 
-    suspend fun publishAudio(
-        context: Context,
-        file: File,
-        displayName: String,
-        mimeType: String = "audio/mp4",
-    ): PublishedFile = publish(
-        context = context,
-        collection = MediaStore.Audio.Media.getContentUri("external_primary"),
-        folder = AUDIO_FOLDER,
-        mimeType = mimeType,
-        displayName = displayName,
-        file = file,
-    )
+    private fun collectionFor(kind: OutputKind): Uri = when (kind) {
+        OutputKind.IMAGE -> MediaStore.Images.Media.getContentUri("external_primary")
+        OutputKind.VIDEO -> MediaStore.Video.Media.getContentUri("external_primary")
+        OutputKind.AUDIO -> MediaStore.Audio.Media.getContentUri("external_primary")
+    }
 
     /**
      * True when [folder] already holds a file called [name].
      *
      * Without this MediaStore silently renames the insert to `name (1)`, which
-     * left the reported name and the file in the gallery disagreeing.
+     * left the reported name and the file in the gallery disagreeing. It matters
+     * more now that results land in the user's own albums, where the odds of a
+     * name already being taken are much higher than in a folder of the app's own.
      */
     private fun isNameTaken(context: Context, collection: Uri, folder: String, name: String): Boolean =
         runCatching {
@@ -179,50 +220,4 @@ internal object GalleryWriter {
                 null,
             )?.use { cursor -> cursor.moveToFirst() }
         }.getOrNull() ?: false
-
-    private suspend fun publish(
-        context: Context,
-        collection: Uri,
-        folder: String,
-        mimeType: String,
-        displayName: String,
-        file: File,
-    ): PublishedFile {
-        val resolved = OutputNaming.resolveNameCollision(displayName) { candidate ->
-            isNameTaken(context, collection, folder, candidate)
-        }
-        val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, resolved)
-            put(MediaStore.MediaColumns.MIME_TYPE, mimeType)
-            put(MediaStore.MediaColumns.RELATIVE_PATH, folder)
-            put(MediaStore.MediaColumns.IS_PENDING, 1)
-        }
-        val resolver = context.contentResolver
-        val uri = resolver.insert(collection, values)
-            ?: throw ProcessingException(R.string.processing_error_gallery_insert)
-        try {
-            resolver.openOutputStream(uri, "w")?.use { output ->
-                file.inputStream().use { input ->
-                    val buffer = ByteArray(StreamBufferBytes)
-                    while (true) {
-                        currentCoroutineContext().ensureActive()
-                        val read = input.read(buffer)
-                        if (read < 0) break
-                        output.write(buffer, 0, read)
-                    }
-                }
-            } ?: throw ProcessingException(R.string.processing_error_gallery_write)
-            values.clear()
-            values.put(MediaStore.MediaColumns.IS_PENDING, 0)
-            if (resolver.update(uri, values, null, null) <= 0) {
-                throw ProcessingException(R.string.processing_error_gallery_publish)
-            }
-            // Read the name back rather than trusting the requested one: a
-            // concurrent insert can still make MediaStore pick a different one.
-            return PublishedFile(uri = uri, displayName = displayName(context, uri))
-        } catch (t: Throwable) {
-            resolver.delete(uri, null, null)
-            throw t
-        }
-    }
 }

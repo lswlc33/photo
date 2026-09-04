@@ -10,8 +10,6 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.Help
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -38,6 +36,9 @@ import com.lc33.photoorganizer.ui.components.AlbumRowMargin
 import com.lc33.photoorganizer.ui.components.OverlayScrollMaxHeight
 import com.lc33.photoorganizer.ui.components.ScreenColumn
 import com.lc33.photoorganizer.ui.components.albumCheckboxItems
+import com.lc33.photoorganizer.update.UpdateChannel
+import com.lc33.photoorganizer.update.UpdateMirror
+import com.lc33.photoorganizer.update.UpdateState
 import top.yukonga.miuix.kmp.basic.DropdownItem
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.overlay.OverlayDialog
@@ -64,6 +65,10 @@ fun SettingsScreen(
     stripMetadata: Boolean,
     availableAlbums: List<String>,
     indexScope: IndexScope,
+    updateAutoCheck: Boolean,
+    updateChannel: UpdateChannel,
+    updateMirror: UpdateMirror,
+    updateState: UpdateState,
     onThemeModeChange: (ThemeMode) -> Unit,
     onDefaultSortChange: (SortOrder) -> Unit,
     onImageQualityChange: (Int) -> Unit,
@@ -74,12 +79,15 @@ fun SettingsScreen(
     onConfirmDeleteChange: (Boolean) -> Unit,
     onRequestPermission: () -> Unit,
     onOpenAbout: () -> Unit,
+    onUpdateAutoCheckChange: (Boolean) -> Unit,
+    onUpdateChannelChange: (UpdateChannel) -> Unit,
+    onUpdateMirrorChange: (UpdateMirror) -> Unit,
+    onCheckUpdate: () -> Unit,
     contentBottomPadding: androidx.compose.ui.unit.Dp,
 ) {
     val context = LocalContext.current
     val resources = LocalResources.current
     var showCapabilitiesDialog by rememberSaveable { mutableStateOf(false) }
-    var showHelpDialog by rememberSaveable { mutableStateOf(false) }
     var showIndexScopeDialog by rememberSaveable { mutableStateOf(false) }
 
     // The option lists and their labels are fixed for a given configuration, so
@@ -106,14 +114,8 @@ fun SettingsScreen(
     ScreenColumn(
         title = stringResource(R.string.settings_title),
         contentBottomPadding = contentBottomPadding,
-        actions = {
-            top.yukonga.miuix.kmp.basic.IconButton(onClick = { showHelpDialog = true }) {
-                top.yukonga.miuix.kmp.basic.Icon(
-                    Icons.AutoMirrored.Filled.Help,
-                    contentDescription = stringResource(R.string.settings_help_cd),
-                )
-            }
-        },
+        helpTitle = stringResource(R.string.settings_help_title),
+        helpMessage = stringResource(R.string.settings_help_message),
     ) {
         PreferenceGroup(stringResource(R.string.settings_appearance)) {
             OverlaySpinnerPreference(
@@ -193,6 +195,16 @@ fun SettingsScreen(
                 onSelectedIndexChange = { index -> metadataOptions.getOrNull(index)?.let(onStripMetadataChange) },
             )
         }
+        UpdatePreferenceGroup(
+            state = updateState,
+            autoCheck = updateAutoCheck,
+            channel = updateChannel,
+            mirror = updateMirror,
+            onAutoCheckChange = onUpdateAutoCheckChange,
+            onChannelChange = onUpdateChannelChange,
+            onMirrorChange = onUpdateMirrorChange,
+            onCheck = onCheckUpdate,
+        )
         PreferenceGroup(stringResource(R.string.settings_about)) {
             ArrowPreference(
                 title = stringResource(R.string.settings_about_version),
@@ -221,12 +233,6 @@ fun SettingsScreen(
             Build.SUPPORTED_ABIS.firstOrNull() ?: "?",
         ),
         onDismiss = { showCapabilitiesDialog = false },
-    )
-    MessageDialog(
-        show = showHelpDialog,
-        title = stringResource(R.string.help_dialog_title),
-        message = stringResource(R.string.help_dialog_message),
-        onDismiss = { showHelpDialog = false },
     )
 }
 

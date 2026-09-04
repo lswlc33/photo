@@ -7,38 +7,47 @@ import android.media.MediaCodec
 import android.media.MediaCodecInfo
 import android.media.MediaFormat
 import android.media.MediaMuxer
+import android.net.Uri
 import android.provider.MediaStore
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.lc33.photoorganizer.media.PendingMedia
 import com.lc33.photoorganizer.media.ToolAnalyzer
 import java.io.File
 import java.nio.ByteBuffer
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
+private const val IMAGE_TEST_FOLDER = "Pictures/Photo Organizer Tests"
+private const val VIDEO_TEST_FOLDER = "Movies/Photo Organizer Tests"
+
 @RunWith(AndroidJUnit4::class)
 class MediaProcessingInstrumentedTest {
     private val context = ApplicationProvider.getApplicationContext<android.content.Context>()
-    private val createdUris = mutableListOf<android.net.Uri>()
+    private val createdUris = mutableListOf<Uri>()
 
     @After
     fun cleanup() {
         createdUris.forEach { context.contentResolver.delete(it, null, null) }
         createdUris.clear()
+        // Staging is the app's own cache directory, so clearing it is enough to undo
+        // whatever a partial run left behind.
+        StagingArea.clear(context)
     }
 
     @Test
-    fun imageReencodePublishesNonEmptyResultAndKeepsSource() = runBlocking {
+    fun imageReencodeStagesAResultAndKeepsSource() = runBlocking {
         val source = publishTestImage()
-        val result = requireNotNull(
+        val staged = requireNotNull(
             ImageProcessor.reencode(
                 context = context,
-                source = source,
+                source = pendingFor(source, IMAGE_TEST_FOLDER),
                 format = ImageFormat.JPEG,
                 quality = 70,
                 resize = ImageResizeOption.LONG_EDGE_1280,
@@ -46,38 +55,73 @@ class MediaProcessingInstrumentedTest {
                 keepOnlyIfSmaller = false,
             ),
         ) { "Image processing returned no result" }
-        createdUris += result.uri
 
-        assertEquals("image/jpeg", context.contentResolver.getType(result.uri))
-        assertTrue(result.outputBytes > 0L)
+        // Staged, not published: nothing may reach MediaStore before the user has
+        // looked at it.
+        assertTrue(staged.file.isFile)
+        assertTrue(staged.outputBytes > 0L)
+        assertEquals("image/jpeg", staged.outputMimeType)
+        assertEquals(OutputKind.IMAGE, staged.kind)
+        assertTrue(staged.outputName.endsWith("-z1.jpg"))
         assertNotNull(context.contentResolver.openInputStream(source)?.use { it.read() })
-        assertNotNull(context.contentResolver.openInputStream(result.uri)?.use { it.read() })
     }
 
     @Test
-    fun videoTranscodePublishesPlayableMp4AndKeepsSource() = runBlocking {
+    fun committingWritesTheResultIntoTheSourceFolder() = runBlocking {
+        val source = publishTestImage()
+        val staged = requireNotNull(
+            ImageProcessor.reencode(
+                context = context,
+                source = pendingFor(source, IMAGE_TEST_FOLDER),
+                format = ImageFormat.JPEG,
+                quality = 70,
+                resize = ImageResizeOption.LONG_EDGE_1280,
+                stripMetadata = true,
+                keepOnlyIfSmaller = false,
+            ),
+        ) { "Image processing returned no result" }
+
+        val published = GalleryWriter.commit(context, staged)
+        createdUris += published.uri
+
+        assertEquals(IMAGE_TEST_FOLDER, published.folder)
+        assertFalse(published.relocated)
+        assertEquals("image/jpeg", context.contentResolver.getType(published.uri))
+        assertNotNull(context.contentResolver.openInputStream(published.uri)?.use { it.read() })
+        // The source is still there: a run copies, it never moves.
+        assertNotNull(context.contentResolver.openInputStream(source)?.use { it.read() })
+    }
+
+    @Test
+    fun videoTranscodeStagesAPlayableMp4AndKeepsSource() = runBlocking {
         val sourceFile = File(context.cacheDir, "processor-test-source.mp4")
         createTestVideo(sourceFile)
         val source = publishFile(sourceFile, "video/mp4", MediaStore.Video.Media.EXTERNAL_CONTENT_URI)
         sourceFile.delete()
 
-        val result = requireNotNull(
+        val staged = requireNotNull(
             VideoProcessor.transcode(
                 context = context,
-                source = source,
+                source = pendingFor(source, VIDEO_TEST_FOLDER, isVideo = true),
                 resolution = VideoResolution.P480,
                 trackMode = VideoTrackMode.VIDEO_ONLY,
                 bitrateOverride = 600_000,
                 keepOnlyIfSmaller = false,
             ),
         ) { "Video processing returned no result" }
-        createdUris += result.uri
 
-        assertEquals("video/mp4", context.contentResolver.getType(result.uri))
-        assertTrue(result.outputBytes > 0L)
+        assertTrue(staged.file.isFile)
+        assertTrue(staged.outputBytes > 0L)
+        assertEquals("video/mp4", staged.outputMimeType)
+        assertEquals(OutputKind.VIDEO, staged.kind)
+
+        val published = GalleryWriter.commit(context, staged)
+        createdUris += published.uri
+        assertEquals(VIDEO_TEST_FOLDER, published.folder)
+        assertEquals("video/mp4", context.contentResolver.getType(published.uri))
         context.contentResolver.openFileDescriptor(source, "r")?.use { assertTrue(it.statSize > 0L) }
             ?: throw AssertionError("Source video cannot be reopened")
-        context.contentResolver.openFileDescriptor(result.uri, "r")?.use { assertTrue(it.statSize > 0L) }
+        context.contentResolver.openFileDescriptor(published.uri, "r")?.use { assertTrue(it.statSize > 0L) }
             ?: throw AssertionError("Output video cannot be reopened")
     }
 
@@ -87,7 +131,7 @@ class MediaProcessingInstrumentedTest {
 
         val result = ImageProcessor.reencode(
             context = context,
-            source = source,
+            source = pendingFor(source, IMAGE_TEST_FOLDER),
             format = ImageFormat.PNG,
             quality = 100,
             resize = ImageResizeOption.LONG_EDGE_3840,
@@ -96,6 +140,9 @@ class MediaProcessingInstrumentedTest {
         )
 
         assertEquals(null, result)
+        // A rejected output must not be left behind: it is the same size as the file
+        // it was rejected for being larger than.
+        assertEquals(0, StagingArea.directory(context).listFiles()?.size ?: 0)
     }
 
     @Test
@@ -113,7 +160,15 @@ class MediaProcessingInstrumentedTest {
         listOf(first, renamedCopy, sameSizeDifferent).forEach(File::delete)
     }
 
-    private fun publishTestImage(): android.net.Uri {
+    private fun pendingFor(uri: Uri, relativePath: String, isVideo: Boolean = false) = PendingMedia(
+        uri = uri,
+        displayName = GalleryWriter.displayName(context, uri),
+        isVideo = isVideo,
+        sizeBytes = GalleryWriter.sourceSize(context, uri),
+        relativePath = relativePath,
+    )
+
+    private fun publishTestImage(): Uri {
         val file = File(context.cacheDir, "processor-test-source.jpg")
         val bitmap = Bitmap.createBitmap(640, 480, Bitmap.Config.ARGB_8888).apply {
             eraseColor(Color.rgb(38, 132, 255))
@@ -124,7 +179,7 @@ class MediaProcessingInstrumentedTest {
     }
 
     /** Noise compresses badly, so a lossless PNG re-encode is reliably larger than the JPEG source. */
-    private fun publishNoisyTestImage(): android.net.Uri {
+    private fun publishNoisyTestImage(): Uri {
         val file = File(context.cacheDir, "processor-test-noise.jpg")
         val bitmap = Bitmap.createBitmap(640, 480, Bitmap.Config.ARGB_8888)
         val random = java.util.Random(7)
@@ -138,10 +193,10 @@ class MediaProcessingInstrumentedTest {
         return publishFile(file, "image/jpeg", MediaStore.Images.Media.EXTERNAL_CONTENT_URI).also { file.delete() }
     }
 
-    private fun publishFile(file: File, mimeType: String, collection: android.net.Uri): android.net.Uri {
+    private fun publishFile(file: File, mimeType: String, collection: Uri): Uri {
         val relativePath = when {
-            mimeType.startsWith("image/") -> "Pictures/Photo Organizer Tests"
-            mimeType.startsWith("video/") -> "Movies/Photo Organizer Tests"
+            mimeType.startsWith("image/") -> IMAGE_TEST_FOLDER
+            mimeType.startsWith("video/") -> VIDEO_TEST_FOLDER
             else -> "Download/Photo Organizer Tests"
         }
         val values = ContentValues().apply {

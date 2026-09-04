@@ -100,6 +100,8 @@ fun OrganizeScreen(
     var showTargetedSheet by rememberSaveable { mutableStateOf(false) }
     ScreenColumn(
         title = stringResource(R.string.organize_title),
+        helpTitle = stringResource(R.string.organize_help_title),
+        helpMessage = stringResource(R.string.organize_help_message),
         contentBottomPadding = contentBottomPadding,
     ) {
         // The same blue hero the dashboard and tools pages lead with, so every page

@@ -62,6 +62,19 @@ sealed interface DetailScreen {
      */
     data class MediaProcessing(val preselected: List<PendingMedia>) : DetailScreen
 
+    /**
+     * Choosing the sources for a processing run, scoped to photos or to videos by
+     * [videos] because the settings a run uses are per-type and the previous screen
+     * has already picked which tab is being configured.
+     */
+    data class ProcessingPicker(val videos: Boolean) : DetailScreen
+
+    /** Live progress of the run. Carries nothing: the run is in the ViewModel. */
+    data object ProcessingProgress : DetailScreen
+
+    /** Comparing each staged result against its source before anything is saved. */
+    data object ProcessingReview : DetailScreen
+
     /** A user-defined album, identified by name so it survives a state restore. */
     data class LogicalAlbumGrid(val albumName: String) : DetailScreen
 
@@ -86,6 +99,9 @@ private const val TagDuplicateGroup = "duplicate-group"
 private const val TagScreenshots = "screenshots"
 private const val TagLargest = "largest"
 private const val TagMediaProcessing = "media-processing"
+private const val TagProcessingPicker = "processing-picker"
+private const val TagProcessingProgress = "processing-progress"
+private const val TagProcessingReview = "processing-review"
 private const val TagLogicalAlbum = "logical-album"
 private const val TagAbout = "about"
 
@@ -116,6 +132,17 @@ internal fun encodeDetailScreen(screen: DetailScreen): String = when (screen) {
     // gesture, and re-opening the tools page with settings intact is the useful
     // half of it.
     is DetailScreen.MediaProcessing -> TagMediaProcessing
+    // These three do survive: the run they read lives in a ViewModel, which
+    // outlives a rotation. What does not survive is process death, and each screen
+    // pops itself when it finds no run rather than being dropped here - a rotation
+    // and a cold start go through this same codec, and dropping them would kick the
+    // user out of a review they were halfway through.
+    is DetailScreen.ProcessingPicker -> listOf(
+        TagProcessingPicker,
+        screen.videos.toString(),
+    ).joinToString(FieldSeparator.toString())
+    DetailScreen.ProcessingProgress -> TagProcessingProgress
+    DetailScreen.ProcessingReview -> TagProcessingReview
     is DetailScreen.LogicalAlbumGrid -> listOf(TagLogicalAlbum, screen.albumName)
         .joinToString(FieldSeparator.toString())
     DetailScreen.About -> TagAbout
@@ -151,6 +178,11 @@ internal fun decodeDetailScreen(encoded: String): DetailScreen? {
         TagScreenshots -> DetailScreen.Screenshots
         TagLargest -> DetailScreen.Largest
         TagMediaProcessing -> DetailScreen.MediaProcessing(emptyList())
+        TagProcessingPicker -> fields.getOrNull(1)
+            ?.toBooleanStrictOrNull()
+            ?.let { videos -> DetailScreen.ProcessingPicker(videos) }
+        TagProcessingProgress -> DetailScreen.ProcessingProgress
+        TagProcessingReview -> DetailScreen.ProcessingReview
         TagLogicalAlbum -> fields.getOrNull(1)
             ?.takeIf(String::isNotEmpty)
             ?.let { name -> DetailScreen.LogicalAlbumGrid(name) }

@@ -258,7 +258,6 @@
     <string name="media_tool_track_both">Video + audio</string>
     <string name="media_tool_track_video">Mute audio</string>
     <string name="media_tool_track_audio">Audio only</string>
-    <string name="media_tool_extract_audio_title">Audio extraction</string>
     <string name="media_tool_extract_audio_action">Choose video to extract audio</string>
     <string name="media_tool_saved_detail">%1$s to %2$s · %3$d%% smaller</string>
     <string name="media_tool_grew_detail">%1$s to %2$s · the re-encode is larger, keep the original</string>
@@ -266,13 +265,11 @@
     <string name="tools_media_title">Media tools</string>
     <string name="tools_media_summary_ready">Compress photos and videos, extract audio</string>
     <string name="tools_refresh_cd">Refresh analysis</string>
-    <string name="tools_about_summary">Analysis and processing both run on device. Results are saved as new files in Photo Organizer folders, and originals are never modified.</string>
+    <string name="tools_about_summary">Analysis and processing both run on device. Every result is compared against its source before you accept it, and originals are never modified.</string>
 
     <!-- Media tools -->
     <string name="media_tools_title">Media tools</string>
-    <string name="media_tools_intro">Images are re-encoded by the platform image encoder and videos by the device hardware codecs. Everything runs locally and the originals stay unchanged.</string>
-    <string name="media_tool_compress_image_title">Image compression</string>
-    <string name="media_tool_compress_video_title">Video compression</string>
+    <string name="media_tools_intro">Images are re-encoded by the platform image encoder and videos by the device hardware codecs. Everything runs locally: a result is staged in a temporary folder first, and only what you approve is written back beside its source.</string>
     <string name="processing_running">Processing…</string>
     <string name="processing_failed">Processing failed</string>
     <string name="processing_cancel">Cancel</string>
@@ -296,14 +293,6 @@
     <string name="media_tool_bitrate_hint">Auto selects a target bitrate significantly below the source.</string>
     <string name="media_tool_pick_images">Choose photos</string>
     <string name="media_tool_pick_videos">Choose videos</string>
-    <plurals name="media_tool_pick_summary">
-        <item quantity="one">Up to %1$d item, processed one after another</item>
-        <item quantity="other">Up to %1$d items, processed one after another</item>
-    </plurals>
-    <plurals name="media_tool_extract_audio_summary">
-        <item quantity="one">Up to %1$d video, audio saved as M4A</item>
-        <item quantity="other">Up to %1$d videos, audio saved as M4A</item>
-    </plurals>
     <string name="section_media_tool_selection">From your library</string>
     <plurals name="media_tool_selected_count">
         <item quantity="one">%1$d item selected</item>
@@ -312,7 +301,6 @@
     <string name="media_tool_selected_summary">Photos: %1$d · Videos: %2$d · %3$s total</string>
     <string name="media_tool_process_selected">Compress the selection</string>
     <string name="media_tool_process_selected_summary">Uses the settings above; originals stay untouched</string>
-    <string name="media_tool_process_selected_job">Compressing the selection</string>
     <string name="media_tool_clear_selection">Drop the selection</string>
     <string name="media_tool_progress_queue">Item %1$d of %2$d</string>
     <string name="media_tool_results">Results</string>
@@ -324,13 +312,11 @@
         <item quantity="one">%1$d file · no size reduction</item>
         <item quantity="other">%1$d files · no size reduction</item>
     </plurals>
-    <string name="media_tool_clear_results">Clear results</string>
     <plurals name="media_tool_failed_count">
         <item quantity="one">%1$d item could not be processed</item>
         <item quantity="other">%1$d items could not be processed</item>
     </plurals>
     <string name="media_tool_more_cd">More actions</string>
-    <string name="media_tool_output_folder">Results are saved to %1$s and originals stay untouched.</string>
     <string name="processing_error_empty_source">The selected file has no content (0 bytes).</string>
     <string name="processing_error_open_source">The selected file could not be opened.</string>
     <string name="processing_error_decode_image">This image could not be decoded; the file may be damaged or unsupported.</string>
@@ -372,9 +358,60 @@
     <string name="media_tool_allow_hdr_sdr_summary">Off by default. A re-encode usually cannot preserve HDR, and the output is a faded SDR file</string>
     <string name="media_tool_hdr_lost">HDR was not preserved; the output is SDR</string>
 
+    <!-- Processing flow: output settings, file picker, progress, review -->
+    <string name="media_tool_pick_from_library">Choose from your library, sorted by date or size</string>
+    <string name="media_tool_pick_none">There is nothing in the library to process yet</string>
+    <string name="media_tool_extract_audio_hint">The audio track is saved as M4A</string>
+    <string name="media_tool_output_target">Results are written back to the folder the source came from. Source files are never modified.</string>
+    <string name="section_media_tool_active">Run in progress</string>
+    <string name="media_tool_open_progress">View progress</string>
+    <string name="media_tool_open_review">Review results</string>
+    <plurals name="media_tool_open_review_summary">
+        <item quantity="one">%1$d result is waiting for your verdict</item>
+        <item quantity="other">%1$d results are waiting for your verdict</item>
+    </plurals>
+    <string name="processing_pick_title">Choose files</string>
+    <string name="processing_start">Start</string>
+    <string name="processing_progress_title">Processing</string>
+    <string name="processing_progress_hint">Results are staged in a temporary folder. Nothing reaches your gallery until you approve it.</string>
+    <string name="processing_current_file">Working on %1$s</string>
+    <string name="section_processing_finished">Finished</string>
+    <string name="section_processing_skipped">Skipped</string>
+    <string name="section_processing_failed">Failed</string>
+    <string name="processing_nothing_title">Nothing to review</string>
+    <string name="processing_nothing_summary">Every item was skipped or failed, so nothing was written.</string>
+    <string name="processing_review_title">Review results</string>
+    <string name="processing_review_hint">Left is the source, right is the result. Hold a pair to compare it full screen; two videos play in sync.</string>
+    <string name="processing_review_source">Source</string>
+    <string name="processing_review_result">Result</string>
+    <string name="processing_review_compare_cd">Compare the source with the result</string>
+    <string name="processing_review_keep_cd">Keep this result</string>
+    <string name="processing_review_clear">Clear</string>
+    <plurals name="processing_review_save">
+        <item quantity="one">Save %1$d</item>
+        <item quantity="other">Save %1$d</item>
+    </plurals>
+    <string name="processing_review_discard">Discard every result</string>
+    <string name="processing_copying">Copying into the source folders</string>
+    <string name="processing_copy_queue">File %1$d of %2$d</string>
+    <plurals name="processing_relocated">
+        <item quantity="one">%1$d result went to the app folder, because its source folder cannot hold this kind of file</item>
+        <item quantity="other">%1$d results went to the app folder, because their source folders cannot hold this kind of file</item>
+    </plurals>
+    <plurals name="processing_commit_failed">
+        <item quantity="one">%1$d result could not be saved</item>
+        <item quantity="other">%1$d results could not be saved</item>
+    </plurals>
+    <string name="processing_sources_title">Keep the source files?</string>
+    <plurals name="processing_sources_summary">
+        <item quantity="one">%1$d source file now has a saved result beside it. Keeping it uses more space; deleting cannot be undone.</item>
+        <item quantity="other">%1$d source files now have saved results beside them. Keeping them uses more space; deleting cannot be undone.</item>
+    </plurals>
+    <string name="processing_sources_keep">Keep</string>
+    <string name="processing_sources_delete">Delete sources</string>
+
     <!-- Settings -->
     <string name="settings_title">Settings</string>
-    <string name="settings_help_cd">Help</string>
     <string name="settings_appearance">Appearance</string>
     <string name="settings_theme_title">Theme</string>
     <string name="settings_theme_auto">Follow system</string>
@@ -450,11 +487,69 @@
     <string name="about_feature_cleanup_title">Screenshots and large files</string>
     <string name="about_feature_cleanup_summary">Both are listed with a running total of what deleting them would free. The large-file threshold is selectable between 5 and 100 MB.</string>
     <string name="about_feature_processing_title">Local media processing</string>
-    <string name="about_feature_processing_summary">Images convert to JPEG, WebP or PNG with a long-edge limit, a quality target and optional Exif. Videos convert to 1080p, 720p or 480p with a bitrate ceiling, or hand back only their audio. A result larger than its source is discarded automatically.</string>
+    <string name="about_feature_processing_summary">Images convert to JPEG, WebP or PNG with a long-edge limit, a quality target and optional Exif. Videos convert to 1080p, 720p or 480p with a chosen codec and bitrate ceiling, or hand back only their audio. A result larger than its source is discarded automatically. Every result waits in a temporary folder until you have compared it against its source, and only then is it written back beside the original.</string>
     <string name="about_feature_privacy_title">No network, no overwrites</string>
     <string name="about_feature_privacy_summary">The app declares no internet permission, so nothing can leave the device. Source files are never modified — processing writes a new file — and deletion always goes through Android\'s own confirmation dialog.</string>
     <string name="about_open_source_section">Source code and licenses</string>
     <string name="about_license_note">The listed projects retain their own copyright notices and license terms. Transitive dependencies are grouped under the project that brings them in.</string>
-    <string name="help_dialog_title">Photo Organizer help</string>
-    <string name="help_dialog_message">Dashboard shows counts, space and review progress. Organize offers smart, targeted and manual review. Tools finds duplicates, screenshots and large files, and re-encodes images or videos with platform codecs. Settings controls theme and processing defaults. Everything runs locally.</string>
+    <!-- Page help -->
+    <string name="help_action_cd">Page help</string>
+    <string name="dashboard_help_title">About the dashboard</string>
+    <string name="dashboard_help_message">This page answers one question: where does the library stand. It reports how many photos and videos are indexed, how much space they take, how much of the library you have reviewed, and how much could be reclaimed.\n\nPull down, or use the refresh button, to scan again after adding or deleting files. Nothing here changes a file — the cards are shortcuts into review and cleanup.</string>
+    <string name="organize_help_title">About organizing</string>
+    <string name="organize_help_message">Choose how to walk through the library. Smart mode queues the likely wins first: duplicates, then screenshots, then large files. Targeted mode filters by album, date range, type and minimum size before you start. Manual mode is a date-grouped grid with batch selection.\n\nKeep and discard are only marks. Discarded items collect under Discarded and are removed only when you ask for it, after Android shows its own confirmation.</string>
+    <string name="review_help_title">About quick review</string>
+    <string name="review_help_message">One item at a time, and every decision can be changed later. Swipe right to keep, swipe left to discard, or use the three buttons under the preview. Swipe up or down to move to the next or previous item without deciding.\n\nAlbum files the item into a logical album, which groups it inside this app without moving the file on disk. Tap the preview to open it full screen. Marks can be revisited in the Kept and Discarded lists.</string>
+    <string name="grid_help_title">About this grid</string>
+    <string name="grid_help_message">%1$s\n\nTap a tile to open it full screen, or press and hold to peek. To act on several items, use the select button in the top bar and tap the tiles you want — the toolbar that appears carries the actions this list supports. The search button filters by file name, and the strip along the right edge jumps through the list by date.</string>
+    <string name="grid_help_scope_manual">Every indexed item, grouped by capture date.</string>
+    <string name="grid_help_scope_kept">The items you marked as kept. Clearing a mark returns an item to the un-reviewed pool.</string>
+    <string name="grid_help_scope_trash">The items you marked as discarded. They are still on the device: deleting them is a separate step and Android asks for confirmation first.</string>
+    <string name="grid_help_scope_screenshots">Screenshots only, recognised from the folder and file name.</string>
+    <string name="grid_help_scope_largest">Only files above the threshold set on the Tools page.</string>
+    <string name="grid_help_scope_duplicate_group">One group of copies. Keeping one and discarding the rest is the point of this view; the group was matched by content, not by name.</string>
+    <string name="grid_help_scope_album">One logical album. The grouping exists inside this app — on disk the files stay where they are.</string>
+    <string name="grid_help_scope_processing">The files you pick here are re-encoded with the settings on the previous page. Nothing is written to your gallery until you have compared the results.</string>
+    <string name="tools_help_title">About tools</string>
+    <string name="tools_help_message">Two kinds of tool. Cleanup analysis looks for exact duplicates (SHA-256 over the whole file), look-alikes (a perceptual hash of the picture, started on demand because it decodes every image), screenshots, and files above a threshold you pick. Media processing re-encodes photos and videos with the device\'s own codecs.\n\nAnalysis only reads. Nothing is deleted without a mark and a system confirmation.</string>
+    <string name="media_tools_help_title">About media tools</string>
+    <string name="media_tools_help_message">Re-encode photos and videos on this device. Pick the output settings first, then choose the files: they are processed one after another, and a result that ends up larger than its source is dropped.\n\nResults are staged in a temporary folder so you can compare each one against its source. What you approve is copied back into the folder the source came from, under the source\'s own name plus a -z1 suffix that counts the compression passes. The original is never modified or replaced, and deleting it is a separate question asked at the end.</string>
+    <string name="tools_duplicate_help_title">About exact duplicates</string>
+    <string name="tools_duplicate_help_message">Each group holds files whose contents are byte-identical, matched with SHA-256 over the whole file, so a rename or a different folder cannot hide one. Keep one marks every other copy in that group as discarded, and the menu in the top bar applies the same strategy to all groups at once.\n\nNothing is deleted here: the marks land in the Discarded list.</string>
+    <string name="tools_similar_help_title">About look-alikes</string>
+    <string name="tools_similar_help_message">Each group holds pictures that look alike without being the same file: burst shots, re-encodes, resized copies. They are matched by a perceptual hash of the picture, so confirm a group before acting on it — the copies differ in quality or size, and which one to keep is a judgement call.\n\nKeeping one marks the rest as discarded; deletion is still a separate, confirmed step.</string>
+    <string name="settings_help_title">About settings</string>
+    <string name="settings_help_message">Theme, review behaviour, and the defaults the media tools open with. Index range decides which albums are scanned at all, which is the quickest way to keep an album out of every review task.\n\nUpdates are the one part of the app that uses the network, and it is off until you turn it on. Everything else works with no connection at all.\n\nEvery page in the app carries this help button; it explains what that page is for and how its controls behave.</string>
+
+    <!-- Updates -->
+    <string name="settings_update">Updates</string>
+    <string name="settings_update_auto">Check for updates</string>
+    <string name="settings_update_auto_summary">Off by default. While this is off the app makes no network request at all. Turning it on lets it read the release list from GitHub — the only thing it ever connects for.</string>
+    <string name="settings_update_channel">Channel</string>
+    <string name="settings_update_channel_stable">Stable</string>
+    <string name="settings_update_channel_stable_summary">Tagged releases, published deliberately</string>
+    <string name="settings_update_channel_dev">Dev</string>
+    <string name="settings_update_channel_dev_summary">Rebuilt from the latest commit on every push</string>
+    <string name="settings_update_mirror">Route</string>
+    <string name="settings_update_mirror_direct">Direct to GitHub</string>
+    <string name="settings_update_mirror_direct_summary">No intermediary; needs GitHub to be reachable</string>
+    <string name="settings_update_mirror_summary">Public mirror in front of GitHub, for networks that cannot reach it directly</string>
+    <string name="settings_update_mirror_download_only">Public mirror; downloads only, so the check itself goes direct</string>
+    <string name="settings_update_check">Check now</string>
+    <string name="settings_update_disabled">Turn on update checks above first</string>
+    <string name="settings_update_checking">Checking…</string>
+    <string name="settings_update_idle">Not checked yet</string>
+    <string name="settings_update_current">Up to date · %1$s</string>
+    <string name="settings_update_available">%1$s is available · published %2$s</string>
+    <string name="settings_update_undetermined">Found %1$s, but this build cannot tell whether it is the same one</string>
+    <string name="settings_update_failed_unreachable">Could not reach the release list. Try another route below.</string>
+    <string name="settings_update_failed_empty">This channel has nothing published yet.</string>
+    <string name="settings_update_download">Download %1$s</string>
+    <string name="settings_update_download_summary">Opens the APK link in your browser · %1$s · Android asks before installing it</string>
+    <string name="settings_update_open_page">Open the releases page</string>
+    <string name="settings_update_open_page_summary">Pick a build by hand when the check cannot reach GitHub</string>
+    <string name="settings_update_no_browser">No app on this device can open that link</string>
+    <string name="settings_update_build">Version %1$s · build %2$s</string>
+    <string name="about_network_title">Network access</string>
+    <string name="about_network_summary">The app declares one network permission, for update checks, and Android grants it at install time — INTERNET is a normal permission with no runtime prompt. It stays unused until you turn on update checks in Settings: that switch is off by default, and with it off no request is made. Nothing else in the app connects to anything, and no photo, video, index or review mark is ever uploaded.</string>
 </resources>

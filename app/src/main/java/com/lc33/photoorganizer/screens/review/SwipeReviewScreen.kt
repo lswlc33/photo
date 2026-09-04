@@ -69,6 +69,7 @@ import com.lc33.photoorganizer.media.UiMedia
 import com.lc33.photoorganizer.media.formatBytes
 import com.lc33.photoorganizer.media.scanDate
 import com.lc33.photoorganizer.ui.components.EmptyState
+import com.lc33.photoorganizer.ui.components.HelpAction
 import com.lc33.photoorganizer.ui.components.MediaPreview
 import com.lc33.photoorganizer.ui.components.MediaPreviewHost
 import com.lc33.photoorganizer.ui.components.rememberMediaPreviewController
@@ -154,6 +155,10 @@ fun SwipeReviewScreen(
                         color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                         fontSize = 12.sp,
                         modifier = Modifier.padding(horizontal = 12.dp),
+                    )
+                    HelpAction(
+                        title = stringResource(R.string.review_help_title),
+                        message = stringResource(R.string.review_help_message),
                     )
                 },
                 scrollBehavior = scrollBehavior,

@@ -4,10 +4,10 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
-import android.net.Uri
 import androidx.exifinterface.media.ExifInterface
 import androidx.core.graphics.scale
 import com.lc33.photoorganizer.R
+import com.lc33.photoorganizer.media.PendingMedia
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -40,23 +40,30 @@ object ImageProcessor {
     /**
      * Re-encodes [source] into [format] with [quality] (0-100). Rotation stored
      * in Exif is baked into the pixels so viewers see the same orientation.
-     * Returns the published MediaStore item, never touching the original.
+     *
+     * The result is left in the staging directory for the user to compare against
+     * the source; nothing is written to the gallery here, and the source is only
+     * ever read. Null when [keepOnlyIfSmaller] rejected the output.
      */
     suspend fun reencode(
         context: Context,
-        source: Uri,
+        source: PendingMedia,
         format: ImageFormat,
         quality: Int,
         resize: ImageResizeOption,
         stripMetadata: Boolean,
         keepOnlyIfSmaller: Boolean = true,
         onProgress: (Float) -> Unit = {},
-    ): ProcessedMedia? = withContext(Dispatchers.IO) {
-        val originalBytes = GalleryWriter.sourceSize(context, source)
-        val input = GalleryWriter.copyToCache(context, source, "img_in")
-        val output = GalleryWriter.cacheFile(context, "img", format.extension)
+    ): StagedMedia? = withContext(Dispatchers.IO) {
+        val originalBytes = source.sizeBytes.takeIf { it > 0L }
+            ?: GalleryWriter.sourceSize(context, source.uri)
+        val input = GalleryWriter.copyToCache(context, source.uri, "img_in")
+        val output = StagingArea.file(context, "img", format.extension)
         var decoded: Bitmap? = null
         var oriented: Bitmap? = null
+        // The output survives this call only when it is handed back as a staged
+        // result; on a failure, a cancellation or a skip it is cache to reclaim.
+        var staged = false
         try {
             onProgress(.15f)
             val decodedBitmap = decodeScaled(input, resize.longEdgePx)
@@ -87,19 +94,14 @@ object ImageProcessor {
                 onProgress(1f)
                 return@withContext null
             }
-            val published = GalleryWriter.publishImage(
-                context = context,
-                file = output,
-                mimeType = format.mimeType,
-                displayName = OutputNaming.compressedName(
-                    GalleryWriter.displayName(context, source),
-                    format.extension,
-                ),
-            )
             onProgress(1f)
-            ProcessedMedia(
-                uri = published.uri,
-                displayName = published.displayName,
+            staged = true
+            StagedMedia(
+                source = source,
+                file = output,
+                outputName = OutputNaming.compressedName(source.displayName, format.extension),
+                outputMimeType = format.mimeType,
+                kind = OutputKind.IMAGE,
                 originalBytes = originalBytes,
                 outputBytes = outputBytes,
             )
@@ -107,7 +109,7 @@ object ImageProcessor {
             oriented?.takeIf { it !== decoded && !it.isRecycled }?.recycle()
             decoded?.takeIf { !it.isRecycled }?.recycle()
             input.delete()
-            output.delete()
+            if (!staged) output.delete()
         }
     }
 

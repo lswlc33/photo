@@ -89,6 +89,8 @@ fun ToolsScreen(
                 Icon(Icons.Default.Refresh, contentDescription = stringResource(R.string.tools_refresh_cd))
             }
         },
+        helpTitle = stringResource(R.string.tools_help_title),
+        helpMessage = stringResource(R.string.tools_help_message),
     ) {
         ReclaimableCard(
             analysis = analysis,

@@ -70,6 +70,8 @@ fun DuplicateGroupsScreen(
     title: String = stringResource(R.string.tools_duplicate_title),
     hint: String = stringResource(R.string.tools_duplicate_hint),
     emptyTitle: String = stringResource(R.string.duplicate_empty),
+    helpTitle: String = stringResource(R.string.tools_duplicate_help_title),
+    helpMessage: String = stringResource(R.string.tools_duplicate_help_message),
     countLabel: @Composable (Int, String) -> String = { count, saved ->
         pluralStringResource(R.plurals.tools_summary_duplicate, count, count, saved)
     },
@@ -136,6 +138,8 @@ fun DuplicateGroupsScreen(
                 }
             }
         },
+        helpTitle = helpTitle,
+        helpMessage = helpMessage,
         contentBottomPadding = 32.dp,
         snackbarHost = { SnackbarHost(snackbarHostState) },
     ) {

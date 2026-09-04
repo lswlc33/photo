@@ -28,6 +28,7 @@ import top.yukonga.miuix.kmp.basic.MiuixScrollBehavior
 import top.yukonga.miuix.kmp.basic.PullToRefresh
 import top.yukonga.miuix.kmp.basic.Scaffold
 import top.yukonga.miuix.kmp.basic.TextButton
+import top.yukonga.miuix.kmp.basic.ToolbarPosition
 import top.yukonga.miuix.kmp.basic.TopAppBar
 import top.yukonga.miuix.kmp.basic.rememberPullToRefreshState
 import top.yukonga.miuix.kmp.basic.rememberTopAppBarState
@@ -40,6 +41,11 @@ import top.yukonga.miuix.kmp.utils.scrollEndHaptic
  * scrolling [LazyColumn] body. [contentBottomPadding] should reserve room for
  * the floating glass bottom bar. [snackbarHost] is forwarded to the Scaffold so
  * pages can surface transient confirmations without building their own shell.
+ *
+ * Passing both [helpTitle] and [helpMessage] appends the standard [HelpAction]
+ * to the top bar, after whatever [actions] emits. Every page that can leave a
+ * user wondering what it is for should pass them - see [HelpAction] for why the
+ * explanation is a dialog rather than a walkthrough.
  *
  * Passing both [isRefreshing] and [onRefresh] wraps the body in a MIUIX
  * [PullToRefresh]; the indicator is offset below the top bar and the bar
@@ -54,20 +60,26 @@ fun ScreenColumn(
     title: String,
     navigationIcon: (@Composable () -> Unit)? = null,
     actions: (@Composable RowScope.() -> Unit)? = null,
+    helpTitle: String? = null,
+    helpMessage: String? = null,
     contentBottomPadding: Dp = 24.dp,
     snackbarHost: (@Composable () -> Unit)? = null,
     isRefreshing: Boolean? = null,
     onRefresh: (() -> Unit)? = null,
+    floatingToolbar: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     ScreenLazyColumn(
         title = title,
         navigationIcon = navigationIcon,
         actions = actions,
+        helpTitle = helpTitle,
+        helpMessage = helpMessage,
         contentBottomPadding = contentBottomPadding,
         snackbarHost = snackbarHost,
         isRefreshing = isRefreshing,
         onRefresh = onRefresh,
+        floatingToolbar = floatingToolbar,
     ) {
         item { Column(verticalArrangement = Arrangement.spacedBy(8.dp), content = content) }
     }
@@ -78,16 +90,23 @@ fun ScreenColumn(
  * length depends on the library. Emitting real items means rows are composed as
  * they scroll into view instead of all at once - which for a list of duplicate
  * groups also means four thumbnail decodes per row are not all queued up front.
+ *
+ * [floatingToolbar] is handed to the MIUIX Scaffold rather than emitted into the
+ * list, so a page with bulk actions gets the same pinned bottom toolbar the
+ * gallery grid uses instead of a row that scrolls away with the content.
  */
 @Composable
 fun ScreenLazyColumn(
     title: String,
     navigationIcon: (@Composable () -> Unit)? = null,
     actions: (@Composable RowScope.() -> Unit)? = null,
+    helpTitle: String? = null,
+    helpMessage: String? = null,
     contentBottomPadding: Dp = 24.dp,
     snackbarHost: (@Composable () -> Unit)? = null,
     isRefreshing: Boolean? = null,
     onRefresh: (() -> Unit)? = null,
+    floatingToolbar: (@Composable () -> Unit)? = null,
     content: LazyListScope.() -> Unit,
 ) {
     val topAppBarState = rememberTopAppBarState()
@@ -104,6 +123,8 @@ fun ScreenLazyColumn(
         modifier = Modifier.fillMaxSize(),
         containerColor = MiuixTheme.colorScheme.background,
         snackbarHost = snackbarHost ?: {},
+        floatingToolbar = floatingToolbar ?: {},
+        floatingToolbarPosition = ToolbarPosition.BottomCenter,
         topBar = {
             TopAppBar(
                 modifier = Modifier
@@ -113,7 +134,12 @@ fun ScreenLazyColumn(
                 color = MiuixTheme.colorScheme.background,
                 titleColor = MiuixTheme.colorScheme.onSurface,
                 navigationIcon = navigationIcon ?: {},
-                actions = actions ?: {},
+                actions = {
+                    actions?.invoke(this)
+                    if (helpTitle != null && helpMessage != null) {
+                        HelpAction(title = helpTitle, message = helpMessage)
+                    }
+                },
                 scrollBehavior = scrollBehavior,
                 defaultWindowInsetsPadding = false,
             )

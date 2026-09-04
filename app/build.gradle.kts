@@ -46,6 +46,24 @@ val appVersionName = providers.environmentVariable("PHOTO_VERSION_NAME").orNull
     ?: providers.gradleProperty("photoVersionName").orNull
     ?: "1.0.0"
 
+// Which commit this APK was built from. The dev update channel needs it: every
+// nightly declares the same versionName and versionCode, so the only thing that
+// distinguishes the installed build from the newest one is the commit, and the
+// release the app compares itself against carries it as `target_commitish`.
+//
+// CI passes it in as PHOTO_BUILD_SHA - the workflow already knows the SHA and
+// asking git inside a container that may have a shallow clone is the worse of
+// the two. Locally `git rev-parse` answers, and a source tree that is not a git
+// checkout at all still builds: the value degrades to "unknown", which the
+// updater treats as "cannot tell whether this is current".
+val appBuildSha = providers.environmentVariable("PHOTO_BUILD_SHA").orNull
+    ?: runCatching {
+        providers.exec {
+            commandLine("git", "rev-parse", "--short", "HEAD")
+        }.standardOutput.asText.get().trim().ifEmpty { null }
+    }.getOrNull()
+    ?: "unknown"
+
 android {
     namespace = "com.lc33.photoorganizer"
     compileSdk = 37
@@ -57,6 +75,7 @@ android {
         versionCode = appVersionCode
         versionName = appVersionName
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "BUILD_SHA", "\"$appBuildSha\"")
     }
 
     signingConfigs {
@@ -104,6 +123,9 @@ android {
 
     buildFeatures {
         compose = true
+        // Only for BUILD_SHA above. It is the one build-time fact the app cannot
+        // ask Android for: PackageManager knows the version, not the commit.
+        buildConfig = true
     }
 
     packaging {

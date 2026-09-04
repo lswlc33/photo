@@ -247,7 +247,6 @@
     <string name="media_tool_track_both">视频 + 音频</string>
     <string name="media_tool_track_video">移除音频</string>
     <string name="media_tool_track_audio">仅提取音频</string>
-    <string name="media_tool_extract_audio_title">音频提取</string>
     <string name="media_tool_extract_audio_action">选择视频并提取音频</string>
     <string name="media_tool_saved_detail">%1$s → %2$s · 体积减少 %3$d%%</string>
     <string name="media_tool_grew_detail">%1$s → %2$s · 重新编码后反而更大，建议保留原文件</string>
@@ -255,13 +254,11 @@
     <string name="tools_media_title">媒体处理</string>
     <string name="tools_media_summary_ready">压缩照片与视频、提取音频</string>
     <string name="tools_refresh_cd">刷新分析</string>
-    <string name="tools_about_summary">分析与处理均在本机完成。结果会作为新文件保存到「照片整理」目录，原文件不会被修改。</string>
+    <string name="tools_about_summary">分析与处理均在本机完成。每个产物都会先与原文件对比、由你确认，原文件不会被修改。</string>
 
     <!-- 媒体处理 -->
     <string name="media_tools_title">媒体处理</string>
-    <string name="media_tools_intro">图片由系统图像编码器重新编码，视频由设备硬件编解码器转码。全程本地进行，原文件保持不变。</string>
-    <string name="media_tool_compress_image_title">图片压缩</string>
-    <string name="media_tool_compress_video_title">视频压缩</string>
+    <string name="media_tools_intro">图片由系统图像编码器重新编码，视频由设备硬件编解码器转码。全程本地进行：结果先写入临时目录，只有你确认过的才会写回源文件所在的目录。</string>
     <string name="processing_running">处理中…</string>
     <string name="processing_failed">处理失败</string>
     <string name="processing_cancel">取消</string>
@@ -284,12 +281,6 @@
     <string name="media_tool_bitrate_hint">自动选择一个显著低于源码率的目标值。</string>
     <string name="media_tool_pick_images">选择照片</string>
     <string name="media_tool_pick_videos">选择视频</string>
-    <plurals name="media_tool_pick_summary">
-        <item quantity="other">最多 %1$d 项，依次处理</item>
-    </plurals>
-    <plurals name="media_tool_extract_audio_summary">
-        <item quantity="other">最多 %1$d 个视频，音频保存为 M4A</item>
-    </plurals>
     <string name="section_media_tool_selection">来自图库的选择</string>
     <plurals name="media_tool_selected_count">
         <item quantity="other">已选择 %1$d 项</item>
@@ -297,7 +288,6 @@
     <string name="media_tool_selected_summary">照片：%1$d · 视频：%2$d · 共 %3$s</string>
     <string name="media_tool_process_selected">压缩所选项目</string>
     <string name="media_tool_process_selected_summary">使用上方参数处理，原文件保持不变</string>
-    <string name="media_tool_process_selected_job">正在压缩所选项目</string>
     <string name="media_tool_clear_selection">清除所选项目</string>
     <string name="media_tool_progress_queue">第 %1$d / %2$d 项</string>
     <string name="media_tool_results">处理结果</string>
@@ -307,12 +297,10 @@
     <plurals name="media_tool_results_total_none">
         <item quantity="other">%1$d 个文件 · 体积未减少</item>
     </plurals>
-    <string name="media_tool_clear_results">清空结果</string>
     <plurals name="media_tool_failed_count">
         <item quantity="other">%1$d 项处理失败</item>
     </plurals>
     <string name="media_tool_more_cd">更多操作</string>
-    <string name="media_tool_output_folder">结果保存到 %1$s，原文件不会被修改。</string>
     <string name="processing_error_empty_source">所选文件内容为空（0 字节）。</string>
     <string name="processing_error_open_source">无法打开所选文件。</string>
     <string name="processing_error_decode_image">无法解码这张图片，文件可能已损坏或格式不受支持。</string>
@@ -354,9 +342,55 @@
     <string name="media_tool_allow_hdr_sdr_summary">默认关闭。重新编码通常无法保留 HDR，输出会是一个色彩变淡的 SDR 文件</string>
     <string name="media_tool_hdr_lost">HDR 未能保留，输出为 SDR</string>
 
+    <!-- 处理流程：输出设置、选择文件、进度、结果确认 -->
+    <string name="media_tool_pick_from_library">从图库中挑选，可按时间或大小排序</string>
+    <string name="media_tool_pick_none">图库中暂时没有可处理的项目</string>
+    <string name="media_tool_extract_audio_hint">音频轨道将保存为 M4A</string>
+    <string name="media_tool_output_target">结果会写回源文件所在的目录，源文件不会被改动。</string>
+    <string name="section_media_tool_active">进行中的任务</string>
+    <string name="media_tool_open_progress">查看进度</string>
+    <string name="media_tool_open_review">查看处理结果</string>
+    <plurals name="media_tool_open_review_summary">
+        <item quantity="other">%1$d 项结果等待确认</item>
+    </plurals>
+    <string name="processing_pick_title">选择文件</string>
+    <string name="processing_start">开始处理</string>
+    <string name="processing_progress_title">正在处理</string>
+    <string name="processing_progress_hint">结果先写入临时目录。未经你确认，不会进入图库。</string>
+    <string name="processing_current_file">正在处理 %1$s</string>
+    <string name="section_processing_finished">已完成</string>
+    <string name="section_processing_skipped">已跳过</string>
+    <string name="section_processing_failed">处理失败</string>
+    <string name="processing_nothing_title">没有可确认的结果</string>
+    <string name="processing_nothing_summary">所有项目都被跳过或失败，没有生成任何文件。</string>
+    <string name="processing_review_title">确认结果</string>
+    <string name="processing_review_hint">左侧是原文件，右侧是处理结果。长按任意一组可全屏对比，两个视频会同步播放。</string>
+    <string name="processing_review_source">原文件</string>
+    <string name="processing_review_result">处理结果</string>
+    <string name="processing_review_compare_cd">对比原文件与处理结果</string>
+    <string name="processing_review_keep_cd">保留这个结果</string>
+    <string name="processing_review_clear">全不选</string>
+    <plurals name="processing_review_save">
+        <item quantity="other">保存 %1$d 项</item>
+    </plurals>
+    <string name="processing_review_discard">放弃全部结果</string>
+    <string name="processing_copying">正在复制到源目录</string>
+    <string name="processing_copy_queue">第 %1$d / %2$d 个文件</string>
+    <plurals name="processing_relocated">
+        <item quantity="other">%1$d 项因源目录不接受这类文件，已改放到应用目录</item>
+    </plurals>
+    <plurals name="processing_commit_failed">
+        <item quantity="other">%1$d 项保存失败</item>
+    </plurals>
+    <string name="processing_sources_title">是否保留源文件？</string>
+    <plurals name="processing_sources_summary">
+        <item quantity="other">已有 %1$d 个源文件在同一目录下生成了结果。保留会占用更多空间，删除后无法恢复。</item>
+    </plurals>
+    <string name="processing_sources_keep">保留</string>
+    <string name="processing_sources_delete">删除源文件</string>
+
     <!-- 设置 -->
     <string name="settings_title">设置</string>
-    <string name="settings_help_cd">帮助</string>
     <string name="settings_appearance">外观</string>
     <string name="settings_theme_title">主题</string>
     <string name="settings_theme_auto">跟随系统</string>
@@ -429,11 +463,69 @@
     <string name="about_feature_cleanup_title">截屏与大文件</string>
     <string name="about_feature_cleanup_summary">两者都会给出删除后可释放空间的合计。大文件阈值可在 5 到 100 MB 之间选择。</string>
     <string name="about_feature_processing_title">本机媒体处理</string>
-    <string name="about_feature_processing_summary">图片可转 JPEG、WebP 或 PNG，并限制长边、指定质量、决定是否保留 Exif。视频可转 1080p、720p 或 480p 并限制码率，也可只取音频。产物大于原文件时自动放弃。</string>
+    <string name="about_feature_processing_summary">图片可转 JPEG、WebP 或 PNG，并限制长边、指定质量、决定是否保留 Exif。视频可转 1080p、720p 或 480p，可选编码格式与码率上限，也可只取音频。产物大于原文件时自动放弃。每个产物都会先留在临时目录，等你与原文件对比确认后，才写回原文件所在的目录。</string>
     <string name="about_feature_privacy_title">无网络，不覆盖</string>
     <string name="about_feature_privacy_summary">应用没有申请网络权限，数据无法离开设备。源文件永不修改——处理只写新文件——删除也一律经由 Android 自己的确认对话框。</string>
     <string name="about_open_source_section">源代码与开源许可</string>
     <string name="about_license_note">所列项目保留各自的版权声明和许可条款。传递依赖归在引入它的项目之下。</string>
-    <string name="help_dialog_title">使用帮助</string>
-    <string name="help_dialog_message">仪表盘展示数量、空间与整理进度；整理页提供智能、定向、手动三种整理方式；工具页可查找重复、截屏与大文件，并使用系统编解码器重新编码图片与视频；设置页管理主题与处理默认项。所有功能均在本地完成。</string>
+    <!-- 页面帮助 -->
+    <string name="help_action_cd">页面帮助</string>
+    <string name="dashboard_help_title">关于仪表盘</string>
+    <string name="dashboard_help_message">这一页只回答一个问题：媒体库现在是什么状况。它给出已索引的照片与视频数量、占用的空间、已检查的比例，以及清理后大约能释放多少。\n\n新增或删除文件后，下拉或点右上的刷新可以重新扫描。这一页不会改动任何文件，卡片只是通往整理与清理的入口。</string>
+    <string name="organize_help_title">关于整理</string>
+    <string name="organize_help_message">在这里决定用哪种方式过一遍媒体库。智能模式按收益排队：先重复副本，再截屏，然后大文件。定向模式先按相册、日期区间、类型与最小体积筛选，再开始。手动模式是按日期分组的网格，支持批量选择。\n\n保留与弃置都只是标记。被弃置的项目集中在「已弃置」里，只有你主动要求、并且 Android 弹出自己的确认之后才会真正删除。</string>
+    <string name="review_help_title">关于快速整理</string>
+    <string name="review_help_message">一次只看一项，任何决定之后都能改。右滑保留，左滑弃置，也可以用预览下方的三个按钮。上下滑动是切到下一项或上一项，不做判断。\n\n「相册」把这一项归入逻辑相册：分组只存在于本应用内，磁盘上的文件不会被移动。点击预览可全屏查看。已经打上的标记可以在「已保留」和「已弃置」列表里重新处理。</string>
+    <string name="grid_help_title">关于这个网格</string>
+    <string name="grid_help_message">%1$s\n\n点击缩略图全屏查看，长按可临时预览。要一次处理多项，用顶栏的选择按钮进入多选，再点选需要的项目——随之出现的工具栏里是这个列表支持的操作。搜索按钮按文件名筛选，右侧的竖条可以按日期快速跳转。</string>
+    <string name="grid_help_scope_manual">这里是全部已索引的项目，按拍摄日期分组。</string>
+    <string name="grid_help_scope_kept">这里是你标记为保留的项目。清除标记会让它回到未检查的部分。</string>
+    <string name="grid_help_scope_trash">这里是你标记为弃置的项目。它们仍在设备上：删除是另一步操作，并且会先经过 Android 的确认。</string>
+    <string name="grid_help_scope_screenshots">这里只列出截屏，依据目录与文件名识别。</string>
+    <string name="grid_help_scope_largest">这里只列出超过工具页所设阈值的文件。</string>
+    <string name="grid_help_scope_duplicate_group">这里是一组副本。留一份、弃置其余就是这个视图的用途；分组依据是文件内容，不是文件名。</string>
+    <string name="grid_help_scope_album">这里是一个逻辑相册。分组只存在于本应用内，磁盘上的文件位置没有变化。</string>
+    <string name="grid_help_scope_processing">在这里选中的文件会按上一页的设置重新编码。在你对比过结果之前，不会有任何东西写入图库。</string>
+    <string name="tools_help_title">关于工具</string>
+    <string name="tools_help_message">这里有两类工具。清理分析负责找出精确重复（对整个文件计算 SHA-256）、相似画面（对画面计算感知哈希，因为要解码每一张图，所以按需启动）、截屏，以及超过你所设阈值的大文件。媒体处理用设备自己的编解码器重新编码照片和视频。\n\n分析只读取数据。没有标记、没有系统确认，不会删除任何东西。</string>
+    <string name="media_tools_help_title">关于媒体处理</string>
+    <string name="media_tools_help_message">在本机重新编码照片和视频。先选好输出设置，再选文件：它们会一项接一项处理，产物比原文件更大时会被放弃。\n\n产物先放进临时目录，你可以逐项与原文件对比。确认保留的会写回源文件所在的目录，文件名沿用源文件并加上 -z1 这样的后缀记录压缩次数。原文件不会被修改或覆盖，是否删除会在最后单独询问。</string>
+    <string name="tools_duplicate_help_title">关于精确重复</string>
+    <string name="tools_duplicate_help_message">每一组里的文件内容逐字节相同，依据是对整个文件计算的 SHA-256，所以改名或换目录都藏不住。「留一份」会把该组其余副本标记为弃置，顶栏的菜单可以把同一策略一次应用到所有组。\n\n这里不会删除任何文件：标记会进入「已弃置」列表。</string>
+    <string name="tools_similar_help_title">关于相似画面</string>
+    <string name="tools_similar_help_message">每一组里是画面相似但并非同一个文件的图片：连拍、重新编码、缩放后的副本。分组依据是画面的感知哈希，所以动手前先确认一组的内容——这些副本在质量或尺寸上有差别，留哪一张需要你判断。\n\n「留一份」会把其余标记为弃置；删除仍是另一步，并且需要确认。</string>
+    <string name="settings_help_title">关于设置</string>
+    <string name="settings_help_message">这里管理主题、整理行为，以及媒体处理的默认值。索引范围决定哪些相册会被扫描，这是把某个相册彻底排除在整理任务之外最快的办法。\n\n更新是应用里唯一会用到网络的部分，而且默认关闭。其余功能完全不需要联网。\n\n应用里每一页都有这个帮助按钮，它说明该页面的用途和各个控件的行为。</string>
+
+    <!-- 更新 -->
+    <string name="settings_update">更新</string>
+    <string name="settings_update_auto">自动检查更新</string>
+    <string name="settings_update_auto_summary">默认关闭。关闭时应用不会发起任何网络请求。打开后它才会从 GitHub 读取发布列表——这是它唯一联网的用途。</string>
+    <string name="settings_update_channel">更新渠道</string>
+    <string name="settings_update_channel_stable">稳定版</string>
+    <string name="settings_update_channel_stable_summary">打了标签、专门发布的正式版</string>
+    <string name="settings_update_channel_dev">开发版</string>
+    <string name="settings_update_channel_dev_summary">每次推送后按最新提交自动构建</string>
+    <string name="settings_update_mirror">下载线路</string>
+    <string name="settings_update_mirror_direct">直连 GitHub</string>
+    <string name="settings_update_mirror_direct_summary">不经过第三方，前提是能连上 GitHub</string>
+    <string name="settings_update_mirror_summary">GitHub 前面的公共镜像，给直连不通的网络</string>
+    <string name="settings_update_mirror_download_only">公共镜像；只代理下载，检查本身仍走直连</string>
+    <string name="settings_update_check">立即检查</string>
+    <string name="settings_update_disabled">请先打开上面的自动检查更新</string>
+    <string name="settings_update_checking">正在检查…</string>
+    <string name="settings_update_idle">尚未检查</string>
+    <string name="settings_update_current">已是最新 · %1$s</string>
+    <string name="settings_update_available">有新版本 %1$s · 发布于 %2$s</string>
+    <string name="settings_update_undetermined">找到 %1$s，但当前构建无法判断是否就是它</string>
+    <string name="settings_update_failed_unreachable">读不到发布列表。可以在下面换一条线路再试。</string>
+    <string name="settings_update_failed_empty">这个渠道还没有发布任何版本。</string>
+    <string name="settings_update_download">下载 %1$s</string>
+    <string name="settings_update_download_summary">在浏览器里打开 APK 链接 · %1$s · 安装前 Android 会再确认一次</string>
+    <string name="settings_update_open_page">打开发布页面</string>
+    <string name="settings_update_open_page_summary">检查连不上 GitHub 时，自己挑一个版本</string>
+    <string name="settings_update_no_browser">这台设备上没有应用能打开这个链接</string>
+    <string name="settings_update_build">版本 %1$s · 构建 %2$s</string>
+    <string name="about_network_title">网络访问</string>
+    <string name="about_network_summary">应用只申请了一个网络权限，用于检查更新，而 Android 在安装时就会授予它——INTERNET 属于普通权限，没有运行时询问这一步。在你到设置里打开检查更新之前，这个权限一直不会被用到：那个开关默认关闭，关闭时不会发起任何请求。应用的其余部分不连接任何服务，照片、视频、索引和整理标记都不会被上传。</string>
 </resources>

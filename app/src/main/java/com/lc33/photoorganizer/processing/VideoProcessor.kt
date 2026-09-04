@@ -17,8 +17,10 @@ import androidx.media3.transformer.ProgressHolder
 import androidx.media3.transformer.Transformer
 import androidx.media3.transformer.VideoEncoderSettings
 import com.lc33.photoorganizer.R
+import com.lc33.photoorganizer.media.PendingMedia
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -48,11 +50,17 @@ object VideoProcessor {
 
     private const val MIN_BITRATE = 400_000
 
-    /** Transcodes [source] and publishes the result into the app's gallery folder. */
+    /**
+     * Transcodes [source] into the staging directory.
+     *
+     * Nothing is written to the gallery here: the result waits for the user to
+     * compare it against the source. Null when [keepOnlyIfSmaller] rejected the
+     * output.
+     */
     @androidx.annotation.OptIn(UnstableApi::class)
     suspend fun transcode(
         context: Context,
-        source: Uri,
+        source: PendingMedia,
         resolution: VideoResolution,
         trackMode: VideoTrackMode,
         codec: VideoCodec = VideoCodec.SOURCE,
@@ -60,17 +68,22 @@ object VideoProcessor {
         bitrateOverride: Int? = null,
         keepOnlyIfSmaller: Boolean = true,
         onProgress: (Float) -> Unit = {},
-    ): ProcessedMedia? {
-        val originalBytes = GalleryWriter.sourceSize(context, source)
+    ): StagedMedia? {
+        val originalBytes = source.sizeBytes.takeIf { it > 0L }
+            ?: GalleryWriter.sourceSize(context, source.uri)
         if (originalBytes <= 0L) {
             throw ProcessingException(R.string.processing_error_empty_source)
         }
         val audioOnly = trackMode == VideoTrackMode.AUDIO_ONLY
-        val output = GalleryWriter.cacheFile(context, if (audioOnly) "aud" else "vid", if (audioOnly) "m4a" else "mp4")
+        val output = StagingArea.file(
+            context = context,
+            prefix = if (audioOnly) "aud" else "vid",
+            extension = if (audioOnly) "m4a" else "mp4",
+        )
         val targetBitrate = bitrateOverride
             ?.coerceIn(MIN_BITRATE, resolution.ceilingBitrate)
-            ?: withContext(Dispatchers.IO) { resolveTargetBitrate(context, source, resolution) }
-        val track = withContext(Dispatchers.IO) { inspectVideoTrack(context, source) }
+            ?: withContext(Dispatchers.IO) { resolveTargetBitrate(context, source.uri, resolution) }
+        val track = withContext(Dispatchers.IO) { inspectVideoTrack(context, source.uri) }
         val sourceHdr = track?.hdrKind ?: HdrKind.UNKNOWN
         // Refused before any work starts, and only for the video path: extracting
         // audio discards the picture anyway, so HDR is not at stake there.
@@ -91,11 +104,14 @@ object VideoProcessor {
                 encodableMimeTypes = deviceVideoEncoders().keys,
             )
         }
+        // The output survives this call only when it is handed back as a staged
+        // result; on a failure, a cancellation or a skip it is cache to reclaim.
+        var staged = false
         try {
             val actualMimeType = try {
                 runExport(
                     context = context,
-                    source = source,
+                    source = source.uri,
                     outputPath = output.absolutePath,
                     resolution = resolution,
                     trackMode = trackMode,
@@ -120,25 +136,23 @@ object VideoProcessor {
                 input = sourceHdr,
                 output = withContext(Dispatchers.IO) { inspectLocalVideoHdr(output.absolutePath) },
             )
-            if (keepOnlyIfSmaller && trackMode != VideoTrackMode.AUDIO_ONLY && outputBytes >= originalBytes) {
+            if (keepOnlyIfSmaller && !audioOnly && outputBytes >= originalBytes) {
                 onProgress(1f)
                 return null
             }
-            val published = withContext(Dispatchers.IO) {
-                val name = OutputNaming.compressedName(
-                    GalleryWriter.displayName(context, source),
-                    if (audioOnly) "m4a" else "mp4",
-                )
-                if (audioOnly) {
-                    GalleryWriter.publishAudio(context, output, name)
-                } else {
-                    GalleryWriter.publishVideo(context, output, name)
-                }
-            }
             onProgress(1f)
-            return ProcessedMedia(
-                uri = published.uri,
-                displayName = published.displayName,
+            staged = true
+            return StagedMedia(
+                source = source,
+                file = output,
+                outputName = OutputNaming.compressedName(
+                    source.displayName,
+                    if (audioOnly) "m4a" else "mp4",
+                ),
+                // The container, not the codec: MediaStore describes the file, and
+                // an MP4 holding HEVC is still an MP4.
+                outputMimeType = if (audioOnly) "audio/mp4" else "video/mp4",
+                kind = if (audioOnly) OutputKind.AUDIO else OutputKind.VIDEO,
                 originalBytes = originalBytes,
                 outputBytes = outputBytes,
                 codecFallback = actualMimeType
@@ -147,7 +161,9 @@ object VideoProcessor {
                 hdrLost = hdrLost,
             )
         } finally {
-            withContext(Dispatchers.IO) { output.delete() }
+            // NonCancellable because this also runs when the batch was cancelled,
+            // and a plain withContext would abandon the delete and leak the file.
+            if (!staged) withContext(NonCancellable + Dispatchers.IO) { output.delete() }
         }
     }
 

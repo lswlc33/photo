@@ -4,10 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>照片整理 — 在手机上整理相册</title>
-<meta name="description" content="照片整理是一个本地相册清理工具：索引照片与视频，检出重复项、相似画面、截屏与大文件，逐项决定去留，并在本机完成压缩与重编码。它的 AndroidManifest 里没有 INTERNET 权限。">
+<meta name="description" content="照片整理是一个本地相册清理工具：索引照片与视频，检出重复项、相似画面、截屏与大文件，逐项决定去留，并在本机完成压缩与重编码。除了默认关闭的检查更新之外，它不联网。">
 <meta name="color-scheme" content="light">
 <meta property="og:title" content="照片整理 — 在手机上整理相册">
-<meta property="og:description" content="本地相册清理工具。没有 INTERNET 权限，照片不会离开设备。">
+<meta property="og:description" content="本地相册清理工具。除了默认关闭的检查更新之外不联网，照片不会离开设备。">
 <meta property="og:type" content="website">
 <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -434,7 +434,7 @@ footer a:hover{border-bottom-color:var(--teal)}
     <div class="manifest stagger" style="animation-delay:.34s">
       <div class="manifest-head">
         <span>AndroidManifest.xml</span>
-        <span>应用自身声明 3 条</span>
+        <span>应用自身声明 4 条</span>
       </div>
 
       <div class="perm stagger" style="animation-delay:.46s">
@@ -452,14 +452,14 @@ footer a:hover{border-bottom-color:var(--teal)}
         <span><code>READ_MEDIA_VISUAL_USER_SELECTED</code>
           <span class="perm-why">你只授权部分照片时，也能正常工作</span></span>
       </div>
-      <div class="perm perm-absent stagger" style="animation-delay:.86s">
-        <span class="perm-mark" aria-hidden="true">✕</span>
+      <div class="perm stagger" style="animation-delay:.86s">
+        <span class="perm-mark" aria-hidden="true">✓</span>
         <span><code>INTERNET</code>
-          <span class="perm-why">没有声明。应用没有联网的能力</span></span>
+          <span class="perm-why">只用于检查更新，默认不使用</span></span>
       </div>
 
       <p class="manifest-foot">
-        这是应用自身声明的<b>全部权限</b>。实际安装的 APK 还会包含 Media3 与 AndroidX 合并引入的三条权限（<code>ACCESS_NETWORK_STATE</code>、<code>WAKE_LOCK</code>，以及一条仅供应用内部使用的动态广播权限），其中不含 <code>INTERNET</code> —— 没有 <code>INTERNET</code>，即使能读取网络状态也无法发出任何数据。不包含统计分析、崩溃上报或云服务，<b>照片不会离开设备</b>。
+        这是应用自身声明的<b>全部权限</b>。<code>INTERNET</code> 是唯一与媒体无关的一条，只服务于「检查更新」：那个开关<b>默认关闭</b>，关闭时应用不发起任何网络请求。它必须写在清单里而不能在运行时申请——<code>INTERNET</code> 属于普通权限，Android 在安装时就授予，没有询问这一步——所以能承诺的是<b>不使用</b>，而不是不持有。除此之外应用不连接任何服务：没有统计分析、没有崩溃上报、没有账号、没有云备份，<b>照片不会离开设备</b>。实际安装的 APK 还会包含 Media3 与 AndroidX 合并引入的两条权限（<code>ACCESS_NETWORK_STATE</code>、<code>WAKE_LOCK</code>）以及一条仅供应用内部使用的动态广播权限。
       </p>
     </div>
 
@@ -467,7 +467,7 @@ footer a:hover{border-bottom-color:var(--teal)}
       <a class="cta cta-primary" href="https://github.com/lswlc33/photo/releases/tag/nightly">下载 APK</a>
       <a class="cta cta-ghost" href="https://github.com/lswlc33/photo">查看源码</a>
     </div>
-    <p class="cta-note stagger" style="animation-delay:1.06s">v8.0 · Android 13 及以上 · 约 5 MB（已压缩），随 master 每次提交刷新。安装时系统会问一次是否允许未知来源。</p>
+    <p class="cta-note stagger" style="animation-delay:1.06s">v8.1 · Android 13 及以上 · 约 5 MB（已压缩），随 master 每次提交刷新。安装时系统会问一次是否允许未知来源。</p>
   </div>
 </header>
 
@@ -639,8 +639,8 @@ footer a:hover{border-bottom-color:var(--teal)}
       <p class="nots-lead">一个清理相册的应用能造成的最大伤害，是删掉你本来想留的东西。所以下面这四条是写死的，不是设置项。</p>
 
       <div class="not">
-        <span class="not-name">不联网</span>
-        <p>清单文件里没有 <code>INTERNET</code>。没有分析统计、没有崩溃上报、没有账号、没有云备份。想加一个统计 SDK 也加不进来。</p>
+        <span class="not-name">不主动联网</span>
+        <p>整理、分析、压缩全部在本机完成，没有账号、没有云备份、没有统计分析、没有崩溃上报。唯一会联网的是「检查更新」，它默认关闭；打开后也只读取 GitHub 的发布列表，照片、索引和整理标记都不会被上传。</p>
       </div>
       <div class="not">
         <span class="not-name">不自己删文件</span>

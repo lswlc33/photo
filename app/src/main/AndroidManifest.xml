@@ -3,6 +3,23 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
+    <!--
+        The only permission here that is not about reading media, and the only one
+        the app can hold without ever using: update checking needs it, and update
+        checking is off until the user turns it on in Settings.
+
+        It has to be declared rather than requested. INTERNET is a normal
+        permission, granted by the system at install time with no prompt and no
+        way to revoke it, so "ask for it when the switch is turned on" is not
+        something Android offers. What the switch actually gates is every call
+        site: UpdateViewModel refuses to check while it is off, and it is the one
+        place in the codebase that opens a socket. With the switch off the app
+        holds a permission it never exercises.
+
+        That distinction is what README.md, index.html and the About page state,
+        and it is the only honest way to word it.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <application
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:enableOnBackInvokedCallback="true"

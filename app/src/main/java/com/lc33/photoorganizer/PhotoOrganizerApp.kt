@@ -3,7 +3,7 @@ package com.lc33.photoorganizer
 import android.app.Activity
 import android.content.Context
 import android.content.SharedPreferences
-import android.content.Intent
+import android.net.Uri
 import android.provider.MediaStore
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -57,6 +57,7 @@ import com.lc33.photoorganizer.media.IndexScope
 import com.lc33.photoorganizer.media.IndexScopeMode
 import com.lc33.photoorganizer.media.MediaIndexViewModel
 import com.lc33.photoorganizer.media.MediaStatistics
+import com.lc33.photoorganizer.media.PendingMedia
 import com.lc33.photoorganizer.media.ReviewDecisionStore
 import com.lc33.photoorganizer.media.ReviewState
 import com.lc33.photoorganizer.media.shouldCompactLog
@@ -85,6 +86,8 @@ import com.lc33.photoorganizer.screens.settings.SettingsScreen
 import com.lc33.photoorganizer.screens.settings.SortOrder
 import com.lc33.photoorganizer.screens.tools.DuplicateGroupsScreen
 import com.lc33.photoorganizer.screens.tools.MediaToolsScreen
+import com.lc33.photoorganizer.screens.tools.ProcessingProgressScreen
+import com.lc33.photoorganizer.screens.tools.ProcessingReviewScreen
 import com.lc33.photoorganizer.screens.tools.ToolsScreen
 import com.lc33.photoorganizer.ui.AppPage
 import com.lc33.photoorganizer.ui.DetailScreen
@@ -105,6 +108,9 @@ import com.lc33.photoorganizer.ui.navigation.GlassBottomBar
 import com.lc33.photoorganizer.ui.resolveIsDark
 import com.lc33.photoorganizer.ui.toColorSchemeMode
 import com.lc33.photoorganizer.ui.themeModeFromName
+import com.lc33.photoorganizer.update.UpdateChannel
+import com.lc33.photoorganizer.update.UpdateMirror
+import com.lc33.photoorganizer.update.UpdateViewModel
 import com.kyant.backdrop.backdrops.layerBackdrop
 import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import top.yukonga.miuix.kmp.basic.Scaffold
@@ -147,6 +153,23 @@ fun PhotoOrganizerApp() {
         it.getInt("largest_threshold_mb", ToolAnalyzer.DefaultLargestThresholdMb)
     }
     var indexScope by remember { mutableStateOf(readIndexScope(prefs)) }
+    // Update checking is the only feature that can use the network, so its switch
+    // defaults to false and every request is gated on it inside UpdateViewModel.
+    // Turning it off is not just "stop checking": it clears the last result, so a
+    // stale "an update is available" row cannot outlive the consent it came from.
+    var updateAutoCheck by rememberPersisted(prefs, "update_auto_check") {
+        it.getBoolean("update_auto_check", false)
+    }
+    var updateChannel by rememberPersisted(prefs, "update_channel") { it ->
+        it.getString("update_channel", null)
+            ?.let { value -> UpdateChannel.entries.firstOrNull { e -> e.name == value } }
+            ?: UpdateChannel.STABLE
+    }
+    var updateMirror by rememberPersisted(prefs, "update_mirror") { it ->
+        it.getString("update_mirror", null)
+            ?.let { value -> UpdateMirror.entries.firstOrNull { e -> e.name == value } }
+            ?: UpdateMirror.DIRECT
+    }
 
     val themeController = remember(themeMode) { ThemeController(themeMode.toColorSchemeMode()) }
     val isDark = resolveIsDark(themeMode)
@@ -165,6 +188,23 @@ fun PhotoOrganizerApp() {
     // It has to stay a ViewModel: on a `rememberCoroutineScope()` a rotation
     // cancelled a minutes-long transcode silently.
     val batchViewModel: MediaBatchViewModel = viewModel()
+    val updateViewModel: UpdateViewModel = viewModel()
+    val updateState by updateViewModel.state.collectAsState()
+    // One check per launch, and only with the switch on. Keyed on the switch and
+    // the channel so flipping either re-asks rather than showing an answer to a
+    // question the user has since changed.
+    LaunchedEffect(updateAutoCheck, updateChannel, updateMirror) {
+        if (updateAutoCheck) {
+            updateViewModel.check(
+                enabled = true,
+                channel = updateChannel,
+                mirror = updateMirror,
+                automatic = true,
+            )
+        } else {
+            updateViewModel.reset(enabled = false)
+        }
+    }
     var scanRequest by remember { mutableIntStateOf(0) }
     // An immutable map rather than a SnapshotStateMap: a state map has no
     // per-key observability, so reading it in this scope invalidated the whole
@@ -264,6 +304,11 @@ fun PhotoOrganizerApp() {
     val itemsById = remember(rawItems) { rawItems.associateBy { it.id } }
     val keptCount = remember(media) { media.count { it.state == ReviewState.KEPT } }
     val trashCount = remember(media) { media.count { it.state == ReviewState.TRASH_MARKED } }
+    // What the processing picker would have to show. The tools page disables its own
+    // entry point when the answer is zero, which is the case with no permission or a
+    // scope that excludes everything - a picker that opens onto nothing is worse.
+    val processablePhotoCount = remember(media) { media.count { !it.isVideo && it.uri != null } }
+    val processableVideoCount = remember(media) { media.count { it.isVideo && it.uri != null } }
     val toolAnalysisReady = duplicateAnalysisReady
     val toolAnalysis = remember(indexState.duplicateGroups, rawItems, largestThresholdMb) {
         val thresholdBytes = ToolAnalyzer.thresholdBytesOf(largestThresholdMb)
@@ -380,6 +425,43 @@ fun PhotoOrganizerApp() {
         // Pushed rather than swapped: back should return to the grid the selection
         // was made in, which is the fourth level this stack exists for.
         openDetail(DetailScreen.MediaProcessing(items))
+    }
+
+    /** Starts a processing run on [items] and opens the progress screen over it. */
+    fun startProcessing(items: List<PendingMedia>) {
+        if (items.isEmpty()) return
+        batchViewModel.start(items)
+        openDetail(DetailScreen.ProcessingProgress)
+    }
+
+    /**
+     * Unwinds back to the processing settings page.
+     *
+     * A run ends three levels deep, and one pop would land on the file picker for a
+     * selection that has already been processed. Falls out to the page layer if the
+     * settings page is not on the stack, which is the case when a run was started
+     * from a gallery grid's hand-off.
+     */
+    fun popToProcessingRoot() {
+        val root = detailStack.indexOfLast { it is DetailScreen.MediaProcessing }
+        detailStack = if (root >= 0) detailStack.take(root + 1) else emptyList()
+    }
+
+    /**
+     * Deletes source files whose result is already saved.
+     *
+     * No review bookkeeping, unlike [beginSystemDelete]: these are not review
+     * decisions, and the rescan the launcher triggers is what brings the index back
+     * into step.
+     */
+    fun deleteProcessedSources(uris: List<Uri>) {
+        if (uris.isEmpty()) return
+        runCatching {
+            val request = MediaStore.createDeleteRequest(context.contentResolver, uris)
+            pendingDeleteIds = emptySet()
+            pendingDeleteReviewKeys = emptySet()
+            deleteLauncher.launch(IntentSenderRequest.Builder(request.intentSender).build())
+        }.onFailure { deleteError = it.message ?: deleteLaunchFailedText }
     }
 
     val contentBottomPadding = floatingBottomBarContentPadding()
@@ -532,6 +614,26 @@ fun PhotoOrganizerApp() {
                         onConfirmDeleteChange = { confirmDelete = it },
                         onRequestPermission = { permissionLauncher.launch(context.photoPermissionRequest()) },
                         onOpenAbout = { openDetail(DetailScreen.About) },
+                        updateAutoCheck = updateAutoCheck,
+                        updateChannel = updateChannel,
+                        updateMirror = updateMirror,
+                        updateState = updateState,
+                        onUpdateAutoCheckChange = { enabled ->
+                            updateAutoCheck = enabled
+                            // The LaunchedEffect above reacts to this too, but
+                            // resetting here means the old result is gone the
+                            // moment the switch moves, not one frame later.
+                            if (!enabled) updateViewModel.reset(enabled = false)
+                        },
+                        onUpdateChannelChange = { updateChannel = it },
+                        onUpdateMirrorChange = { updateMirror = it },
+                        onCheckUpdate = {
+                            updateViewModel.check(
+                                enabled = updateAutoCheck,
+                                channel = updateChannel,
+                                mirror = updateMirror,
+                            )
+                        },
                         contentBottomPadding = contentBottomPadding,
                     )
                 }
@@ -624,6 +726,8 @@ fun PhotoOrganizerApp() {
                             title = stringResource(R.string.tools_similar_title),
                             hint = stringResource(R.string.tools_similar_hint),
                             emptyTitle = stringResource(R.string.tools_similar_empty),
+                            helpTitle = stringResource(R.string.tools_similar_help_title),
+                            helpMessage = stringResource(R.string.tools_similar_help_message),
                             countLabel = { count, saved ->
                                 pluralStringResource(R.plurals.tools_summary_similar, count, count, saved)
                             },
@@ -673,14 +777,64 @@ fun PhotoOrganizerApp() {
                             imageQuality = imageQuality,
                             videoQuality = videoQuality,
                             stripMetadata = stripMetadata,
+                            photoCount = processablePhotoCount,
+                            videoCount = processableVideoCount,
                             onBack = ::popDetail,
-                            onMediaCreated = { scanRequest++ },
-                            onOpenResult = { uri -> openMediaViewer(context, uri) },
+                            onPickSources = { videos ->
+                                openDetail(DetailScreen.ProcessingPicker(videos))
+                            },
+                            onOpenProgress = { openDetail(DetailScreen.ProcessingProgress) },
+                            onOpenReview = { openDetail(DetailScreen.ProcessingReview) },
                             preselected = detail.preselected,
+                            onProcessPreselected = { startProcessing(detail.preselected) },
                             // Swapped rather than popped: dropping the hand-off leaves
                             // the tools open, which is what the button offers.
                             onClearPreselected = {
                                 replaceDetail(DetailScreen.MediaProcessing(emptyList()))
+                            },
+                        )
+                        is DetailScreen.ProcessingPicker -> {
+                            val videos = detail.videos
+                            ManualGridScreen(
+                                media = remember(media, videos) {
+                                    media.filter { it.isVideo == videos && it.uri != null }
+                                },
+                                // Size first: what to compress is nearly always
+                                // decided by which files are big.
+                                defaultSortBySize = true,
+                                onBack = ::popDetail,
+                                onMark = ::markMedia,
+                                animationEnabled = animationEnabled,
+                                mode = MediaGridMode.PROCESSING_PICKER,
+                                titleOverride = stringResource(
+                                    if (videos) {
+                                        R.string.media_tool_pick_videos
+                                    } else {
+                                        R.string.media_tool_pick_images
+                                    },
+                                ),
+                                onCompressSelected = { ids ->
+                                    startProcessing(
+                                        media.filter { it.id in ids }.mapNotNull { it.toPendingMedia() },
+                                    )
+                                },
+                            )
+                        }
+                        DetailScreen.ProcessingProgress -> ProcessingProgressScreen(
+                            batchViewModel = batchViewModel,
+                            onBack = ::popDetail,
+                            // Swapped rather than pushed: the progress of a run that
+                            // has finished is not somewhere to go back to.
+                            onOpenReview = { replaceDetail(DetailScreen.ProcessingReview) },
+                        )
+                        DetailScreen.ProcessingReview -> ProcessingReviewScreen(
+                            batchViewModel = batchViewModel,
+                            animationEnabled = animationEnabled,
+                            onBack = ::popDetail,
+                            onDeleteSources = ::deleteProcessedSources,
+                            onFinished = {
+                                popToProcessingRoot()
+                                scanRequest++
                             },
                         )
                         is DetailScreen.LogicalAlbumGrid -> {
@@ -918,18 +1072,6 @@ private fun readLegacyReviewPreferences(
  */
 private fun DuplicateGroup.toGridDestination(): DetailScreen.DuplicateGroupGrid =
     DetailScreen.DuplicateGroupGrid(items.mapTo(hashSetOf()) { it.id })
-
-/** Hands a freshly created file to the system gallery viewer. */
-private fun openMediaViewer(context: Context, uri: android.net.Uri) {
-    val mimeType = context.contentResolver.getType(uri) ?: "image/*"
-    runCatching {
-        context.startActivity(
-            Intent(Intent.ACTION_VIEW)
-                .setDataAndType(uri, mimeType)
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION),
-        )
-    }
-}
 
 private fun readIndexScope(prefs: SharedPreferences): IndexScope {
     val mode = prefs.getString("index_scope_mode", null)

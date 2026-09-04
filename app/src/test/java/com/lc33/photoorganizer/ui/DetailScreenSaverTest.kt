@@ -18,10 +18,45 @@ class DetailScreenSaverTest {
             DetailScreen.Similar,
             DetailScreen.Screenshots,
             DetailScreen.Largest,
+            DetailScreen.ProcessingProgress,
+            DetailScreen.ProcessingReview,
             DetailScreen.About,
         )
 
         assertEquals(screens, roundTrip(screens))
+    }
+
+    @Test
+    fun theProcessingPickerRemembersWhichTypeItWasOpenedFor() {
+        // The type decides which half of the settings a run uses, so restoring the
+        // picker without it would silently apply the wrong one.
+        assertEquals(
+            listOf(DetailScreen.ProcessingPicker(videos = true)),
+            roundTrip(listOf(DetailScreen.ProcessingPicker(videos = true))),
+        )
+        assertEquals(
+            listOf(DetailScreen.ProcessingPicker(videos = false)),
+            roundTrip(listOf(DetailScreen.ProcessingPicker(videos = false))),
+        )
+    }
+
+    @Test
+    fun theWholeProcessingFlowSurvivesARotation() {
+        // A rotation goes through this codec, and the run itself lives in a
+        // ViewModel that outlives one. Dropping any of these three would throw the
+        // user out of a comparison they were halfway through.
+        val stack = listOf(
+            DetailScreen.MediaProcessing(emptyList()),
+            DetailScreen.ProcessingPicker(videos = false),
+            DetailScreen.ProcessingReview,
+        )
+
+        assertEquals(stack, roundTrip(stack))
+    }
+
+    @Test
+    fun aPickerRecordWithNoTypeIsDroppedRatherThanGuessed() {
+        assertNull(decodeDetailScreen("processing-picker"))
     }
 
     @Test

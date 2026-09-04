@@ -78,11 +78,13 @@ import com.lc33.photoorganizer.media.ReviewState
 import com.lc33.photoorganizer.media.UiMedia
 import com.lc33.photoorganizer.media.scanDate
 import com.lc33.photoorganizer.ui.components.EmptyState
+import com.lc33.photoorganizer.ui.components.HelpAction
 import com.lc33.photoorganizer.ui.components.MediaPreviewController
 import com.lc33.photoorganizer.ui.components.MediaPreviewHost
 import com.lc33.photoorganizer.ui.components.MediaTile
 import com.lc33.photoorganizer.ui.components.OverlayAction
 import com.lc33.photoorganizer.ui.components.OverlayActionPopup
+import com.lc33.photoorganizer.ui.components.ToolbarAction
 import com.lc33.photoorganizer.ui.components.rememberMediaPreviewController
 import com.lc33.photoorganizer.ui.components.standardCardColors
 import com.lc33.photoorganizer.ui.systemClearance
@@ -115,7 +117,22 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import kotlin.math.roundToInt
 
-enum class MediaGridMode { MANUAL, KEPT, TRASH, SCREENSHOTS, LARGEST, DUPLICATE_GROUP, LOGICAL_ALBUM }
+enum class MediaGridMode {
+    MANUAL,
+    KEPT,
+    TRASH,
+    SCREENSHOTS,
+    LARGEST,
+    DUPLICATE_GROUP,
+    LOGICAL_ALBUM,
+
+    /**
+     * Picking the sources for a processing run. Nothing here marks or deletes: the
+     * only thing the toolbar does is hand the selection on, which is why this mode
+     * opens already in selection mode and never leaves it.
+     */
+    PROCESSING_PICKER,
+}
 
 /** Extra scroll clearance so the floating selection toolbar never covers the last row. */
 private val SelectionToolbarClearance = 84.dp
@@ -150,6 +167,27 @@ private val MediaGridMode.supportsMarking: Boolean
         this == MediaGridMode.LARGEST ||
         this == MediaGridMode.DUPLICATE_GROUP
 
+/**
+ * Whether the date/size sort control is worth showing.
+ *
+ * The marking modes span whole libraries or analysis lists, and so does the
+ * processing picker - "the biggest videos first" is exactly how someone decides
+ * what to compress. The remaining modes are short, already-ordered lists where a
+ * sort control would be a row of chrome over four items.
+ */
+private val MediaGridMode.supportsSorting: Boolean
+    get() = supportsMarking || this == MediaGridMode.PROCESSING_PICKER
+
+/**
+ * Whether selection mode is the only mode this list has.
+ *
+ * The picker exists to produce a selection, so browsing it without one is a state
+ * with no exit worth having: the back button leaves the screen instead of dropping
+ * back into a browse mode the user never asked for.
+ */
+private val MediaGridMode.alwaysSelecting: Boolean
+    get() = this == MediaGridMode.PROCESSING_PICKER
+
 /** Default page title; [ManualGridScreen]'s `titleOverride` wins when it is set. */
 private val MediaGridMode.titleRes: Int
     get() = when (this) {
@@ -160,6 +198,24 @@ private val MediaGridMode.titleRes: Int
         MediaGridMode.LARGEST -> R.string.tools_largest_title
         MediaGridMode.DUPLICATE_GROUP -> R.string.tools_duplicate_title
         MediaGridMode.LOGICAL_ALBUM -> R.string.logical_album_title
+        MediaGridMode.PROCESSING_PICKER -> R.string.processing_pick_title
+    }
+
+/**
+ * The one sentence that distinguishes this list from the six others the same
+ * screen serves. It is interpolated into the shared grid help, so the gestures
+ * and the toolbar are described once rather than seven times.
+ */
+private val MediaGridMode.helpScopeRes: Int
+    get() = when (this) {
+        MediaGridMode.MANUAL -> R.string.grid_help_scope_manual
+        MediaGridMode.KEPT -> R.string.grid_help_scope_kept
+        MediaGridMode.TRASH -> R.string.grid_help_scope_trash
+        MediaGridMode.SCREENSHOTS -> R.string.grid_help_scope_screenshots
+        MediaGridMode.LARGEST -> R.string.grid_help_scope_largest
+        MediaGridMode.DUPLICATE_GROUP -> R.string.grid_help_scope_duplicate_group
+        MediaGridMode.LOGICAL_ALBUM -> R.string.grid_help_scope_album
+        MediaGridMode.PROCESSING_PICKER -> R.string.grid_help_scope_processing
     }
 
 /** Gallery grid grouped by capture date, with full-screen hold previews. */
@@ -178,7 +234,8 @@ fun ManualGridScreen(
     titleOverride: String? = null,
 ) {
     var sortBySize by rememberSaveable { mutableStateOf(defaultSortBySize) }
-    var selectionMode by rememberSaveable { mutableStateOf(false) }
+    val alwaysSelecting = mode.alwaysSelecting
+    var selectionMode by rememberSaveable { mutableStateOf(alwaysSelecting) }
     var searchActive by rememberSaveable { mutableStateOf(false) }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     val preview = rememberMediaPreviewController()
@@ -273,8 +330,11 @@ fun ManualGridScreen(
         }
     }
 
-    BackHandler(enabled = selectionMode || searchActive) {
-        if (selectionMode) {
+    // Leaving selection is not an option where selection is the whole point, so the
+    // picker falls straight through to the search state and then out of the screen.
+    val canLeaveSelection = selectionMode && !alwaysSelecting
+    BackHandler(enabled = canLeaveSelection || searchActive) {
+        if (canLeaveSelection) {
             selectionMode = false
             selected = emptySet()
         } else {
@@ -297,10 +357,10 @@ fun ManualGridScreen(
                 navigationIcon = {
                     // One button, three jobs: leave selection, leave search, or go
                     // back - in that order, so a nested mode is always unwound first.
-                    val dismissing = selectionMode || searchActive
+                    val dismissing = canLeaveSelection || searchActive
                     IconButton(onClick = {
                         when {
-                            selectionMode -> {
+                            canLeaveSelection -> {
                                 selectionMode = false
                                 selected = emptySet()
                             }
@@ -356,12 +416,16 @@ fun ManualGridScreen(
         floatingToolbar = {
             if (selectionMode) {
                 // Every bulk action ends selection, so the exit is factored out and
-                // each callback only says what it does with the ids.
+                // each callback only says what it does with the ids. The picker keeps
+                // its selection: it is leaving the screen, and clearing first would
+                // flash an empty toolbar over the grid on the way out.
                 val finish: (action: (Set<Long>) -> Unit) -> () -> Unit = { action ->
                     {
                         val ids = selected
-                        selectionMode = false
-                        selected = emptySet()
+                        if (!alwaysSelecting) {
+                            selectionMode = false
+                            selected = emptySet()
+                        }
                         action(ids)
                     }
                 }
@@ -394,7 +458,7 @@ fun ManualGridScreen(
             if (searchActive) {
                 ManualGridSearchBar(query = searchQuery, onQueryChange = { searchQuery = it })
             }
-            if (mode.supportsMarking) {
+            if (mode.supportsSorting) {
                 ManualGridSortCard(
                     sortBySize = sortBySize,
                     onSortChange = { sortBySize = it },
@@ -468,6 +532,19 @@ private fun RowScope.ManualGridTopBarActions(
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(horizontal = 6.dp),
         )
+        // A list that is only ever in selection mode still needs its search and its
+        // explanation; the other modes reach both from the browsing state.
+        if (!mode.alwaysSelecting) return
+        IconButton(onClick = onToggleSearch) {
+            Icon(
+                if (searchActive) Icons.Default.Close else Icons.Default.Search,
+                contentDescription = stringResource(R.string.manual_search_cd),
+            )
+        }
+        HelpAction(
+            title = stringResource(R.string.grid_help_title),
+            message = stringResource(R.string.grid_help_message, stringResource(mode.helpScopeRes)),
+        )
         return
     }
     IconButton(onClick = onToggleSearch) {
@@ -482,6 +559,13 @@ private fun RowScope.ManualGridTopBarActions(
             contentDescription = stringResource(R.string.manual_select_mode_cd),
         )
     }
+    // Before the overflow and the destructive buttons rather than after them: on
+    // every other page help is the last action, but here the row ends in an empty
+    // bin or a red delete, and those have to stay at the edge the thumb expects.
+    HelpAction(
+        title = stringResource(R.string.grid_help_title),
+        message = stringResource(R.string.grid_help_message, stringResource(mode.helpScopeRes)),
+    )
     if (overflowActions.isNotEmpty() && hasMedia) {
         OverlayActionPopup(
             show = showOverflow,
@@ -863,7 +947,7 @@ private fun SelectionToolbar(
                     enabled = hasSelection,
                     onClick = onRemoveFromCollection,
                 )
-            } else {
+            } else if (mode != MediaGridMode.PROCESSING_PICKER) {
                 ToolbarAction(
                     icon = Icons.AutoMirrored.Filled.Undo,
                     label = stringResource(R.string.marked_restore),
@@ -884,46 +968,21 @@ private fun SelectionToolbar(
             if (onCompressSelected != null) {
                 ToolbarAction(
                     icon = Icons.Default.Compress,
-                    label = stringResource(R.string.manual_compress),
+                    // On the picker this button is the only way forward, so it says
+                    // what happens next rather than naming the operation.
+                    label = stringResource(
+                        if (mode == MediaGridMode.PROCESSING_PICKER) {
+                            R.string.processing_start
+                        } else {
+                            R.string.manual_compress
+                        },
+                    ),
                     tint = AccentBlue,
                     enabled = hasSelection,
                     onClick = onCompressSelected,
                 )
             }
         }
-    }
-}
-
-/** Icon-plus-caption action sized for the selection [FloatingToolbar]. */
-@Composable
-private fun ToolbarAction(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    label: String,
-    onClick: () -> Unit,
-    tint: androidx.compose.ui.graphics.Color? = null,
-    enabled: Boolean = true,
-) {
-    val resolvedTint = tint ?: MiuixTheme.colorScheme.onSurfaceContainer
-    Column(
-        Modifier
-            .clip(RoundedCornerShape(18.dp))
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(1.dp),
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = label,
-            tint = if (enabled) resolvedTint else resolvedTint.copy(alpha = .38f),
-            modifier = Modifier.size(21.dp),
-        )
-        Text(
-            text = label,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Medium,
-            color = if (enabled) resolvedTint else resolvedTint.copy(alpha = .38f),
-        )
     }
 }
 
