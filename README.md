@@ -40,7 +40,7 @@
 
 ## 下载与安装
 
-当前版本 **v8.1**（`versionCode 9`）。
+当前版本 **v8.2**（`versionCode 10`）。
 
 [nightly 预发布](https://github.com/lswlc33/photo/releases/tag/nightly)跟着 master 走：每次推送都自动构建，检查通过后把新的 APK 刷新到同一个位置。它是 **nightly 构建** —— 代码压缩、资源压缩、「不可调试」和签名密钥都和正式版一致（约 5 MB），区别只是它构建自 master 的任意一个提交。
 
