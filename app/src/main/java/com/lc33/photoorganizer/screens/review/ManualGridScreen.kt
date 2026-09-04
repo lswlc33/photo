@@ -48,9 +48,10 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -58,11 +59,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
@@ -111,10 +114,9 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import top.yukonga.miuix.kmp.utils.overScrollVertical
 import top.yukonga.miuix.kmp.utils.scrollEndHaptic
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
+import kotlin.math.abs
 import kotlin.math.roundToInt
 
 enum class MediaGridMode {
@@ -764,6 +766,27 @@ private fun BoxScope.ManualGridDateScrubber(
 /**
  * Grid-aware scrubber. MIUIX's generic scrollbar adapter maps one lazy item to
  * one row, which is incorrect here because date headers span every column.
+ *
+ * Two things here are load-bearing and both were once wrong, which left the strip
+ * able to jump on a tap but unable to be dragged at all:
+ *
+ * 1. The gesture is keyed on nothing. It used to be keyed on [totalItems] and
+ *    [visibleItems], and `visibleItemsInfo.size` swings by up to a row's worth on
+ *    every scroll - including the scroll the scrubber itself just caused. A changed
+ *    `pointerInput` key cancels and relaunches the handler, so the very first
+ *    scrub killed its own gesture; the relaunched handler then sat in
+ *    `awaitFirstDown`, which never fires again for a finger that is already down.
+ *    Both numbers are read through [rememberUpdatedState] instead.
+ * 2. Scrolling goes through `requestScrollToItem`, which is not a suspend call and
+ *    does not take the grid's scroll mutex. `scrollToItem` does, at
+ *    `MutatePriority.Default`, and it was being cancelled and relaunched once per
+ *    pointer event, so a fast drag spent its time restarting a scroll that never
+ *    got to run.
+ *
+ * Neither the thumb position nor the index range is computed inline: both go through
+ * [scrubberFraction], [scrubberMaxIndex] and [scrubberProgress], so the pixel the
+ * user grabbed, the pixel the thumb is drawn at, and the item the grid lands on
+ * cannot drift apart. Those three are pure Kotlin and have JVM tests.
  */
 @Composable
 private fun ManualGridScrubber(
@@ -773,28 +796,72 @@ private fun ManualGridScrubber(
     onScrubbingChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val scope = rememberCoroutineScope()
     val density = LocalDensity.current
+    val haptics = LocalHapticFeedback.current
     val thumbHeight = 48.dp
     val thumbHeightPx = with(density) { thumbHeight.toPx() }
     var trackHeightPx by remember { mutableFloatStateOf(0f) }
-    var scrollJob by remember { mutableStateOf<Job?>(null) }
-    val maxIndex = (totalItems - visibleItems).coerceAtLeast(1)
-    val progress by remember(state, maxIndex) {
-        derivedStateOf { (state.firstVisibleItemIndex.toFloat() / maxIndex).coerceIn(0f, 1f) }
+    // NaN means "the grid is driving"; anything else is a live drag. A nullable
+    // Float would box on every pointer event, and this is written at touch rate.
+    var dragProgress by remember { mutableFloatStateOf(Float.NaN) }
+    // The last index actually requested. requestScrollToItem invalidates the grid's
+    // measure scope unconditionally, so re-requesting the index it is already on
+    // costs a whole measure pass - and a slow drag maps most of its events to the
+    // same index.
+    var requestedIndex by remember { mutableIntStateOf(-1) }
+    // Captured by the gesture below, which is created once. Reading the parameters
+    // directly there would freeze them at their first-composition values.
+    val currentTotal by rememberUpdatedState(totalItems)
+    val currentVisible by rememberUpdatedState(visibleItems)
+    val currentOnScrubbingChange by rememberUpdatedState(onScrubbingChange)
+
+    // Deferred deliberately. Reading either state in the composable body would
+    // record the read against this composable's restart scope, so a drag - or any
+    // fling, since gridProgress now moves with firstVisibleItemScrollOffset -
+    // recomposed the strip and rebuilt its whole modifier chain every frame. Read
+    // through a State instead, and only from inside semantics and graphicsLayer,
+    // and a frame costs one layer re-record. The elvis also drops gridProgress
+    // from the dependency set entirely while a drag is live.
+    val progress by remember(state) {
+        derivedStateOf {
+            dragProgress.takeUnless { it.isNaN() } ?: run {
+                val info = state.layoutInfo
+                val first = info.visibleItemsInfo.firstOrNull()
+                scrubberProgress(
+                    firstVisibleItemIndex = state.firstVisibleItemIndex,
+                    firstVisibleItemScrollOffset = state.firstVisibleItemScrollOffset,
+                    firstLineHeight = first?.size?.height ?: 0,
+                    firstLineItemCount = if (first == null) {
+                        0
+                    } else {
+                        info.visibleItemsInfo.count { it.row == first.row }
+                    },
+                    totalItems = currentTotal,
+                    visibleItems = currentVisible,
+                )
+            }
+        }
     }
+
+    // Top edge of the thumb for a given fraction. Shared with the gesture below,
+    // which has to know where the thumb is drawn to decide whether it was grabbed.
+    fun thumbTopPx(fraction: Float): Float =
+        fraction * (trackHeightPx - thumbHeightPx).coerceAtLeast(0f)
 
     fun scrubTo(positionY: Float) {
         if (trackHeightPx <= 0f) return
-        val targetIndex = scrubberTargetIndex(
+        dragProgress = scrubberFraction(positionY, trackHeightPx, thumbHeightPx)
+        val target = scrubberTargetIndex(
             positionY = positionY,
             trackHeight = trackHeightPx,
             thumbHeight = thumbHeightPx,
-            totalItems = totalItems,
-            visibleItems = visibleItems,
+            totalItems = currentTotal,
+            visibleItems = currentVisible,
         )
-        scrollJob?.cancel()
-        scrollJob = scope.launch { state.scrollToItem(targetIndex) }
+        if (target != requestedIndex) {
+            requestedIndex = target
+            state.requestScrollToItem(target)
+        }
     }
 
     Box(
@@ -806,25 +873,54 @@ private fun ManualGridScrubber(
             .semantics {
                 progressBarRangeInfo = ProgressBarRangeInfo(progress, 0f..1f)
                 setProgress { requested ->
-                    scrubTo(requested.coerceIn(0f, 1f) * trackHeightPx)
+                    // Inverse of scrubberFraction, not a bare multiply: the mapping
+                    // measures from the thumb's centre over the track minus the
+                    // thumb, so scaling the raw track height landed roughly half a
+                    // thumb off and disagreed with the value read back above.
+                    scrubTo(scrubberPositionY(requested, trackHeightPx, thumbHeightPx))
+                    dragProgress = Float.NaN
                     true
                 }
             }
-            .pointerInput(totalItems, visibleItems) {
+            .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
-                    onScrubbingChange(true)
-                    scrubTo(down.position.y)
+                    down.consume()
+                    currentOnScrubbingChange(true)
+                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                    // Pressing the thumb keeps it under the finger; pressing bare
+                    // track centres it on the touch. Without the offset, grabbing
+                    // the thumb teleported it to the touch point first, which is
+                    // the one thing a held-and-dragged thumb must not do.
+                    //
+                    // `progress` is read here rather than captured from
+                    // composition: this lambda is built once, so a captured value
+                    // would be whatever it was when the grid first laid out.
+                    val thumbCentre = thumbTopPx(progress) + thumbHeightPx / 2f
+                    val grab = if (abs(down.position.y - thumbCentre) <= thumbHeightPx / 2f) {
+                        down.position.y - thumbCentre
+                    } else {
+                        0f
+                    }
+                    scrubTo(down.position.y - grab)
                     try {
                         while (true) {
                             val event = awaitPointerEvent()
                             val pointer = event.changes.firstOrNull { it.id == down.id } ?: break
-                            scrubTo(pointer.position.y)
                             pointer.consume()
+                            // Applied before the break, so the release position is
+                            // not discarded. A flick can arrive as down-then-up with
+                            // no move between them, and that whole displacement used
+                            // to be lost.
+                            scrubTo(pointer.position.y - grab)
                             if (!pointer.pressed) break
                         }
                     } finally {
-                        onScrubbingChange(false)
+                        currentOnScrubbingChange(false)
+                        // Handed back only on release, so the thumb never snaps to
+                        // a stale index for a frame mid-drag.
+                        dragProgress = Float.NaN
+                        requestedIndex = -1
                     }
                 }
             },
@@ -842,7 +938,7 @@ private fun ManualGridScrubber(
                 .width(6.dp)
                 .height(thumbHeight)
                 .graphicsLayer {
-                    translationY = progress * (trackHeightPx - thumbHeightPx).coerceAtLeast(0f)
+                    translationY = thumbTopPx(progress)
                 }
                 .background(MiuixTheme.colorScheme.primary, RoundedCornerShape(3.dp)),
         )
@@ -1077,6 +1173,31 @@ private data class ScrollMetrics(
     val visibleItems: Int,
 )
 
+/**
+ * How far along the track a touch at [positionY] is, as a fraction.
+ *
+ * The thumb is [thumbHeight] tall and cannot hang off either end, so the fraction is
+ * measured from its centre over the track minus its own height. Shared with the
+ * scrubber's drag handler, which needs the same number to place the thumb: two
+ * copies of this arithmetic would let the thumb and the grid disagree.
+ */
+internal fun scrubberFraction(positionY: Float, trackHeight: Float, thumbHeight: Float): Float {
+    val available = (trackHeight - thumbHeight).coerceAtLeast(1f)
+    return ((positionY - thumbHeight / 2f) / available).coerceIn(0f, 1f)
+}
+
+/** Inverse of [scrubberFraction]: the touch position a given fraction corresponds to. */
+internal fun scrubberPositionY(fraction: Float, trackHeight: Float, thumbHeight: Float): Float =
+    fraction.coerceIn(0f, 1f) * (trackHeight - thumbHeight).coerceAtLeast(1f) + thumbHeight / 2f
+
+/**
+ * Highest first-visible index the scrubber can reach - the one that puts the last
+ * screenful in view. Shared by the two directions of the mapping so the thumb ends
+ * up where the grid actually landed.
+ */
+internal fun scrubberMaxIndex(totalItems: Int, visibleItems: Int): Int =
+    (totalItems - visibleItems).coerceAtLeast(0)
+
 internal fun scrubberTargetIndex(
     positionY: Float,
     trackHeight: Float,
@@ -1085,8 +1206,36 @@ internal fun scrubberTargetIndex(
     visibleItems: Int,
 ): Int {
     if (totalItems <= 1 || trackHeight <= 0f) return 0
-    val available = (trackHeight - thumbHeight).coerceAtLeast(1f)
-    val progress = ((positionY - thumbHeight / 2f) / available).coerceIn(0f, 1f)
-    val maxIndex = (totalItems - visibleItems).coerceAtLeast(0)
-    return (progress * maxIndex).roundToInt().coerceIn(0, totalItems - 1)
+    val progress = scrubberFraction(positionY, trackHeight, thumbHeight)
+    return (progress * scrubberMaxIndex(totalItems, visibleItems))
+        .roundToInt()
+        .coerceIn(0, totalItems - 1)
+}
+
+/**
+ * Where the thumb sits, as a fraction of the track, while the grid is driving it.
+ *
+ * [firstVisibleItemIndex] alone steps a whole item at a time and a row holds
+ * [GridColumns] of them, so on its own it moved the thumb in visible jumps of
+ * three items. The scroll offset inside the first visible line fills that gap;
+ * [firstLineItemCount] is how many items that line actually holds, which is one
+ * for a date header and up to [GridColumns] for a line of tiles.
+ */
+internal fun scrubberProgress(
+    firstVisibleItemIndex: Int,
+    firstVisibleItemScrollOffset: Int,
+    firstLineHeight: Int,
+    firstLineItemCount: Int,
+    totalItems: Int,
+    visibleItems: Int,
+): Float {
+    if (totalItems <= 1) return 0f
+    // Floored at one only to divide by it; the range itself is the shared one.
+    val maxIndex = scrubberMaxIndex(totalItems, visibleItems).coerceAtLeast(1)
+    val within = if (firstLineHeight > 0) {
+        (firstVisibleItemScrollOffset.toFloat() / firstLineHeight) * firstLineItemCount
+    } else {
+        0f
+    }
+    return ((firstVisibleItemIndex + within) / maxIndex).coerceIn(0f, 1f)
 }
