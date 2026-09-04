@@ -7,7 +7,9 @@ import java.io.File
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,6 +25,15 @@ data class SimilarAnalysisState(
     val hashedCount: Int = 0,
     val totalCount: Int = 0,
     val groups: List<DuplicateGroup> = emptyList(),
+    /**
+     * True when the pass ended on a failure rather than on an answer.
+     *
+     * It used to be caught and turned into an empty result, so a SecurityException from
+     * access revoked mid-pass, or an OutOfMemoryError from a decode, was indistinguishable
+     * from a clean library: the tools page said "nothing found" and the reclaimable total
+     * dropped to zero.
+     */
+    val failed: Boolean = false,
 ) {
     val isRunning: Boolean get() = status == SimilarAnalysisStatus.RUNNING
     val isReady: Boolean get() = status == SimilarAnalysisStatus.READY
@@ -39,6 +50,8 @@ data class MediaIndexState(
     val error: Throwable? = null,
     val analyzingDuplicates: Boolean = false,
     val duplicateGroups: List<DuplicateGroup> = emptyList(),
+    /** True when the exact-duplicate pass ended on a failure; see [SimilarAnalysisState.failed]. */
+    val duplicateAnalysisFailed: Boolean = false,
     val similar: SimilarAnalysisState = SimilarAnalysisState(),
 )
 
@@ -50,21 +63,38 @@ class MediaIndexViewModel(application: Application) : AndroidViewModel(applicati
     private val fingerprintStore = MediaFingerprintStore(File(application.filesDir, FingerprintFileName))
     private val hashCache = MediaHashCache()
     private var scanJob: Job? = null
-    private var duplicateJob: Job? = null
     private var similarJob: Job? = null
-    private var refreshGeneration = 0L
 
-    init {
-        // Seeding from disk turns the second launch of a large library into a
-        // no-op instead of another full read of every candidate file.
-        viewModelScope.launch(Dispatchers.IO) { hashCache.putAll(fingerprintStore.load()) }
+    /**
+     * Which refresh a coroutine belongs to.
+     *
+     * Atomic because it is written from the main thread by [refresh] and read from the
+     * IO threads the passes run on, and as a plain `var` there was no happens-before
+     * edge between the two - a stale read was a legal outcome, which for a guard whose
+     * whole job is "am I still the current generation" is the one thing it cannot be.
+     */
+    private val refreshGeneration = java.util.concurrent.atomic.AtomicLong()
+
+    /** Generation of the similar pass, so cancelling one cannot reset the next. */
+    private val similarGeneration = java.util.concurrent.atomic.AtomicLong()
+
+    /**
+     * The disk seed, joined before either pass starts.
+     *
+     * Nothing used to order this against the scan launched from the first composition,
+     * so on a cold start the duplicate pass could begin hashing before the seed landed
+     * and the whole point of persisting fingerprints - not re-reading every candidate
+     * file on the second launch - silently did not happen.
+     */
+    private val fingerprintSeed: Job = viewModelScope.launch(Dispatchers.IO) {
+        hashCache.putAll(fingerprintStore.load())
     }
 
     fun refresh(permissionState: MediaPermissionState, scope: IndexScope) {
-        val generation = ++refreshGeneration
-        scanJob?.cancel()
-        duplicateJob?.cancel()
+        val generation = refreshGeneration.incrementAndGet()
+        val previousScan = scanJob
         similarJob?.cancel()
+        similarGeneration.incrementAndGet()
         if (!permissionState.hasAccess) {
             _state.value = MediaIndexState()
             return
@@ -79,14 +109,22 @@ class MediaIndexViewModel(application: Application) : AndroidViewModel(applicati
         }
         scanJob = viewModelScope.launch(Dispatchers.IO) {
             try {
+                // Joined, not just cancelled. cancel() returns immediately, and the
+                // scan is blocking code, so launching the replacement without waiting
+                // let two full MediaStore walks run at once - two live cursors and two
+                // complete item lists on a twenty thousand item library.
+                previousScan?.let { runCatching { it.join() } }
+                val indexJob = currentCoroutineContext()[Job]
                 val snapshot = MediaStoreIndexer(resolver).scan(
                     includeImages = permissionState.images || permissionState.selectedOnly,
                     includeVideos = permissionState.videos || permissionState.selectedOnly,
                     permissionLimited = permissionState.isLimited,
+                    permissionSelectedOnly = permissionState.selectedOnly,
                     scope = scope,
+                    checkActive = { indexJob?.ensureActive() },
                 )
                 currentCoroutineContext().ensureActive()
-                if (generation != refreshGeneration) return@launch
+                if (generation != refreshGeneration.get()) return@launch
                 _state.update {
                     it.copy(
                         scanning = false,
@@ -94,19 +132,24 @@ class MediaIndexViewModel(application: Application) : AndroidViewModel(applicati
                         error = null,
                         analyzingDuplicates = snapshot.items.isNotEmpty(),
                         duplicateGroups = emptyList(),
+                        duplicateAnalysisFailed = false,
                         similar = SimilarAnalysisState(),
                     )
                 }
                 // Only prune once the scan covered everything; a scoped or
                 // partial-permission scan would otherwise throw away good hashes.
-                if (scope.mode == IndexScopeMode.ALL && !permissionState.isLimited) {
+                if (scope.mode == IndexScopeMode.ALL && !permissionState.selectedOnly) {
                     hashCache.retain(snapshot.items)
                 }
-                duplicateJob = launchDuplicateAnalysis(snapshot.items, generation)
+                // A child of this coroutine rather than a sibling on viewModelScope, so
+                // cancelling the scan reaches it and no separate job handle - written
+                // from an IO thread while refresh() wrote it from the main one - has to
+                // be tracked at all.
+                runDuplicateAnalysis(snapshot.items, generation)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (failure: Throwable) {
-                if (generation == refreshGeneration) {
+                if (generation == refreshGeneration.get()) {
                     _state.update { it.copy(scanning = false, error = failure, analyzingDuplicates = false) }
                 }
             }
@@ -121,7 +164,12 @@ class MediaIndexViewModel(application: Application) : AndroidViewModel(applicati
     fun analyzeSimilar() {
         val items = _state.value.snapshot?.items?.filter { it.type == IndexedMediaType.IMAGE }.orEmpty()
         if (items.isEmpty() || _state.value.similar.isRunning) return
-        val generation = refreshGeneration
+        // Its own generation, bumped by both starting and cancelling. Guarding on the
+        // refresh generation alone meant cancel-then-restart let the cancelled
+        // coroutine reach its catch block afterwards and write IDLE over the new run:
+        // the UI showed idle while a pass kept burning CPU, and the button came back
+        // enabled so a third tap started a second concurrent pass.
+        val generation = similarGeneration.incrementAndGet()
         similarJob?.cancel()
         _state.update {
             it.copy(
@@ -133,6 +181,7 @@ class MediaIndexViewModel(application: Application) : AndroidViewModel(applicati
         }
         similarJob = viewModelScope.launch(Dispatchers.IO) {
             try {
+                fingerprintSeed.join()
                 val analysisJob = currentCoroutineContext()[Job]
                 var hashed = 0
                 val groups = groupSimilarItems(
@@ -143,7 +192,7 @@ class MediaIndexViewModel(application: Application) : AndroidViewModel(applicati
                             PerceptualHasher.hashOf(resolver, item.uri) { analysisJob?.ensureActive() }
                         }
                         hashed++
-                        if (hashed % ProgressReportInterval == 0 && generation == refreshGeneration) {
+                        if (hashed % ProgressReportInterval == 0 && generation == similarGeneration.get()) {
                             _state.update { state ->
                                 state.copy(similar = state.similar.copy(hashedCount = hashed))
                             }
@@ -158,8 +207,7 @@ class MediaIndexViewModel(application: Application) : AndroidViewModel(applicati
                     )
                 }.sortedByDescending { it.reclaimableBytes }
                 currentCoroutineContext().ensureActive()
-                persistFingerprints()
-                if (generation != refreshGeneration) return@launch
+                if (generation != similarGeneration.get()) return@launch
                 _state.update {
                     it.copy(
                         similar = SimilarAnalysisState(
@@ -171,27 +219,34 @@ class MediaIndexViewModel(application: Application) : AndroidViewModel(applicati
                     )
                 }
             } catch (cancelled: CancellationException) {
-                if (generation == refreshGeneration) {
+                if (generation == similarGeneration.get()) {
                     _state.update { it.copy(similar = SimilarAnalysisState()) }
                 }
                 throw cancelled
             } catch (_: Throwable) {
-                if (generation == refreshGeneration) {
-                    _state.update { it.copy(similar = SimilarAnalysisState()) }
+                if (generation == similarGeneration.get()) {
+                    _state.update { it.copy(similar = SimilarAnalysisState(failed = true)) }
                 }
+            } finally {
+                // In the finally, not on the success path. Cancelling at 90% of a
+                // twenty thousand image pass used to discard every hash it had computed,
+                // because they only reached disk if the pass finished - so the next
+                // launch decoded all of them again.
+                withContext(NonCancellable) { persistFingerprints() }
             }
         }
     }
 
     fun cancelSimilarAnalysis() {
+        similarGeneration.incrementAndGet()
         similarJob?.cancel()
         similarJob = null
         _state.update { it.copy(similar = SimilarAnalysisState()) }
     }
 
-    private fun launchDuplicateAnalysis(items: List<IndexedMedia>, generation: Long): Job =
-        viewModelScope.launch(Dispatchers.IO) {
+    private suspend fun runDuplicateAnalysis(items: List<IndexedMedia>, generation: Long) {
         try {
+            fingerprintSeed.join()
             val analysisJob = currentCoroutineContext()[Job]
             val groups = ToolAnalyzer.analyzeDuplicates(
                 items = items,
@@ -202,15 +257,24 @@ class MediaIndexViewModel(application: Application) : AndroidViewModel(applicati
                 },
             )
             currentCoroutineContext().ensureActive()
-            persistFingerprints()
-            if (generation != refreshGeneration) return@launch
-            _state.update { it.copy(analyzingDuplicates = false, duplicateGroups = groups) }
+            if (generation != refreshGeneration.get()) return
+            _state.update {
+                it.copy(analyzingDuplicates = false, duplicateGroups = groups, duplicateAnalysisFailed = false)
+            }
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (_: Throwable) {
-            if (generation == refreshGeneration) {
-                _state.update { it.copy(analyzingDuplicates = false, duplicateGroups = emptyList()) }
+            if (generation == refreshGeneration.get()) {
+                _state.update {
+                    it.copy(
+                        analyzingDuplicates = false,
+                        duplicateGroups = emptyList(),
+                        duplicateAnalysisFailed = true,
+                    )
+                }
             }
+        } finally {
+            withContext(NonCancellable) { persistFingerprints() }
         }
     }
 

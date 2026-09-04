@@ -55,6 +55,13 @@ data class PendingMedia(
     val isVideo: Boolean,
     val sizeBytes: Long,
     val relativePath: String? = null,
+    /**
+     * Capture time, carried so the commit can stamp it onto the copy's MediaStore
+     * row. Without it the row has whatever the platform can scrape out of the file,
+     * which for a WebP or a freshly muxed mp4 is nothing or "now" - so the copy
+     * sorted to the top of the gallery instead of next to the photo it came from.
+     */
+    val dateTakenMillis: Long? = null,
 )
 
 /** Null when the item has no resolvable content [Uri] and cannot be processed. */
@@ -65,8 +72,20 @@ fun UiMedia.toPendingMedia(): PendingMedia? = uri?.let { source ->
         isVideo = isVideo,
         sizeBytes = sizeBytes,
         relativePath = relativePath,
+        dateTakenMillis = dateTakenMillis,
     )
 }
+
+/**
+ * Extensions treated as camera raw.
+ *
+ * A file-level constant rather than a `setOf` inside [isRawMedia]: that call is on
+ * the per-item projection the whole library goes through, so building a ten-element
+ * `HashSet` inside it allocated one per photo on every re-derivation.
+ */
+private val RawExtensions = setOf(
+    "arw", "cr2", "cr3", "dng", "nef", "orf", "pef", "raf", "rw2", "srw",
+)
 
 private fun isRawMedia(displayName: String, mimeType: String): Boolean {
     val normalizedMime = mimeType.lowercase()
@@ -79,7 +98,5 @@ private fun isRawMedia(displayName: String, mimeType: String): Boolean {
     ) {
         return true
     }
-    return displayName.substringAfterLast('.', missingDelimiterValue = "").lowercase() in setOf(
-        "arw", "cr2", "cr3", "dng", "nef", "orf", "pef", "raf", "rw2", "srw",
-    )
+    return displayName.substringAfterLast('.', missingDelimiterValue = "").lowercase() in RawExtensions
 }

@@ -93,12 +93,12 @@ class ReleaseFeedTest {
             """
             [
               {"tag_name":"v9.0","draft":true,"prerelease":false,
-               "assets":[{"name":"photo-organizer-v9.0.apk","browser_download_url":"https://x/a.apk"}]},
+               "assets":[{"name":"photo-organizer-v9.0.apk","browser_download_url":"https://github.com/lswlc33/photo/releases/download/x/a.apk"}]},
               {"tag_name":"v8.9","draft":false,"prerelease":false,"assets":[]},
               {"tag_name":"v8.8","draft":false,"prerelease":false,
-               "assets":[{"name":"notes.txt","browser_download_url":"https://x/notes.txt"}]},
+               "assets":[{"name":"notes.txt","browser_download_url":"https://github.com/lswlc33/photo/releases/download/x/notes.txt"}]},
               {"tag_name":"v8.7","draft":false,"prerelease":false,
-               "assets":[{"name":"photo-organizer-v8.7.apk","browser_download_url":"https://x/a.apk"}]}
+               "assets":[{"name":"photo-organizer-v8.7.apk","browser_download_url":"https://github.com/lswlc33/photo/releases/download/x/a.apk"}]}
             ]
             """.trimIndent(),
         )
@@ -121,10 +121,10 @@ class ReleaseFeedTest {
             """
             [
               {"tag_name":"v9.0-rc1","draft":false,"prerelease":true,
-               "assets":[{"name":"photo-organizer-v9.0.apk","browser_download_url":"https://x/rc.apk"}]},
+               "assets":[{"name":"photo-organizer-v9.0.apk","browser_download_url":"https://github.com/lswlc33/photo/releases/download/x/rc.apk"}]},
               {"tag_name":"nightly","draft":false,"prerelease":true,
                "target_commitish":"aaaaaaabbbbbbbcccccccddddddd0000000",
-               "assets":[{"name":"photo-organizer-v8.1-aaaaaaa.apk","browser_download_url":"https://x/n.apk"}]}
+               "assets":[{"name":"photo-organizer-v8.1-aaaaaaa.apk","browser_download_url":"https://github.com/lswlc33/photo/releases/download/x/n.apk"}]}
             ]
             """.trimIndent(),
         )
@@ -137,7 +137,7 @@ class ReleaseFeedTest {
         val onlyPrerelease = ReleaseFeed.parse(
             """
             [{"tag_name":"nightly","draft":false,"prerelease":true,
-              "assets":[{"name":"photo-organizer-v8.1-a.apk","browser_download_url":"https://x/n.apk"}]}]
+              "assets":[{"name":"photo-organizer-v8.1-a.apk","browser_download_url":"https://github.com/lswlc33/photo/releases/download/x/n.apk"}]}]
             """.trimIndent(),
         )
 
@@ -214,6 +214,117 @@ class ReleaseFeedTest {
         assertEquals(0, ReleaseFeed.compareVersions("v8.0", "8.0"))
         assertEquals(0, ReleaseFeed.compareVersions("8.1-rc1", "8.1"))
         assertTrue(ReleaseFeed.compareVersions("8.0", "8.1") < 0)
+    }
+
+    /**
+     * An unparseable segment used to be *removed*, which shifted every later
+     * segment left and let malformed text compare above a real version: `8.x.9`
+     * read as `[8, 9]` and beat `8.2`. The feed supplies the tag, so that was a
+     * way to fabricate an update.
+     */
+    @Test
+    fun anUnparseableSegmentKeepsItsPositionInsteadOfShiftingTheRest() {
+        assertTrue(ReleaseFeed.compareVersions("8.x.9", "8.2") < 0)
+        assertTrue(ReleaseFeed.compareVersions("8..9", "8.2") < 0)
+        assertEquals(0, ReleaseFeed.compareVersions("8.x.9", "8.0.9"))
+        // Long overflow is an unparseable segment too, and lands on the same side.
+        assertTrue(ReleaseFeed.compareVersions("8.99999999999999999999", "8.2") < 0)
+    }
+
+    /**
+     * The feed is read through public reverse proxies that can rewrite the body,
+     * so the URL the user is told to install is untrusted until the host is
+     * checked. Everything here would previously have rendered as a download row.
+     */
+    @Test
+    fun dropsAssetsThatAreNotServedByGitHub() {
+        val hostile = listOf(
+            "http://github.com/lswlc33/photo/releases/download/v9.9/app.apk",
+            "https://evil.example/app.apk",
+            "https://github.com.evil.example/app.apk",
+            "https://github.com@evil.example/app.apk",
+            "https://user:pass@github.com/app.apk",
+            "market://details?id=com.example",
+            "intent://scan/#Intent;scheme=zxing;end",
+            "content://com.example.provider/app.apk",
+            "",
+        )
+
+        hostile.forEach { url ->
+            val releases = ReleaseFeed.parse(
+                """[{"tag_name":"v9.9","draft":false,"prerelease":false,
+                   "assets":[{"name":"photo-organizer-v9.9.apk","browser_download_url":"$url"}]}]""",
+            )
+
+            assertEquals(url, emptyList<String>(), releases.map { it.tag })
+        }
+    }
+
+    @Test
+    fun acceptsTheTwoHostsGitHubActuallyServesAssetsFrom() {
+        assertTrue(
+            ReleaseFeed.isTrustedAssetUrl(
+                "https://github.com/lswlc33/photo/releases/download/v8.0/photo-organizer-v8.0.apk",
+            ),
+        )
+        assertTrue(ReleaseFeed.isTrustedAssetUrl("https://objects.githubusercontent.com/github-production/x"))
+        assertTrue(ReleaseFeed.isTrustedAssetUrl("HTTPS://GitHub.com/a.apk"))
+    }
+
+    /**
+     * A tag reaches the download row verbatim, so a right-to-left override in it
+     * controls what the row appears to offer.
+     */
+    @Test
+    fun stripsControlAndBidiCharactersFromDisplayedText() {
+        val release = ReleaseFeed.parse(
+            """[{"tag_name":"v9.9\u202Ekpa.live","draft":false,"prerelease":false,
+               "body":"line\u0000one","published_at":"2026-01-01T00:00:00Z",
+               "assets":[{"name":"photo-organizer-v9.9\u200E.apk",
+                 "browser_download_url":"https://github.com/lswlc33/photo/releases/download/v9.9/a.apk"}]}]""",
+        ).single()
+
+        assertEquals("v9.9kpa.live", release.tag)
+        assertEquals("9.9kpa.live", release.version)
+        assertEquals("lineone", release.notes)
+        assertEquals("photo-organizer-v9.9.apk", release.assetName)
+    }
+
+    /**
+     * `target_commitish` is abbreviated on some releases and full on others, and a
+     * one-directional prefix test reported "newer" forever whenever the installed
+     * side happened to be the longer of the two.
+     */
+    @Test
+    fun devMatchesCommitsOverTheShorterOfTheTwo() {
+        val nightly = ReleaseFeed.parse(
+            """[{"tag_name":"nightly","draft":false,"prerelease":true,
+               "target_commitish":"d807512",
+               "assets":[{"name":"photo-organizer-v8.1-d807512.apk",
+                 "browser_download_url":"https://github.com/lswlc33/photo/releases/download/nightly/a.apk"}]}]""",
+        ).single()
+
+        assertEquals(
+            ReleaseFeed.Comparison.CURRENT,
+            ReleaseFeed.compare(
+                nightly,
+                UpdateChannel.DEV,
+                installedVersion = "8.1",
+                installedCommit = "d807512d7ad15415f070ac2476ced19e63f1a3ac",
+            ),
+        )
+    }
+
+    /** A negative size would render as an absurd download size. */
+    @Test
+    fun clampsANegativeAssetSizeToZero() {
+        val release = ReleaseFeed.parse(
+            """[{"tag_name":"v9.9","draft":false,"prerelease":false,
+               "assets":[{"name":"photo-organizer-v9.9.apk","size":-1,
+                 "browser_download_url":"https://github.com/lswlc33/photo/releases/download/v9.9/a.apk"}]}]""",
+        ).single()
+
+        assertEquals(0L, release.assetBytes)
     }
 
     @Test

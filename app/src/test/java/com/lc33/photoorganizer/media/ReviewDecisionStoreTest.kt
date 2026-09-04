@@ -53,11 +53,46 @@ class ReviewDecisionStoreTest {
 
         val live = store.load()
         assertEquals(21, store.lastLineCount)
-        assertTrue(store.compact(live))
+        assertTrue(store.compact(live.keys))
 
         val reloaded = ReviewDecisionStore(file)
         assertEquals(live, reloaded.load())
         assertEquals("compaction should leave one line per decision", 2, reloaded.lastLineCount)
+    }
+
+    /**
+     * compact() takes the keys to keep and re-reads the log, rather than trusting a map
+     * the caller assembled earlier. The caller builds that map by replaying the file and
+     * then walking the whole library, which takes long enough for a mark to land in
+     * between - and handing the stale snapshot back deleted it.
+     */
+    @Test
+    fun compactionKeepsADecisionThatLandedAfterTheCallerReadTheLog() {
+        val file = File(folder.root, "review-decisions.tsv")
+        val store = ReviewDecisionStore(file)
+        store.append(mapOf(KEY_A to ReviewState.KEPT))
+        val snapshotKeys = store.load().keys
+
+        // The mark the caller's snapshot cannot know about.
+        store.append(mapOf(KEY_B to ReviewState.TRASH_MARKED))
+        assertTrue(store.compact(snapshotKeys + KEY_B))
+
+        assertEquals(
+            mapOf(KEY_A to ReviewState.KEPT, KEY_B to ReviewState.TRASH_MARKED),
+            ReviewDecisionStore(file).load(),
+        )
+    }
+
+    /** A key that is no longer in the library is what compaction is for. */
+    @Test
+    fun compactionDropsKeysThatAreNoLongerActive() {
+        val file = File(folder.root, "review-decisions.tsv")
+        val store = ReviewDecisionStore(file)
+        store.append(mapOf(KEY_A to ReviewState.KEPT, KEY_B to ReviewState.TRASH_MARKED))
+
+        assertTrue(store.compact(setOf(KEY_B)))
+
+        assertEquals(mapOf(KEY_B to ReviewState.TRASH_MARKED), ReviewDecisionStore(file).load())
     }
 
     @Test
@@ -67,7 +102,7 @@ class ReviewDecisionStoreTest {
         store.append(mapOf(KEY_A to ReviewState.KEPT))
         assertTrue(file.isFile)
 
-        assertTrue(store.compact(emptyMap()))
+        assertTrue(store.compact(emptySet()))
         assertFalse(file.exists())
         assertEquals(emptyMap<String, ReviewState>(), ReviewDecisionStore(file).load())
     }

@@ -31,4 +31,3 @@ fun applyTargetFilters(items: List<IndexedMedia>, filters: TargetFilters): List<
     }
 }
 
-const val LARGE_FILE_THRESHOLD_BYTES: Long = 5L * 1024L * 1024L

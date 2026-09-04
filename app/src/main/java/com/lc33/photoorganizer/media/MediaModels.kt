@@ -30,7 +30,14 @@ data class MediaIndexSnapshot(
     val items: List<IndexedMedia>,
     val availableAlbums: List<String>,
     val scannedAtMillis: Long,
+    /** See [MediaPermissionState.isLimited]: the view may be partial, and the UI says so. */
     val permissionLimited: Boolean,
+    /**
+     * True only for user-selected access, where the visible set can change while the app
+     * is backgrounded. This is the flag that anything cache-invalidating must key on;
+     * [permissionLimited] is the wider "tell the user their view is partial" one.
+     */
+    val permissionSelectedOnly: Boolean = false,
 )
 
 data class MediaStatistics(
@@ -55,7 +62,13 @@ data class MediaStatistics(
                 photoCount = photos.size,
                 videoCount = videos.size,
                 screenshotCount = screenshots.size,
-                folderCount = items.mapNotNull { it.relativePath }.distinct().size,
+                // Normalized, like every other place a path is compared. Raw values
+                // counted `DCIM/Camera/` and `DCIM/Camera` twice, and case variants
+                // twice again, so the dashboard could report more folders than the
+                // album picker lists.
+                folderCount = items.mapNotNull { it.relativePath }
+                    .distinctBy(::normalizeAlbumPath)
+                    .size,
                 totalBytes = items.sumOf { it.sizeBytes },
                 photoBytes = photos.sumOf { it.sizeBytes },
                 videoBytes = videos.sumOf { it.sizeBytes },

@@ -11,6 +11,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -55,6 +56,8 @@ import top.yukonga.miuix.kmp.preference.OverlaySpinnerPreference
 import top.yukonga.miuix.kmp.preference.SliderPreference
 import top.yukonga.miuix.kmp.preference.SwitchPreference
 import top.yukonga.miuix.kmp.theme.MiuixTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 private data class ToolOption<T>(
@@ -147,7 +150,7 @@ fun MediaToolsScreen(
         VideoResolution.entries.map { option ->
             ToolOption(
                 value = option,
-                title = option.shortSidePx?.let { "${it}p" }
+                title = option.shortSidePx?.let { resources.getString(R.string.resolution_value, it) }
                     ?: resources.getString(R.string.media_tool_keep_original),
                 summary = resources.getString(option.descriptionRes()),
             )
@@ -165,28 +168,36 @@ fun MediaToolsScreen(
 
     // Only offer codecs this device can actually encode. Transformer treats an
     // impossible request as a fallback rather than an error, so without this the
-    // user picks AV1, waits out the export and silently gets H.264. The probe is
-    // a MediaCodecList walk, so it is remembered rather than repeated.
-    val codecOptions = remember(resources) {
-        val encoders = deviceVideoEncoders()
-        availableVideoCodecs(encoders).map { option ->
-            ToolOption(
-                value = option.codec,
-                title = resources.getString(option.codec.labelRes()),
-                summary = when {
-                    option.codec == VideoCodec.SOURCE ->
-                        resources.getString(R.string.media_tool_codec_source_desc)
-                    !option.hardware ->
-                        resources.getString(R.string.media_tool_codec_software_desc)
-                    else -> resources.getString(option.codec.descriptionRes())
-                },
-            )
+    // user picks AV1, waits out the export and silently gets H.264.
+    //
+    // Probed off the main thread rather than inside composition: deviceVideoEncoders()
+    // constructs a MediaCodecList and walks every codecInfo, which is tens to
+    // hundreds of milliseconds on a mid-range device. Remembering it stopped the
+    // repeat but not the first call, and the first call landed on the first frame of
+    // this screen. The list starts empty and the codec row is hidden until it fills,
+    // which is a frame or two.
+    val codecOptions by produceState(initialValue = emptyList<ToolOption<VideoCodec>>(), resources) {
+        value = withContext(Dispatchers.Default) {
+            availableVideoCodecs(deviceVideoEncoders()).map { option ->
+                ToolOption(
+                    value = option.codec,
+                    title = resources.getString(option.codec.labelRes()),
+                    summary = when {
+                        option.codec == VideoCodec.SOURCE ->
+                            resources.getString(R.string.media_tool_codec_source_desc)
+                        !option.hardware ->
+                            resources.getString(R.string.media_tool_codec_software_desc)
+                        else -> resources.getString(option.codec.descriptionRes())
+                    },
+                )
+            }
         }
     }
     // A codec that was available when the choice was made can disappear from the
-    // list; fall back rather than sending a request nothing can honour.
+    // list; fall back rather than sending a request nothing can honour. Guarded on
+    // the probe having answered - an empty list means "not known yet", not "none".
     LaunchedEffect(codecOptions) {
-        if (codecOptions.none { it.value == settings.videoCodec }) {
+        if (codecOptions.isNotEmpty() && codecOptions.none { it.value == settings.videoCodec }) {
             batchViewModel.updateSettings { it.copy(videoCodec = VideoCodec.SOURCE) }
         }
     }
@@ -327,7 +338,7 @@ private fun ImageToolOptions(
             },
             title = stringResource(R.string.media_tool_quality),
             summary = stringResource(R.string.media_tool_quality_hint),
-            valueText = "${settings.imageQuality}%",
+            valueText = stringResource(R.string.percent_value, settings.imageQuality),
             valueRange = 40f..100f,
             steps = 11,
             hapticEffect = SliderDefaults.SliderHapticEffect.Step,
@@ -388,15 +399,19 @@ private fun VideoToolOptions(
             enabled = !running,
             onSelect = { mode -> onChange { it.copy(trackMode = mode) } },
         )
-        ToolSpinnerPreference(
-            title = stringResource(R.string.media_tool_codec),
-            options = if (codecOptions.size > 1) {
+        // One entry is a statement about the device, not a choice; say why instead of
+        // showing a picker that cannot pick anything.
+        val onlyOneCodec = stringResource(R.string.media_tool_codec_only_one)
+        val codecItems = remember(codecOptions, onlyOneCodec) {
+            if (codecOptions.size > 1) {
                 codecOptions
             } else {
-                // One entry is a statement about the device, not a choice; say why
-                // instead of showing a picker that cannot pick anything.
-                codecOptions.map { it.copy(summary = stringResource(R.string.media_tool_codec_only_one)) }
-            },
+                codecOptions.map { it.copy(summary = onlyOneCodec) }
+            }
+        }
+        ToolSpinnerPreference(
+            title = stringResource(R.string.media_tool_codec),
+            options = codecItems,
             selected = settings.videoCodec,
             // There is no video track left to encode when extracting audio.
             enabled = !running && !audioOnly && codecOptions.size > 1,
@@ -560,8 +575,13 @@ private fun <T> ToolSpinnerPreference(
     onSelect: (T) -> Unit,
 ) {
     val selectedIndex = options.indexOfFirst { it.value == selected }.coerceAtLeast(0)
+    // Remembered because a SliderPreference drag on this page round-trips through
+    // the settings StateFlow, so every spinner on the screen recomposes on every
+    // drag frame - and rebuilding a DropdownItem list there is what AGENTS.md
+    // explicitly warns about.
+    val items = remember(options) { options.map { DropdownItem(title = it.title, summary = it.summary) } }
     OverlaySpinnerPreference(
-        items = options.map { DropdownItem(title = it.title, summary = it.summary) },
+        items = items,
         selectedIndex = selectedIndex,
         title = title,
         enabled = enabled,

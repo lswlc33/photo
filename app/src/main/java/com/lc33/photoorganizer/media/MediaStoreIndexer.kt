@@ -12,14 +12,27 @@ import org.xmlpull.v1.XmlPullParserFactory
 class MediaStoreIndexer(
     private val resolver: ContentResolver,
 ) {
+    /**
+     * Reads the library.
+     *
+     * [checkActive] is called once per row, and it is what makes a scan cancellable
+     * at all: this is blocking, non-suspending code, so a cancelled coroutine used to
+     * keep walking the whole CursorWindow and pull-parsing XMP per row before anything
+     * noticed. On a twenty thousand item library that meant a rescan - which an
+     * ON_RESUME or a scope change triggers - could run a second full MediaStore walk
+     * alongside the first, with two live cursors and two complete item lists.
+     */
     fun scan(
         includeImages: Boolean = true,
         includeVideos: Boolean = true,
         permissionLimited: Boolean = false,
+        permissionSelectedOnly: Boolean = false,
         scope: IndexScope = IndexScope(),
+        checkActive: () -> Unit = {},
     ): MediaIndexSnapshot {
-        val images = if (includeImages) queryImages() else emptyList()
-        val videos = if (includeVideos) queryVideos() else emptyList()
+        val images = if (includeImages) queryImages(checkActive) else emptyList()
+        val videos = if (includeVideos) queryVideos(checkActive) else emptyList()
+        checkActive()
         val allItems = (images + videos)
             .sortedByDescending { it.dateTakenMillis ?: 0L }
         val availableAlbums = allItems.mapNotNull { it.relativePath }
@@ -33,13 +46,17 @@ class MediaStoreIndexer(
             availableAlbums = availableAlbums,
             scannedAtMillis = System.currentTimeMillis(),
             permissionLimited = permissionLimited,
+            permissionSelectedOnly = permissionSelectedOnly,
         )
     }
 
-    private fun queryImages(): List<IndexedMedia> = runCatching {
-        query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageProjection, ::mapImage)
-    }.getOrElse {
-        query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, baseImageProjection, ::mapImage)
+    private fun queryImages(checkActive: () -> Unit): List<IndexedMedia> = runCatching {
+        query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, imageProjection, checkActive, ::mapImage)
+    }.getOrElse { failure ->
+        // A cancellation must not be mistaken for "the XMP column is unavailable" and
+        // answered by re-running the entire query without it.
+        if (failure is kotlinx.coroutines.CancellationException) throw failure
+        query(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, baseImageProjection, checkActive, ::mapImage)
     }
 
     private fun mapImage(cursor: Cursor): IndexedMedia {
@@ -57,7 +74,13 @@ class MediaStoreIndexer(
             width = cursor.getIntOrNull(MediaStore.Images.Media.WIDTH),
             height = cursor.getIntOrNull(MediaStore.Images.Media.HEIGHT),
             durationMillis = null,
-            dateTakenMillis = cursor.getLongOrNull(MediaStore.Images.Media.DATE_TAKEN)
+            // takeIf > 0 because getLongOrNull only falls back on a SQL NULL, and rows
+            // that carry a literal 0 are common - downloads, screenshots, anything an
+            // OEM scanner filed without a date. Accepted as a real timestamp, those
+            // sorted to 1970, were excluded by any start-date filter, and worst of all
+            // won DuplicateKeepStrategy.OLDEST, so a bulk cleanup kept the copy with
+            // the missing date.
+            dateTakenMillis = cursor.getLongOrNull(MediaStore.Images.Media.DATE_TAKEN)?.takeIf { it > 0L }
                 ?: cursor.getLongOrNull(MediaStore.Images.Media.DATE_MODIFIED)?.times(1000L),
             dateModifiedMillis = cursor.getLongOrNull(MediaStore.Images.Media.DATE_MODIFIED)?.times(1000L),
             relativePath = relativePath,
@@ -66,9 +89,10 @@ class MediaStoreIndexer(
         )
     }
 
-    private fun queryVideos(): List<IndexedMedia> = query(
+    private fun queryVideos(checkActive: () -> Unit): List<IndexedMedia> = query(
         MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
         videoProjection,
+        checkActive,
     ) { cursor ->
         val rawId = cursor.getLong(cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID))
         IndexedMedia(
@@ -81,7 +105,7 @@ class MediaStoreIndexer(
             width = cursor.getIntOrNull(MediaStore.Video.Media.WIDTH),
             height = cursor.getIntOrNull(MediaStore.Video.Media.HEIGHT),
             durationMillis = cursor.getLongOrNull(MediaStore.Video.Media.DURATION),
-            dateTakenMillis = cursor.getLongOrNull(MediaStore.Video.Media.DATE_TAKEN)
+            dateTakenMillis = cursor.getLongOrNull(MediaStore.Video.Media.DATE_TAKEN)?.takeIf { it > 0L }
                 ?: cursor.getLongOrNull(MediaStore.Video.Media.DATE_MODIFIED)?.times(1000L),
             dateModifiedMillis = cursor.getLongOrNull(MediaStore.Video.Media.DATE_MODIFIED)?.times(1000L),
             relativePath = cursor.getStringOrNull(MediaStore.Video.Media.RELATIVE_PATH),
@@ -89,10 +113,18 @@ class MediaStoreIndexer(
         )
     }
 
-    private fun <T> query(collection: Uri, projection: Array<String>, mapper: (Cursor) -> T): List<T> =
+    private fun <T> query(
+        collection: Uri,
+        projection: Array<String>,
+        checkActive: () -> Unit,
+        mapper: (Cursor) -> T,
+    ): List<T> =
         resolver.query(collection, projection, null, null, null)?.use { cursor ->
-            buildList {
-                while (cursor.moveToNext()) add(mapper(cursor))
+            buildList(cursor.count.coerceAtLeast(0)) {
+                while (cursor.moveToNext()) {
+                    checkActive()
+                    add(mapper(cursor))
+                }
             }
         } ?: emptyList()
 
@@ -170,10 +202,13 @@ private val motionPhotoAttributes = setOf(
     "MicroVideoOffset",
 )
 
-private fun isScreenshot(displayName: String, relativePath: String?): Boolean {
+/** Internal so it can be unit-tested; "screenshots" is redundant next to "screenshot". */
+internal fun isScreenshot(displayName: String, relativePath: String?): Boolean {
     val value = "$displayName ${relativePath.orEmpty()}".lowercase()
-    return listOf("screenshot", "screen_shot", "screenshots", "截屏", "截图").any(value::contains)
+    return ScreenshotMarkers.any(value::contains)
 }
+
+private val ScreenshotMarkers = listOf("screenshot", "screen_shot", "截屏", "截图")
 
 private fun Cursor.getLongOrNull(column: String): Long? {
     val index = getColumnIndex(column)

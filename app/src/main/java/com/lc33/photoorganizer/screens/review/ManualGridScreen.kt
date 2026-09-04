@@ -5,11 +5,11 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -20,7 +20,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -44,6 +43,7 @@ import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
@@ -57,7 +57,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -70,7 +69,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
@@ -80,14 +81,17 @@ import com.lc33.photoorganizer.R
 import com.lc33.photoorganizer.media.ReviewState
 import com.lc33.photoorganizer.media.UiMedia
 import com.lc33.photoorganizer.media.scanDate
+import com.lc33.photoorganizer.ui.components.ActionToolbar
 import com.lc33.photoorganizer.ui.components.EmptyState
 import com.lc33.photoorganizer.ui.components.HelpAction
 import com.lc33.photoorganizer.ui.components.MediaPreviewController
 import com.lc33.photoorganizer.ui.components.MediaPreviewHost
 import com.lc33.photoorganizer.ui.components.MediaTile
+import com.lc33.photoorganizer.ui.components.MinimumTouchTarget
 import com.lc33.photoorganizer.ui.components.OverlayAction
 import com.lc33.photoorganizer.ui.components.OverlayActionPopup
 import com.lc33.photoorganizer.ui.components.ToolbarAction
+import com.lc33.photoorganizer.ui.components.ToolbarClearance
 import com.lc33.photoorganizer.ui.components.rememberMediaPreviewController
 import com.lc33.photoorganizer.ui.components.standardCardColors
 import com.lc33.photoorganizer.ui.systemClearance
@@ -98,7 +102,6 @@ import com.lc33.photoorganizer.ui.theme.SuccessGreen
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.Card
-import top.yukonga.miuix.kmp.basic.FloatingToolbar
 import top.yukonga.miuix.kmp.basic.InputField
 import top.yukonga.miuix.kmp.basic.SearchBar
 import top.yukonga.miuix.kmp.basic.ToolbarPosition
@@ -137,7 +140,7 @@ enum class MediaGridMode {
 }
 
 /** Extra scroll clearance so the floating selection toolbar never covers the last row. */
-private val SelectionToolbarClearance = 84.dp
+private val SelectionToolbarClearance = ToolbarClearance
 
 /**
  * Width of the fast-scroll strip, and therefore the grid's right-hand inset.
@@ -148,26 +151,49 @@ private val SelectionToolbarClearance = 84.dp
  * the last tile and 19 dp from the screen edge, which reads as a misalignment rather
  * than a margin. Equal now, so the thumb sits centred in the space reserved for it.
  *
- * 44 dp is also the touch target. Keeping the inset no smaller than it means the
- * strip never overlaps the rightmost tile column, so grabbing the scrollbar and
- * tapping a photo can never be the same gesture.
+ * It is also the touch target, which is why it is [MinimumTouchTarget] rather than a
+ * number of its own: the comment used to assert that 44 dp was the touch target while
+ * `Buttons.kt` defined the platform minimum as 48 dp, and one of the two had to be
+ * wrong. Keeping the grid inset no smaller than the strip means the strip never
+ * overlaps the rightmost tile column, so grabbing the scrollbar and tapping a photo
+ * can never be the same gesture.
  */
-private val ScrubberWidth = 44.dp
+private val ScrubberWidth = MinimumTouchTarget
 
 /**
- * Three tiles per row, fixed rather than adaptive.
+ * Tiles per row: a fixed count per width band rather than `Adaptive`.
  *
- * `Adaptive(96.dp)` is a near miss at this width and would stay one padding tweak
- * away from breaking: on a 360 dp screen the [ScrubberWidth] inset and the 12 dp
- * start padding leave 304 dp, and three 96 dp tiles plus their spacing need 302 dp.
- * Two dp of headroom is not a layout decision, it is luck - and when it runs out
- * `Adaptive` silently halves the density instead of failing, which is the failure
- * mode it hides. Fixed says what the screen should show.
+ * `Adaptive(96.dp)` is a near miss and would stay one padding tweak away from
+ * breaking: on a 360 dp screen the [ScrubberWidth] inset and the 12 dp start padding
+ * leave 304 dp, and three 96 dp tiles plus their spacing need 302 dp. Two dp of
+ * headroom is not a layout decision, it is luck - and when it runs out `Adaptive`
+ * silently halves the density instead of failing, which is the failure mode it hides.
+ * A fixed count says what the screen should show.
+ *
+ * Banded rather than a single 3, because three was only ever reasoned about for a
+ * 360 dp portrait phone. In landscape, or on a tablet, three columns are three enormous
+ * tiles and a screenful holds almost nothing.
  */
-private const val GridColumns = 3
+private fun gridColumnsFor(availableWidth: Dp): Int = when {
+    availableWidth < 480.dp -> 3
+    availableWidth < 720.dp -> 5
+    else -> 7
+}
 
 /** How long the discarded page's bin button stays armed before it reverts. */
 private const val ArmedTimeoutMillis = 3_000L
+
+/**
+ * Ids the saver will carry across a configuration change.
+ *
+ * Bounded, because "select all" in manual mode selects the entire library: at eight
+ * bytes an id, sixty thousand photos put the saved state past the practical
+ * `onSaveInstanceState` budget, and the resulting `TransactionTooLargeException` lands
+ * on the next rotation or the next trip to the background rather than on the tap that
+ * caused it. Past the cap the selection is dropped instead of crashing - a rotation
+ * that clears a huge selection is a nuisance; one that kills the app is not.
+ */
+internal const val MaxSavedSelectionSize = 20_000
 
 /**
  * Selection survives a configuration change like the sort and search state next
@@ -175,7 +201,7 @@ private const val ArmedTimeoutMillis = 3_000L
  * collection, which would fall back to Java serialization.
  */
 private val SelectionSaver = Saver<Set<Long>, LongArray>(
-    save = { ids -> ids.toLongArray() },
+    save = { ids -> if (ids.size > MaxSavedSelectionSize) LongArray(0) else ids.toLongArray() },
     restore = { ids -> ids.toHashSet() },
 )
 
@@ -270,8 +296,7 @@ fun ManualGridScreen(
     // The bin icon on the discarded page arms on the first tap and only fires the
     // delete request on the second, so a stray tap cannot wipe the list.
     var deleteAllArmed by remember { mutableStateOf(false) }
-    val sortOptions = remember { listOf(false, true) }
-    val allMediaIds = remember(media) { media.map { it.id }.toSet() }
+    val allMediaIds = remember(media) { media.mapTo(HashSet(media.size)) { it.id } }
     // Deleting from the discarded page is the one destructive bulk action that must
     // stay visible, so it gets its own bin button below instead of hiding here. The
     // analysis-driven lists (screenshots, large files, one duplicate group) keep the
@@ -333,14 +358,19 @@ fun ManualGridScreen(
             currentDate
         }
     }
-    val currentDate by remember(gridState, dateAtIndex) {
+    // Both held as State rather than unwrapped here. `visibleItemsInfo.size` really
+    // does change as partial rows enter and leave, so reading either one in this body
+    // recomposed the whole screen - Scaffold, TopAppBar, the actions row, every
+    // argument in the tree - every few rows of scrolling. This file already makes that
+    // argument for the scrubber thumb; the two values it needs were the exception.
+    val currentDate = remember(gridState, dateAtIndex) {
         derivedStateOf {
             dateAtIndex.getOrElse(gridState.firstVisibleItemIndex) {
                 dateAtIndex.lastOrNull() ?: unknownDate
             }
         }
     }
-    val scrollMetrics by remember(gridState) {
+    val scrollMetrics = remember(gridState) {
         derivedStateOf {
             ScrollMetrics(
                 totalItems = gridState.layoutInfo.totalItemsCount,
@@ -491,9 +521,10 @@ fun ManualGridScreen(
                     onBack = onBack,
                 )
             } else {
-                Box(Modifier.weight(1f).fillMaxWidth()) {
+                BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                     ManualGridTiles(
                         entries = entries,
+                        columns = gridColumnsFor(maxWidth),
                         gridState = gridState,
                         scrollBehavior = scrollBehavior,
                         bottomPadding = 12.dp + clearance.bottom +
@@ -694,6 +725,7 @@ private fun ManualGridEmptyState(
 
 @Composable
 private fun ManualGridTiles(
+    columns: Int,
     entries: List<ManualGridEntry>,
     gridState: LazyGridState,
     scrollBehavior: ScrollBehavior,
@@ -710,7 +742,7 @@ private fun ManualGridTiles(
             .scrollEndHaptic()
             .overScrollVertical()
             .nestedScroll(scrollBehavior.nestedScrollConnection),
-        columns = GridCells.Fixed(GridColumns),
+        columns = GridCells.Fixed(columns),
         contentPadding = PaddingValues(
             start = 12.dp,
             end = ScrubberWidth,
@@ -723,6 +755,10 @@ private fun ManualGridTiles(
         items(
             items = entries,
             key = { it.key },
+            // A header and a tile are structurally different subtrees, and without this
+            // they share one reuse pool: a header slot scrolled off the top could be
+            // handed to a tile, which discards the whole subtree instead of reusing it.
+            contentType = { entry -> entry is ManualGridEntry.DateHeader },
             span = { entry ->
                 if (entry is ManualGridEntry.DateHeader) GridItemSpan(maxLineSpan) else GridItemSpan(1)
             },
@@ -734,7 +770,14 @@ private fun ManualGridTiles(
                     // Reading the selection directly would record a dependency on the
                     // whole set, so toggling one tile recomposed every composed tile.
                     // derivedStateOf only notifies when this item's own answer flips.
-                    val selected by remember(item.id) { derivedStateOf { isSelected(item.id) } }
+                    //
+                    // isSelected is a key as well as item.id: it works today only
+                    // because the lambda at the call site captures nothing but a
+                    // MutableState delegate, so the compiler memoizes one instance. Add
+                    // any unstable capture there and this remember would pin the first
+                    // lambda forever - a selection that silently never updates, with no
+                    // compile error to say so.
+                    val selected by remember(item.id, isSelected) { derivedStateOf { isSelected(item.id) } }
                     MediaTile(
                         item = item,
                         onClick = { preview.open(item) },
@@ -754,22 +797,24 @@ private fun ManualGridTiles(
 @Composable
 private fun BoxScope.ManualGridDateScrubber(
     gridState: LazyGridState,
-    metrics: ScrollMetrics,
-    currentDate: String,
+    metrics: State<ScrollMetrics>,
+    currentDate: State<String>,
     scrubbing: Boolean,
     onScrubbingChange: (Boolean) -> Unit,
 ) {
-    if (metrics.totalItems <= metrics.visibleItems) return
+    val visible = metrics.value
+    if (visible.totalItems <= visible.visibleItems) return
     ManualGridScrubber(
         state = gridState,
-        totalItems = metrics.totalItems,
-        visibleItems = metrics.visibleItems,
+        totalItems = visible.totalItems,
+        visibleItems = visible.visibleItems,
+        currentDate = { currentDate.value },
         modifier = Modifier.align(Alignment.CenterEnd),
         onScrubbingChange = onScrubbingChange,
     )
     if (gridState.isScrollInProgress || scrubbing) {
         Text(
-            text = currentDate,
+            text = currentDate.value,
             color = MiuixTheme.colorScheme.onSurfaceContainer,
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
@@ -816,10 +861,13 @@ private fun ManualGridScrubber(
     totalItems: Int,
     visibleItems: Int,
     onScrubbingChange: (Boolean) -> Unit,
+    /** Read only inside `semantics`, so the label does not recompose the strip. */
+    currentDate: () -> String,
     modifier: Modifier = Modifier,
 ) {
     val density = LocalDensity.current
     val haptics = LocalHapticFeedback.current
+    val scrubberLabel = stringResource(R.string.manual_scrubber_cd)
     val thumbHeight = 48.dp
     val thumbHeightPx = with(density) { thumbHeight.toPx() }
     var trackHeightPx by remember { mutableFloatStateOf(0f) }
@@ -893,6 +941,11 @@ private fun ManualGridScrubber(
             .padding(vertical = 8.dp)
             .onSizeChanged { trackHeightPx = it.height.toFloat() }
             .semantics {
+                // An adjustable control with a progress range and no name at all is
+                // what TalkBack announced before this, and the date the scrub is
+                // actually landing on was never exposed anywhere.
+                contentDescription = scrubberLabel
+                stateDescription = currentDate()
                 progressBarRangeInfo = ProgressBarRangeInfo(progress, 0f..1f)
                 setProgress { requested ->
                     // Inverse of scrubberFraction, not a bare multiply: the mapping
@@ -907,9 +960,6 @@ private fun ManualGridScrubber(
             .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
-                    down.consume()
-                    currentOnScrubbingChange(true)
-                    haptics.performHapticFeedback(HapticFeedbackType.LongPress)
                     // Pressing the thumb keeps it under the finger; pressing bare
                     // track centres it on the touch. Without the offset, grabbing
                     // the thumb teleported it to the touch point first, which is
@@ -919,16 +969,37 @@ private fun ManualGridScrubber(
                     // composition: this lambda is built once, so a captured value
                     // would be whatever it was when the grid first laid out.
                     val thumbCentre = thumbTopPx(progress) + thumbHeightPx / 2f
-                    val grab = if (abs(down.position.y - thumbCentre) <= thumbHeightPx / 2f) {
-                        down.position.y - thumbCentre
-                    } else {
-                        0f
+                    val onThumb = abs(down.position.y - thumbCentre) <= thumbHeightPx / 2f
+                    val grab = if (onThumb) down.position.y - thumbCentre else 0f
+                    // A press on the thumb is unambiguous and scrubs immediately. A
+                    // press on bare track is not: this is a 48 dp column down the right
+                    // edge of the screen, and the previous version consumed the down and
+                    // scrubbed at once, so a stray thumb resting there jumped the grid to
+                    // an unrelated position with no undo - and a vertical fling started
+                    // there scrubbed instead of scrolling, because the down was consumed
+                    // before anything knew which gesture it was. Nothing is consumed
+                    // until the finger has moved past touch slop, which leaves the grid
+                    // free to treat it as a scroll.
+                    var scrubbing = onThumb
+                    if (scrubbing) {
+                        down.consume()
+                        currentOnScrubbingChange(true)
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        scrubTo(down.position.y - grab)
                     }
-                    scrubTo(down.position.y - grab)
                     try {
                         while (true) {
                             val event = awaitPointerEvent()
                             val pointer = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!scrubbing) {
+                                if (abs(pointer.position.y - down.position.y) < viewConfiguration.touchSlop) {
+                                    if (!pointer.pressed) break
+                                    continue
+                                }
+                                scrubbing = true
+                                currentOnScrubbingChange(true)
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            }
                             pointer.consume()
                             // Applied before the break, so the release position is
                             // not discarded. A flick can arrive as down-then-up with
@@ -938,7 +1009,7 @@ private fun ManualGridScrubber(
                             if (!pointer.pressed) break
                         }
                     } finally {
-                        currentOnScrubbingChange(false)
+                        if (scrubbing) currentOnScrubbingChange(false)
                         // Handed back only on release, so the thumb never snaps to
                         // a stale index for a frame mid-drag.
                         dragProgress = Float.NaN
@@ -1019,87 +1090,74 @@ private fun SelectionToolbar(
     onRemoveFromCollection: () -> Unit,
     onCompressSelected: (() -> Unit)?,
 ) {
-    FloatingToolbar(
-        outSidePadding = PaddingValues(
-            start = 12.dp,
-            end = 12.dp,
-            top = 8.dp,
-            bottom = 12.dp + bottomClearance,
-        ),
-    ) {
-        Row(
-            Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+    ActionToolbar(bottomClearance) {
+        ToolbarAction(
+            icon = Icons.Default.SelectAll,
+            label = stringResource(R.string.action_select_all),
+            onClick = onSelectAll,
+        )
+        if (mode.supportsMarking) {
             ToolbarAction(
-                icon = Icons.Default.SelectAll,
-                label = stringResource(R.string.action_select_all),
-                onClick = onSelectAll,
+                icon = Icons.Default.Check,
+                label = stringResource(R.string.manual_keep),
+                tint = SuccessGreen,
+                enabled = hasSelection,
+                onClick = onKeep,
             )
-            if (mode.supportsMarking) {
-                ToolbarAction(
-                    icon = Icons.Default.Check,
-                    label = stringResource(R.string.manual_keep),
-                    tint = SuccessGreen,
-                    enabled = hasSelection,
-                    onClick = onKeep,
-                )
-                ToolbarAction(
-                    icon = Icons.Default.DeleteOutline,
-                    label = stringResource(R.string.manual_trash),
-                    tint = AccentOrange,
-                    enabled = hasSelection,
-                    onClick = onTrash,
-                )
-                ToolbarAction(
-                    icon = Icons.Default.LayersClear,
-                    label = stringResource(R.string.manual_clear),
-                    enabled = hasSelection,
-                    onClick = onClear,
-                )
-            } else if (mode == MediaGridMode.LOGICAL_ALBUM) {
-                ToolbarAction(
-                    icon = Icons.Default.LayersClear,
-                    label = stringResource(R.string.logical_album_remove),
-                    enabled = hasSelection,
-                    onClick = onRemoveFromCollection,
-                )
-            } else if (mode != MediaGridMode.PROCESSING_PICKER) {
-                ToolbarAction(
-                    icon = Icons.AutoMirrored.Filled.Undo,
-                    label = stringResource(R.string.marked_restore),
-                    tint = SuccessGreen,
-                    enabled = hasSelection,
-                    onClick = onClear,
-                )
-            }
-            if (mode == MediaGridMode.TRASH) {
-                ToolbarAction(
-                    icon = Icons.Default.DeleteForever,
-                    label = stringResource(R.string.marked_delete_selected_action),
-                    tint = DangerRed,
-                    enabled = hasSelection,
-                    onClick = onDeleteSelected,
-                )
-            }
-            if (onCompressSelected != null) {
-                ToolbarAction(
-                    icon = Icons.Default.Compress,
-                    // On the picker this button is the only way forward, so it says
-                    // what happens next rather than naming the operation.
-                    label = stringResource(
-                        if (mode == MediaGridMode.PROCESSING_PICKER) {
-                            R.string.processing_start
-                        } else {
-                            R.string.manual_compress
-                        },
-                    ),
-                    tint = AccentBlue,
-                    enabled = hasSelection,
-                    onClick = onCompressSelected,
-                )
-            }
+            ToolbarAction(
+                icon = Icons.Default.DeleteOutline,
+                label = stringResource(R.string.manual_trash),
+                tint = AccentOrange,
+                enabled = hasSelection,
+                onClick = onTrash,
+            )
+            ToolbarAction(
+                icon = Icons.Default.LayersClear,
+                label = stringResource(R.string.manual_clear),
+                enabled = hasSelection,
+                onClick = onClear,
+            )
+        } else if (mode == MediaGridMode.LOGICAL_ALBUM) {
+            ToolbarAction(
+                icon = Icons.Default.LayersClear,
+                label = stringResource(R.string.logical_album_remove),
+                enabled = hasSelection,
+                onClick = onRemoveFromCollection,
+            )
+        } else if (mode != MediaGridMode.PROCESSING_PICKER) {
+            ToolbarAction(
+                icon = Icons.AutoMirrored.Filled.Undo,
+                label = stringResource(R.string.marked_restore),
+                tint = SuccessGreen,
+                enabled = hasSelection,
+                onClick = onClear,
+            )
+        }
+        if (mode == MediaGridMode.TRASH) {
+            ToolbarAction(
+                icon = Icons.Default.DeleteForever,
+                label = stringResource(R.string.marked_delete_selected_action),
+                tint = DangerRed,
+                enabled = hasSelection,
+                onClick = onDeleteSelected,
+            )
+        }
+        if (onCompressSelected != null) {
+            ToolbarAction(
+                icon = Icons.Default.Compress,
+                // On the picker this button is the only way forward, so it says
+                // what happens next rather than naming the operation.
+                label = stringResource(
+                    if (mode == MediaGridMode.PROCESSING_PICKER) {
+                        R.string.processing_start
+                    } else {
+                        R.string.manual_compress
+                    },
+                ),
+                tint = AccentBlue,
+                enabled = hasSelection,
+                onClick = onCompressSelected,
+            )
         }
     }
 }

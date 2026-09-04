@@ -2,7 +2,6 @@ package com.lc33.photoorganizer.ui.components
 
 import android.graphics.Bitmap
 import android.net.Uri
-import android.util.LruCache
 import android.util.Size
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -38,7 +37,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -101,21 +99,35 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
  */
 private val thumbnailDecodeDispatcher = Dispatchers.IO.limitedParallelism(4)
 
-/** Loads a MediaStore thumbnail off the main thread. */
+/**
+ * Loads a MediaStore thumbnail off the main thread.
+ *
+ * [requestSize] defaults to the grid tile size. A tile is roughly 300 px at density 3,
+ * and decoding 512 made every cached entry about 1 MB against 340 KB - with a budget of
+ * heap/8 that was barely one screenful, so scrolling back re-decoded. Anything shown
+ * larger than a tile passes an explicit size.
+ */
 @Composable
 fun MediaThumbnail(
     uri: Uri,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
-    requestSize: Int = 512,
+    requestSize: Int = TileDecodeSize,
     contentDescription: String? = null,
 ) {
     val context = LocalContext.current
     val cacheKey = remember(uri, requestSize) { "$uri@$requestSize" }
-    val cached = remember(cacheKey) { MediaThumbnailCache.get(cacheKey, requestSize) }
-    val bitmap by produceState<Bitmap?>(initialValue = cached, cacheKey) {
-        if (value != null) return@produceState
-        value = withContext(thumbnailDecodeDispatcher) {
+    // remember(cacheKey) rather than produceState's initialValue, because
+    // produceState's backing state is `remember { mutableStateOf(initialValue) }` with
+    // no keys at all: when the key changed on a composable that survived, the state
+    // still held the previous bitmap, the producer short-circuited on `value != null`,
+    // and the pane went on showing a different photo indefinitely. The call sites that
+    // survive an item change - the full-screen preview host, the comparison overlay -
+    // are exactly the ones where that is most visible.
+    var bitmap by remember(cacheKey) { mutableStateOf(MediaThumbnailCache.get(cacheKey, requestSize)) }
+    LaunchedEffect(cacheKey) {
+        if (bitmap != null) return@LaunchedEffect
+        bitmap = withContext(thumbnailDecodeDispatcher) {
             runCatching {
                 context.contentResolver.loadThumbnail(uri, Size(requestSize, requestSize), null)
             }.getOrNull()?.also { MediaThumbnailCache.put(cacheKey, requestSize, it) }
@@ -123,8 +135,12 @@ fun MediaThumbnail(
     }
     val thumbnail = bitmap
     if (thumbnail != null) {
+        // Remembered because asImageBitmap() allocates a fresh wrapper per call, and
+        // Image() memoizes its BitmapPainter on that instance - a new wrapper every
+        // recomposition meant a new painter and an invalidated draw node every time.
+        val image = remember(thumbnail) { thumbnail.asImageBitmap() }
         Image(
-            bitmap = thumbnail.asImageBitmap(),
+            bitmap = image,
             contentDescription = contentDescription,
             modifier = modifier,
             contentScale = contentScale,
@@ -144,14 +160,21 @@ fun MediaThumbnail(
     }
 }
 
-/** Cropped media card used by the swipe review carousel. */
+/**
+ * Cropped media card used by the swipe review carousel.
+ *
+ * Decoded at [CardDecodeSize], not at the tile default: this is the full-screen card
+ * the user decides keep-or-discard on, drawn at roughly 1000x1400, and judging image
+ * quality from a 512 px decode upscaled to that is the one thing this screen must not
+ * ask of anyone.
+ */
 @Composable
 fun MediaPreview(item: UiMedia, modifier: Modifier = Modifier) {
     Card(modifier = modifier, colors = standardCardColors()) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             val uri = item.uri
             if (uri != null) {
-                MediaThumbnail(uri, Modifier.fillMaxSize())
+                MediaThumbnail(uri, Modifier.fillMaxSize(), requestSize = CardDecodeSize)
             } else {
                 Icon(
                     Icons.Default.PhotoLibrary,
@@ -364,7 +387,7 @@ fun FullScreenMediaPreview(
                         uri = uri,
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Fit,
-                        requestSize = 2048,
+                        requestSize = PreviewDecodeSize,
                         contentDescription = item.displayName,
                     )
                 }
@@ -552,13 +575,12 @@ private fun PlatformMotionPreview(
         label = "motion-preview-alpha",
     )
     LaunchedEffect(player, muted) { player.volume = if (muted) 0f else 1f }
-    var playerView by remember(playbackUri) { mutableStateOf<PlayerView?>(null) }
     Box(modifier) {
         MediaThumbnail(
             uri = stillUri,
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Fit,
-            requestSize = 2048,
+            requestSize = PreviewDecodeSize,
             contentDescription = contentDescription,
         )
         if (!playbackFailed) {
@@ -567,7 +589,7 @@ private fun PlatformMotionPreview(
                     PlayerView(viewContext).apply {
                         useController = showControls
                         this.player = player
-                    }.also { playerView = it }
+                    }
                 },
                 modifier = Modifier
                     .fillMaxSize()
@@ -579,8 +601,13 @@ private fun PlatformMotionPreview(
                 update = { view ->
                     view.useController = showControls
                     view.player = player
-                    playerView = view
                 },
+                // Detaching here rather than through a snapshot-state handle the
+                // dispose block reads: writing state from `update` is a state write
+                // during layout, and it scheduled a recomposition on every pass. This
+                // is the callback AndroidView provides for exactly this, and it is what
+                // VideoComparisonPane already uses.
+                onRelease = { view -> view.player = null },
             )
         }
     }
@@ -606,9 +633,6 @@ private fun PlatformMotionPreview(
         onDispose {
             player.removeListener(playerListener)
             lifecycleOwner.lifecycle.removeObserver(observer)
-            // Detached first: a PlayerView that outlives this composition by a
-            // frame would otherwise still be pointed at a released player.
-            playerView?.player = null
             player.release()
         }
     }

@@ -17,11 +17,13 @@ import javax.net.ssl.HttpsURLConnection
  * without a socket, the same way the media analyzers take their `ContentResolver`
  * half as a lambda.
  *
- * Nothing here decides *whether* the app may use the network. That is
- * [UpdateViewModel]'s job, and it is the reason this class is only ever called
- * from behind the user's opt-in.
+ * Nothing here decides *whether* the app may use the network - but it does insist on
+ * being told. [check] takes [consented] and refuses without it, so the promise the
+ * README, the landing page and the About screen all make cannot be broken by a future
+ * caller that simply forgets to ask: the condition is inside the only function that
+ * opens a socket rather than at each call site. `internal` for the same reason.
  */
-object UpdateChecker {
+internal object UpdateChecker {
 
     /** Reads a URL and returns the body, or throws. */
     fun interface Fetch {
@@ -55,28 +57,53 @@ object UpdateChecker {
      * the APK comes down the route that just proved it works.
      */
     fun check(
+        consented: Boolean,
         channel: UpdateChannel,
         mirror: UpdateMirror,
         installedVersion: String,
         installedCommit: String,
         fetch: Fetch = Fetch(::get),
     ): UpdateStatus {
+        if (!consented) return UpdateStatus.NetworkDisabled
         var lastFailure: String? = null
+        var emptyChannel = false
         for (candidate in checkOrder(mirror)) {
-            val body = runCatching { fetch(ReleaseFeed.apiUrl(candidate)) }
-                .onFailure { failure -> lastFailure = failure.message ?: failure::class.simpleName }
-                .getOrNull()
-                ?: continue
-            val releases = runCatching { ReleaseFeed.parse(body) }
-                .onFailure { failure -> lastFailure = failure.message }
-                .getOrNull()
-                ?: continue
+            // IOException and JsonException only. runCatching caught Throwable, so an
+            // InterruptedIOException - or a CancellationException surfacing out of the
+            // stream - made the loop `continue` to the next mirror: withdrawing consent
+            // could produce an *additional* request rather than none.
+            val body = try {
+                fetch(ReleaseFeed.apiUrl(candidate))
+            } catch (failure: IOException) {
+                lastFailure = failure.message ?: failure::class.simpleName
+                continue
+            }
+            val releases = try {
+                ReleaseFeed.parse(body)
+            } catch (failure: JsonException) {
+                lastFailure = failure.message
+                continue
+            }
             val release = ReleaseFeed.select(releases, channel)
-                ?: return UpdateStatus.Failed(FailureReason.EMPTY_CHANNEL)
-            // The download follows the route that answered, not the one that was
-            // configured: falling back for the check and then handing out a
-            // direct URL would send the 5 MB down the link that just failed.
-            val downloadMirror = if (candidate == UpdateMirror.DIRECT) mirror else candidate
+            if (release == null) {
+                // Recorded and retried rather than returned. A proxy that answers `[]` -
+                // cached, rate-limited, or stripped - used to end the whole check with
+                // "this channel has nothing published", without ever trying the direct
+                // route that would have answered.
+                emptyChannel = true
+                continue
+            }
+            // The download follows a route that can serve it: the configured mirror when
+            // that mirror does downloads, otherwise the one that just answered. Falling
+            // back for the check and then handing out a URL for a link that just failed
+            // would send the 5 MB down the route that did not work - but silently
+            // swapping the user's chosen download host for another proxy, because the
+            // *check* fell back, is not right either.
+            val downloadMirror = when {
+                mirror.downloadPrefix.isNotEmpty() -> mirror
+                candidate == UpdateMirror.DIRECT -> mirror
+                else -> candidate
+            }
             val url = ReleaseFeed.downloadUrl(release, downloadMirror)
             return when (ReleaseFeed.compare(release, channel, installedVersion, installedCommit)) {
                 ReleaseFeed.Comparison.NEWER -> UpdateStatus.Available(release, url)
@@ -84,6 +111,7 @@ object UpdateChecker {
                 ReleaseFeed.Comparison.UNKNOWN -> UpdateStatus.Undetermined(release, url)
             }
         }
+        if (emptyChannel) return UpdateStatus.Failed(FailureReason.EMPTY_CHANNEL, lastFailure)
         return UpdateStatus.Failed(FailureReason.UNREACHABLE, lastFailure)
     }
 
@@ -101,7 +129,7 @@ object UpdateChecker {
     }
 
     @Throws(IOException::class)
-    private fun get(url: String): String {
+    private fun get(url: String, redirects: Int = 0): String {
         val connection = URL(url).openConnection()
         // A mirror that answers over plain HTTP is not one this app will use: the
         // response decides what the user is told to download.
@@ -110,12 +138,25 @@ object UpdateChecker {
             connectTimeout = ConnectTimeoutMillis
             readTimeout = ReadTimeoutMillis
             requestMethod = "GET"
-            instanceFollowRedirects = true
+            // Off, and followed by hand below, so a redirect cannot quietly move the
+            // request to a host or a scheme this app never agreed to. The platform
+            // refuses an https->http redirect on its own; it does not refuse an
+            // https->https redirect to anywhere at all.
+            instanceFollowRedirects = false
             setRequestProperty("Accept", "application/vnd.github+json")
             setRequestProperty("User-Agent", UserAgent)
         }
         try {
             val code = connection.responseCode
+            if (code in Redirects) {
+                val target = connection.getHeaderField("Location")
+                    ?: throw IOException("redirect without a location")
+                if (redirects >= MaxRedirects) throw IOException("too many redirects")
+                // Resolved against the current URL, because Location may be relative,
+                // and then re-checked by get() itself - which is where the https
+                // requirement lives.
+                return get(java.net.URL(connection.url, target).toString(), redirects + 1)
+            }
             if (code != HttpURLConnection.HTTP_OK) throw IOException("HTTP $code")
             return connection.inputStream.use { stream ->
                 stream.readBounded(MaxResponseBytes)
@@ -124,6 +165,16 @@ object UpdateChecker {
             connection.disconnect()
         }
     }
+
+    private val Redirects = setOf(
+        HttpURLConnection.HTTP_MOVED_PERM,
+        HttpURLConnection.HTTP_MOVED_TEMP,
+        HttpURLConnection.HTTP_SEE_OTHER,
+        307,
+        308,
+    )
+
+    private const val MaxRedirects = 5
 
     private fun java.io.InputStream.readBounded(limit: Int): String {
         val buffer = ByteArray(64 * 1024)

@@ -120,10 +120,20 @@ internal object GalleryWriter {
         val sourceFolder = normalizeFolder(staged.source.relativePath)
         return try {
             write(context, staged, preferred, relocated = preferred != sourceFolder, onProgress)
-        } catch (rejected: IllegalArgumentException) {
+        } catch (cancelled: kotlinx.coroutines.CancellationException) {
+            throw cancelled
+        } catch (rejected: RuntimeException) {
             // MediaStore only reports that a collection will not take this
             // top-level directory by throwing from insert, so the app's own folder
             // is a second attempt rather than a pre-emptive downgrade.
+            //
+            // RuntimeException rather than IllegalArgumentException: MediaProvider
+            // also refuses an insert with IllegalStateException ("Failed to build
+            // unique file...") and with UnsupportedOperationException depending on
+            // the path and the Android version, and those used to skip the retry
+            // entirely and become hard per-item failures even though the second
+            // attempt would have succeeded. The retry is safe to widen because the
+            // folder it inserts into is one OutputTarget guarantees is valid.
             if (preferred == fallback) {
                 throw ProcessingException(R.string.processing_error_gallery_insert, cause = rejected)
             }
@@ -147,6 +157,14 @@ internal object GalleryWriter {
             put(MediaStore.MediaColumns.MIME_TYPE, staged.outputMimeType)
             put(MediaStore.MediaColumns.RELATIVE_PATH, folder)
             put(MediaStore.MediaColumns.IS_PENDING, 1)
+            // The copy belongs next to its source in the gallery, and DATE_TAKEN is
+            // what decides that. Left unset, the row carries whatever the platform
+            // can scrape from the file: nothing for a WebP or a PNG, and the mux
+            // time - i.e. now - for a video Transformer just wrote, which sorted
+            // every result to the top of the timeline instead of beside its source.
+            staged.source.dateTakenMillis?.takeIf { it > 0L }?.let { taken ->
+                put(MediaStore.MediaColumns.DATE_TAKEN, taken)
+            }
         }
         val resolver = context.contentResolver
         val uri = resolver.insert(collection, values)
@@ -158,21 +176,33 @@ internal object GalleryWriter {
             // 100 MB video is 1600 progress callbacks, and each one is a state write
             // the review list recomposes against.
             var reportedPercent = -1
-            resolver.openOutputStream(uri, "w")?.use { output ->
-                staged.file.inputStream().use { input ->
-                    val buffer = ByteArray(StreamBufferBytes)
-                    while (true) {
-                        currentCoroutineContext().ensureActive()
-                        val read = input.read(buffer)
-                        if (read < 0) break
-                        output.write(buffer, 0, read)
-                        written += read
-                        val percent = (written * 100 / total).toInt().coerceIn(0, 100)
-                        if (percent != reportedPercent) {
-                            reportedPercent = percent
-                            onProgress(percent / 100f)
+            // Written through the descriptor rather than through openOutputStream so
+            // the bytes can be fsync'd. Closing the stream only flushes to the
+            // kernel, and the very next statement clears IS_PENDING - which makes
+            // the row visible and, more to the point, makes its source eligible for
+            // the deletion prompt. That prompt waits for the user, so the window
+            // between "published" and "source deleted" is seconds or minutes, not
+            // microseconds, and a power loss inside it would leave a published file
+            // that is not whole and a source that is gone.
+            resolver.openFileDescriptor(uri, "w")?.use { descriptor ->
+                java.io.FileOutputStream(descriptor.fileDescriptor).use { output ->
+                    staged.file.inputStream().use { input ->
+                        val buffer = ByteArray(StreamBufferBytes)
+                        while (true) {
+                            currentCoroutineContext().ensureActive()
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            output.write(buffer, 0, read)
+                            written += read
+                            val percent = (written * 100 / total).toInt().coerceIn(0, 100)
+                            if (percent != reportedPercent) {
+                                reportedPercent = percent
+                                onProgress(percent / 100f)
+                            }
                         }
                     }
+                    output.flush()
+                    descriptor.fileDescriptor.sync()
                 }
             } ?: throw ProcessingException(R.string.processing_error_gallery_write)
             values.clear()
@@ -191,7 +221,9 @@ internal object GalleryWriter {
                 relocated = relocated,
             )
         } catch (t: Throwable) {
-            resolver.delete(uri, null, null)
+            // runCatching because the interesting exception is the one that got us
+            // here; a cleanup that throws must not replace it with its own.
+            runCatching { resolver.delete(uri, null, null) }
             throw t
         }
     }
@@ -212,11 +244,26 @@ internal object GalleryWriter {
      */
     private fun isNameTaken(context: Context, collection: Uri, folder: String, name: String): Boolean =
         runCatching {
+            // Pending and trashed rows are excluded from a default query, and both
+            // still own their filename: missing one means MediaStore renames the
+            // insert to "name (1)", which is exactly the reported-name-disagrees-
+            // with-the-file outcome this check exists to prevent.
+            val arguments = android.os.Bundle().apply {
+                putString(
+                    android.content.ContentResolver.QUERY_ARG_SQL_SELECTION,
+                    "${MediaStore.MediaColumns.RELATIVE_PATH}=? AND ${MediaStore.MediaColumns.DISPLAY_NAME}=?",
+                )
+                putStringArray(
+                    android.content.ContentResolver.QUERY_ARG_SQL_SELECTION_ARGS,
+                    arrayOf("$folder/", name),
+                )
+                putInt(MediaStore.QUERY_ARG_MATCH_PENDING, MediaStore.MATCH_INCLUDE)
+                putInt(MediaStore.QUERY_ARG_MATCH_TRASHED, MediaStore.MATCH_INCLUDE)
+            }
             context.contentResolver.query(
                 collection,
                 arrayOf(MediaStore.MediaColumns._ID),
-                "${MediaStore.MediaColumns.RELATIVE_PATH}=? AND ${MediaStore.MediaColumns.DISPLAY_NAME}=?",
-                arrayOf("$folder/", name),
+                arguments,
                 null,
             )?.use { cursor -> cursor.moveToFirst() }
         }.getOrNull() ?: false

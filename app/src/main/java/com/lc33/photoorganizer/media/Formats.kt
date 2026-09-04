@@ -32,9 +32,15 @@ private fun formats(): LocalizedFormats {
 
 fun formatCount(value: Int): String = formats().integer.format(value)
 
+/**
+ * Units for [formatBytes]. A file-level constant, because this file exists to stop
+ * per-tile allocations and building the array inside the function was one of them.
+ */
+private val ByteUnits = arrayOf("KB", "MB", "GB", "TB")
+
 fun formatBytes(value: Long): String {
     if (value < 1024L) return "$value B"
-    val units = arrayOf("KB", "MB", "GB", "TB")
+    val units = ByteUnits
     var amount = value.toDouble()
     var index = -1
     while (amount >= 1024 && index < units.lastIndex) {

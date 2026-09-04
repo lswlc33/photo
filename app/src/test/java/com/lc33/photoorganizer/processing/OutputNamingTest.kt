@@ -22,6 +22,10 @@ class OutputNamingTest {
         assertEquals("IMG_1234-z2.jpg", OutputNaming.compressedName("IMG_1234-z1.jpg", "jpg"))
         assertEquals("IMG_1234-z3.jpg", OutputNaming.compressedName("IMG_1234-z2.jpg", "jpg"))
         assertEquals("IMG_1234-z10.jpg", OutputNaming.compressedName("IMG_1234-z9.jpg", "jpg"))
+        // Clamped at the ceiling rather than falling through to the "-z1" branch, which
+        // stacked suffixes - the one thing this function exists to prevent.
+        assertEquals("IMG_1234-z999.jpg", OutputNaming.compressedName("IMG_1234-z999.jpg", "jpg"))
+        assertEquals("IMG_1234-z999.jpg", OutputNaming.compressedName("IMG_1234-z1000.jpg", "jpg"))
     }
 
     @Test

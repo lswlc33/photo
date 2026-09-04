@@ -49,6 +49,7 @@ fun ToolsScreen(
     hasPermission: Boolean,
     indexReady: Boolean,
     duplicateAnalysisReady: Boolean,
+    duplicateAnalysisFailed: Boolean,
     similar: SimilarAnalysisState,
     contentBottomPadding: androidx.compose.ui.unit.Dp,
     largestThresholdMb: Int,
@@ -115,7 +116,14 @@ fun ToolsScreen(
                 val pendingText = stringResource(R.string.tools_analysis_running)
                 ArrowPreference(
                     title = stringResource(R.string.tools_duplicate_title),
-                    summary = analysisSummary(
+                    // A failed pass says so instead of reading as a clean library. Both
+                    // passes used to catch every Throwable and publish an empty result,
+                    // so access revoked mid-pass or an OutOfMemoryError from a decode was
+                    // indistinguishable from "no duplicates" - with the reclaimable total
+                    // dropping to zero to confirm it.
+                    summary = if (duplicateAnalysisFailed) {
+                        stringResource(R.string.tools_analysis_failed)
+                    } else analysisSummary(
                         ready = duplicateAnalysisReady,
                         isEmpty = analysis.duplicates.isEmpty(),
                         pendingText = pendingText,
@@ -175,6 +183,7 @@ fun ToolsScreen(
                             similar.hashedCount,
                             similar.totalCount,
                         )
+                        similar.failed -> stringResource(R.string.tools_analysis_failed)
                         !similar.isReady -> stringResource(R.string.tools_similar_start_summary)
                         similar.groups.isEmpty() -> stringResource(R.string.tools_similar_empty)
                         else -> pluralStringResource(
@@ -185,7 +194,8 @@ fun ToolsScreen(
                         )
                     },
                     enabled = indexReady && !similar.isRunning,
-                    onClick = if (similar.isReady) onOpenSimilar else onAnalyzeSimilar,
+                    // A failed pass is retried, not opened.
+                    onClick = if (similar.isReady && !similar.failed) onOpenSimilar else onAnalyzeSimilar,
                 )
                 if (similar.isRunning) {
                     Column(

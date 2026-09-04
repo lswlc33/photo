@@ -48,7 +48,8 @@ enum class VideoTrackMode { VIDEO_AND_AUDIO, VIDEO_ONLY, AUDIO_ONLY }
  */
 object VideoProcessor {
 
-    private const val MIN_BITRATE = 400_000
+    /** Internal so [VideoProcessor.resolveTargetBitrate]'s range can be asserted in a test. */
+    internal const val MIN_BITRATE = 400_000
 
     /**
      * Transcodes [source] into the staging directory.
@@ -68,7 +69,12 @@ object VideoProcessor {
         bitrateOverride: Int? = null,
         keepOnlyIfSmaller: Boolean = true,
         onProgress: (Float) -> Unit = {},
-    ): StagedMedia? {
+    ): StagedMedia? = withContext(Dispatchers.IO) {
+        // The whole body on Dispatchers.IO, with runExport switching to Main for the
+        // Looper it needs. Only parts of this used to be wrapped, which left
+        // GalleryWriter.sourceSize (a ContentResolver query), StagingArea.file (an
+        // mkdirs) and output.length() running on the main thread, because the caller
+        // launches on viewModelScope. ImageProcessor.reencode already wraps the lot.
         val originalBytes = source.sizeBytes.takeIf { it > 0L }
             ?: GalleryWriter.sourceSize(context, source.uri)
         if (originalBytes <= 0L) {
@@ -80,10 +86,14 @@ object VideoProcessor {
             prefix = if (audioOnly) "aud" else "vid",
             extension = if (audioOnly) "m4a" else "mp4",
         )
+        // Both probes open a MediaMetadataRetriever / MediaExtractor, and neither says
+        // anything about an audio-only export: there is no video track to scale, no
+        // video bitrate to request, and no HDR grade left to lose.
+        val probe = if (audioOnly) null else probeVideo(context, source.uri)
         val targetBitrate = bitrateOverride
             ?.coerceIn(MIN_BITRATE, resolution.ceilingBitrate)
-            ?: withContext(Dispatchers.IO) { resolveTargetBitrate(context, source.uri, resolution) }
-        val track = withContext(Dispatchers.IO) { inspectVideoTrack(context, source.uri) }
+            ?: resolveTargetBitrate(probe, resolution)
+        val track = if (audioOnly) null else inspectVideoTrack(context, source.uri)
         val sourceHdr = track?.hdrKind ?: HdrKind.UNKNOWN
         // Refused before any work starts, and only for the video path: extracting
         // audio discards the picture anyway, so HDR is not at stake there.
@@ -97,18 +107,16 @@ object VideoProcessor {
                 )
             }
         }
-        val requestedMimeType = withContext(Dispatchers.IO) {
-            resolveOutputMimeType(
-                requested = codec,
-                sourceMimeType = track?.mimeType,
-                encodableMimeTypes = deviceVideoEncoders().keys,
-            )
-        }
+        val requestedMimeType = resolveOutputMimeType(
+            requested = codec,
+            sourceMimeType = track?.mimeType,
+            encodableMimeTypes = deviceVideoEncoders().keys,
+        )
         // The output survives this call only when it is handed back as a staged
         // result; on a failure, a cancellation or a skip it is cache to reclaim.
         var staged = false
         try {
-            val actualMimeType = try {
+            val result = try {
                 runExport(
                     context = context,
                     source = source.uri,
@@ -130,19 +138,46 @@ object VideoProcessor {
             if (outputBytes <= 0L) {
                 throw ProcessingException(R.string.processing_error_empty_output)
             }
+            // The check that "the file is not empty" never made: whether it is
+            // *complete*. A muxer that stops early, a decoder that gives up two
+            // minutes into a ten-minute clip, or a device that drops the tail all
+            // produce a file with a positive length, and every check up to here passes
+            // it. It would then be staged, accepted by default, counted as committed -
+            // and the next screen would offer to delete the source. The review screen
+            // cannot catch it either: the comparison thumbnails are first frames.
+            //
+            // approximateDurationMs, not the deprecated durationMs, and the tolerance is
+            // sized for it: 5% absorbs container rounding, frame-boundary trimming and
+            // the "approximate" in the name, while a genuine truncation is a much larger
+            // fraction than that - an export that stops two minutes into a ten-minute
+            // clip is 80% short.
+            val sourceDurationMs = probe?.durationMs ?: 0L
+            val outputDurationMs = result.approximateDurationMs
+            if (sourceDurationMs > 0L && outputDurationMs > 0L) {
+                val shortfall = sourceDurationMs - outputDurationMs
+                if (shortfall > sourceDurationMs / 20) {
+                    throw ProcessingException(
+                        R.string.processing_error_truncated_output,
+                        listOf(
+                            (outputDurationMs / 1000).toString(),
+                            (sourceDurationMs / 1000).toString(),
+                        ),
+                    )
+                }
+            }
             // The one failure Media3 never reports: HDR going in, SDR coming out.
             // Checked against the file rather than inferred from configuration.
             val hdrLost = !audioOnly && hdrWasLost(
                 input = sourceHdr,
-                output = withContext(Dispatchers.IO) { inspectLocalVideoHdr(output.absolutePath) },
+                output = inspectLocalVideoHdr(output.absolutePath),
             )
             if (keepOnlyIfSmaller && !audioOnly && outputBytes >= originalBytes) {
                 onProgress(1f)
-                return null
+                return@withContext null
             }
             onProgress(1f)
             staged = true
-            return StagedMedia(
+            return@withContext StagedMedia(
                 source = source,
                 file = output,
                 outputName = OutputNaming.compressedName(
@@ -155,7 +190,7 @@ object VideoProcessor {
                 kind = if (audioOnly) OutputKind.AUDIO else OutputKind.VIDEO,
                 originalBytes = originalBytes,
                 outputBytes = outputBytes,
-                codecFallback = actualMimeType
+                codecFallback = result.videoMimeType
                     ?.lowercase(Locale.US)
                     ?.takeIf { !audioOnly && it != requestedMimeType },
                 hdrLost = hdrLost,
@@ -163,7 +198,7 @@ object VideoProcessor {
         } finally {
             // NonCancellable because this also runs when the batch was cancelled,
             // and a plain withContext would abandon the delete and leak the file.
-            if (!staged) withContext(NonCancellable + Dispatchers.IO) { output.delete() }
+            if (!staged) withContext(NonCancellable) { output.delete() }
         }
     }
 
@@ -172,12 +207,7 @@ object VideoProcessor {
      * is only an upper bound: modern phone footage is often already efficient, so
      * the source bitrate is measured first and the target stays clearly below it.
      */
-    private fun resolveTargetBitrate(
-        context: Context,
-        source: Uri,
-        resolution: VideoResolution,
-    ): Int {
-        val probe = probeVideo(context, source)
+    internal fun resolveTargetBitrate(probe: VideoProbe?, resolution: VideoResolution): Int {
         val sourceBitrate = probe?.bitrate ?: 0
         val scaleFactor = if (resolution.shortSidePx != null && probe?.shortSide != null && probe.shortSide > 0) {
             val ratio = resolution.shortSidePx.toFloat() / probe.shortSide
@@ -193,7 +223,8 @@ object VideoProcessor {
         return candidate.coerceIn(MIN_BITRATE, resolution.ceilingBitrate)
     }
 
-    private data class VideoProbe(val bitrate: Int, val shortSide: Int?)
+    /** Internal so [resolveTargetBitrate] - the arithmetic worth testing - can be. */
+    internal data class VideoProbe(val bitrate: Int, val shortSide: Int?, val durationMs: Long)
 
     private fun probeVideo(context: Context, source: Uri): VideoProbe? = runCatching {
         val retriever = MediaMetadataRetriever()
@@ -209,7 +240,10 @@ object VideoProcessor {
                 .extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)
                 ?.toIntOrNull()
             val shortSide = if (width != null && height != null) minOf(width, height) else null
-            VideoProbe(bitrate = bitrate, shortSide = shortSide)
+            val durationMs = retriever
+                .extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                ?.toLongOrNull() ?: 0L
+            VideoProbe(bitrate = bitrate, shortSide = shortSide, durationMs = durationMs)
         } finally {
             retriever.release()
         }
@@ -229,7 +263,7 @@ object VideoProcessor {
         targetBitrate: Int,
         outputMimeType: String,
         onProgress: (Float) -> Unit,
-    ): String? = withContext(Dispatchers.Main) {
+    ): ExportResult = withContext(Dispatchers.Main) {
         val videoEffects = buildList {
             resolution.shortSidePx?.let { shortSide ->
                 add(Presentation.createForShortSide(shortSide))
@@ -267,14 +301,18 @@ object VideoProcessor {
             }
         }
 
+        var settled = false
         try {
             suspendCancellableCoroutine { continuation ->
                 val listener = object : Transformer.Listener {
                     override fun onCompleted(composition: Composition, result: ExportResult) {
-                        // The encoder factory is built with fallback enabled, so a
-                        // requested codec the device cannot encode is silently
-                        // swapped. Read what actually came out instead of assuming.
-                        if (continuation.isActive) continuation.resume(result.videoMimeType)
+                        // The whole result, not just its MIME type. The encoder factory
+                        // is built with fallback enabled so the codec that came out has
+                        // to be read rather than assumed - and the duration has to be
+                        // read for the same reason, because a truncated export is
+                        // reported by nothing else.
+                        settled = true
+                        if (continuation.isActive) continuation.resume(result)
                     }
 
                     override fun onError(
@@ -282,31 +320,43 @@ object VideoProcessor {
                         result: ExportResult,
                         exception: ExportException,
                     ) {
+                        settled = true
                         if (continuation.isActive) continuation.resumeWithException(exception)
                     }
                 }
                 transformer.addListener(listener)
-                continuation.invokeOnCancellation {
-                    transformer.removeListener(listener)
-                    transformer.cancel()
-                }
                 runCatching { transformer.start(editedItem, outputPath) }
                     .onFailure { error ->
+                        settled = true
                         transformer.removeListener(listener)
                         if (continuation.isActive) continuation.resumeWithException(error)
                     }
             }
         } finally {
+            // cancel() used to live in invokeOnCancellation, whose handler runs
+            // undispatched on whichever thread cancelled the job - while Transformer
+            // verifies that it is called on the Looper it was built with. It happened
+            // to work because every cancellation path was the main thread, but an
+            // IllegalStateException thrown from a completion handler surfaces as an
+            // uncaught CompletionHandlerException, i.e. a crash rather than a caught
+            // failure. This block already runs on Dispatchers.Main, so it is the
+            // correct home for it - and removeAllListeners now runs on the cancellation
+            // path too, which is where it matters most.
             progressPoller.cancel()
-            if (coroutineContext.isActive) transformer.removeAllListeners()
+            if (!settled) runCatching { transformer.cancel() }
+            transformer.removeAllListeners()
         }
     }
 
-    /** Short, stable identifier for an export failure, shown inside the error text. */
+    /**
+     * Short, stable identifier for an export failure, shown inside the error text.
+     *
+     * The error code name only. Media3 wraps decoder and muxer failures whose
+     * `message` routinely embeds the source URI or a /storage/emulated/0/DCIM path
+     * plus an English codec string, and that text was being interpolated into a
+     * Chinese error message and shown to the user.
+     */
     @androidx.annotation.OptIn(UnstableApi::class)
-    private fun exportReason(exception: ExportException): String {
-        val name = ExportException.getErrorCodeName(exception.errorCode)
-        val cause = exception.cause?.message?.takeIf { it.isNotBlank() }
-        return if (cause == null) name else "$name: $cause"
-    }
+    private fun exportReason(exception: ExportException): String =
+        ExportException.getErrorCodeName(exception.errorCode)
 }

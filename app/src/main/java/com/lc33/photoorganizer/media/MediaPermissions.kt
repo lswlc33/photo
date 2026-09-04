@@ -12,6 +12,19 @@ data class MediaPermissionState(
     val selectedOnly: Boolean,
 ) {
     val hasAccess: Boolean get() = images || videos || selectedOnly
+
+    /**
+     * True when the library the app can see is not the whole library - which is what the
+     * UI has to say out loud.
+     *
+     * Distinct from [selectedOnly] on purpose, and the distinction matters: this is also
+     * true when the user granted images but not videos, which is a stable, complete view
+     * of the photos. Anything that has to react to *the visible set changing underneath
+     * it* - dropping cached hashes, re-scanning on every resume - belongs on
+     * [selectedOnly], because a user who simply withheld the video permission was
+     * otherwise paying for a full rescan and a full duplicate pass every time they came
+     * back to the app.
+     */
     val isLimited: Boolean get() = hasAccess && !(images && videos)
 }
 
@@ -24,8 +37,6 @@ fun Context.hasLimitedMediaPermission(): Boolean {
     val selected = hasPermission(Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED)
     return selected && !(hasImagePermission() && hasVideoPermission())
 }
-
-fun Context.hasPhotoPermission(): Boolean = hasImagePermission() || hasVideoPermission() || hasLimitedMediaPermission()
 
 fun Context.mediaPermissionState(): MediaPermissionState = MediaPermissionState(
     images = hasImagePermission(),

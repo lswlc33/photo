@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.withContext
 
 /**
@@ -75,7 +76,15 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
             return
         }
         val question = channel to mirror
-        if (job?.isActive == true) return
+        if (job?.isActive == true) {
+            // A check already running for a *different* question is stale the moment the
+            // user changed the channel: returning here discarded the new request, and the
+            // in-flight coroutine then recorded `answered` for the old pair, so the screen
+            // kept showing the previous channel's answer until the row was tapped again.
+            // Same for a manual check, which is an explicit "ask again".
+            if (automatic && answered == question) return
+            job?.cancel()
+        }
         if (automatic && answered == question) return
         // A result for another channel says nothing about this one, so it goes
         // before the request rather than being replaced when the answer lands.
@@ -86,12 +95,19 @@ class UpdateViewModel(application: Application) : AndroidViewModel(application) 
         }
         job = viewModelScope.launch {
             val status = withContext(Dispatchers.IO) {
-                UpdateChecker.check(
-                    channel = channel,
-                    mirror = mirror,
-                    installedVersion = installedVersion,
-                    installedCommit = com.lc33.photoorganizer.BuildConfig.BUILD_SHA,
-                )
+                // runInterruptible so cancelling actually interrupts the blocking
+                // HttpsURLConnection. A plain cancel left the socket alive for up to the
+                // connect plus read timeout - 25 seconds during which consent had already
+                // been withdrawn.
+                runInterruptible {
+                    UpdateChecker.check(
+                        consented = enabled,
+                        channel = channel,
+                        mirror = mirror,
+                        installedVersion = installedVersion,
+                        installedCommit = com.lc33.photoorganizer.BuildConfig.BUILD_SHA,
+                    )
+                }
             }
             // A failure is not an answer: leaving it recorded would make the
             // launch-time check give up for the rest of the process after one

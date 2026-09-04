@@ -101,22 +101,16 @@ object ToolAnalyzer {
     /** Converts a megabyte threshold into bytes. */
     fun thresholdBytesOf(megabytes: Int): Long = megabytes.coerceAtLeast(1) * MEGABYTE
 
-    fun analyze(
-        items: List<IndexedMedia>,
-        largestThresholdBytes: Long = DefaultLargestThresholdBytes,
-        contentHashOf: ((IndexedMedia) -> String?)? = null,
-    ): ToolAnalysis {
-        val duplicates = analyzeDuplicates(items, contentHashOf)
-        val screenshots = findScreenshots(items)
-        val largest = findLargest(items, largestThresholdBytes)
-        return ToolAnalysis(
-            duplicates = duplicates,
-            screenshots = screenshots,
-            largest = largest,
-            largestThresholdBytes = largestThresholdBytes,
-        )
-    }
-
+    /**
+     * The duplicate pass.
+     *
+     * [contentHashOf] is nullable because the JVM tests supply their own and the
+     * Android side injects a `ContentResolver`-backed one; a null hasher means no
+     * candidate can be confirmed, so the result is deliberately empty rather than
+     * wrong. The `analyze()` wrapper that used to sit here was unused, and it passed
+     * that null default straight through - a caller reaching for the convenient
+     * entry point would have got zero duplicate groups and no indication why.
+     */
     fun analyzeDuplicates(
         items: List<IndexedMedia>,
         contentHashOf: ((IndexedMedia) -> String?)? = null,

@@ -23,6 +23,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.lc33.photoorganizer.R
 import com.lc33.photoorganizer.media.LogicalAlbum
+import com.lc33.photoorganizer.ui.TrackOverlayPopup
 import top.yukonga.miuix.kmp.basic.ButtonDefaults
 import top.yukonga.miuix.kmp.basic.Text
 import top.yukonga.miuix.kmp.basic.TextButton
@@ -71,9 +72,15 @@ fun DialogActions(
  * Informational dialog with a single acknowledge button. Hosted by the root
  * MIUIX [top.yukonga.miuix.kmp.basic.Scaffold] so it layers above the floating
  * glass bottom bar and inherits predictive-back handling.
+ *
+ * [TrackOverlayPopup] is called here rather than left to the caller. Every MIUIX
+ * overlay has to be paired with it so the glass bottom bar slides away instead of
+ * painting over the dialog, and three of the four call sites had forgotten - which is
+ * the argument for the pairing living in the component that cannot forget.
  */
 @Composable
 fun MessageDialog(show: Boolean, title: String, message: String, onDismiss: () -> Unit) {
+    TrackOverlayPopup(show)
     OverlayDialog(
         show = show,
         title = title,
@@ -98,6 +105,7 @@ fun DiscardDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
 ) {
+    TrackOverlayPopup(show)
     OverlayDialog(
         show = show,
         title = stringResource(R.string.discard_title),
@@ -135,6 +143,7 @@ fun AlbumDialog(
             selectedAlbumName = albums.firstOrNull()?.name
         }
     }
+    TrackOverlayPopup(show)
     OverlayDialog(
         show = show,
         title = stringResource(R.string.album_dialog_title),

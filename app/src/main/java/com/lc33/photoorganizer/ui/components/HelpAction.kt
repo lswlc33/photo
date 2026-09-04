@@ -9,7 +9,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.res.stringResource
 import com.lc33.photoorganizer.R
-import com.lc33.photoorganizer.ui.TrackOverlayPopup
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 
@@ -40,10 +39,6 @@ fun HelpAction(title: String, message: String) {
             contentDescription = stringResource(R.string.help_action_cd),
         )
     }
-    // The dialog renders through the MIUIX popup host rather than inline in the
-    // action row, but it still paints below the root-level glass bottom bar, so
-    // the bar slides away for as long as the dialog is up.
-    TrackOverlayPopup(show)
     MessageDialog(
         show = show,
         title = title,

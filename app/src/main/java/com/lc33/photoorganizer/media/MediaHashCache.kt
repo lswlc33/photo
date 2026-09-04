@@ -91,8 +91,17 @@ class MediaHashCache(private val maxEntries: Int = 20_000) {
 
     fun snapshot(): Map<MediaHashKey, MediaFingerprint> = synchronized(values) { LinkedHashMap(values) }
 
-    fun retain(items: List<IndexedMedia>) {
-        val active = items.mapTo(hashSetOf()) { item -> item.mediaHashKey() }
+    fun retain(items: List<IndexedMedia>) = retainKeys(items.mapTo(hashSetOf()) { it.mediaHashKey() })
+
+    /**
+     * Drops every entry whose key is not in [active].
+     *
+     * Split out from [retain] so the predicate can be unit-tested: `IndexedMedia`
+     * carries an `android.net.Uri`, which is a throwing stub on the JVM test classpath,
+     * so the only reachable case was `retain(emptyList())` - and an inverted predicate,
+     * one that dropped the live keys and kept the stale ones, passed that.
+     */
+    internal fun retainKeys(active: Set<MediaHashKey>) {
         synchronized(values) {
             if (values.keys.removeAll { it !in active }) dirty.set(true)
         }

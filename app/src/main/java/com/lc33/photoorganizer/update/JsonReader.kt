@@ -77,6 +77,11 @@ internal object JsonReader {
                 skipWhitespace()
                 expect(':')
                 skipWhitespace()
+                // Rejected rather than last-wins. Two readers can otherwise disagree
+                // about the same document, which is the last property you want in the
+                // one document that decides what the user is told to install:
+                // {"draft":true, ... ,"draft":false} read as *not* a draft.
+                if (entries.containsKey(key)) throw JsonException("duplicate key '$key' at $index")
                 entries[key] = readValue(depth + 1)
                 skipWhitespace()
                 when (peek()) {
@@ -121,6 +126,11 @@ internal object JsonReader {
                 when (val character = text[index++]) {
                     '"' -> return builder.toString()
                     '\\' -> builder.append(readEscape())
+                    // RFC 8259 forbids raw control characters in a string, and this
+                    // accepted them: a NUL or a newline went straight into text that
+                    // reaches the settings page.
+                    in '\u0000'..'\u001F' ->
+                        throw JsonException("unescaped control character at ${index - 1}")
                     else -> builder.append(character)
                 }
             }
@@ -137,22 +147,60 @@ internal object JsonReader {
                 't' -> '\t'
                 'u' -> {
                     if (index + 4 > text.length) throw JsonException("truncated \\u escape")
-                    val code = text.substring(index, index + 4).toIntOrNull(16)
-                        ?: throw JsonException("bad \\u escape at $index")
+                    val digits = text.substring(index, index + 4)
+                    // Four hex digits, checked explicitly: toIntOrNull honours a leading
+                    // sign, so "\u+041" silently produced 'A' and "\u-041" produced
+                    // U+FFBF instead of both being rejected.
+                    if (!digits.all { it.isHexDigit() }) throw JsonException("bad \\u escape at $index")
                     index += 4
-                    code.toChar()
+                    digits.toInt(16).toChar()
                 }
                 else -> throw JsonException("unknown escape \\$marker")
             }
         }
 
+        /**
+         * A JSON number, validated against the grammar rather than against whatever
+         * `toDouble` happens to accept.
+         *
+         * It used to take any run of digits, dots, signs and exponent markers and hand
+         * it to `toDoubleOrNull`, which accepts `+5`, `.5`, `01` and - the one that
+         * mattered - `1e400`, giving Infinity. `jsonLong` then turned that into
+         * Long.MAX_VALUE and the download row advertised an 8192 PB update.
+         */
         private fun readNumber(): Double {
             val start = index
-            if (peek() == '-' || peek() == '+') index++
-            while (!atEnd && (text[index].isDigit() || text[index] in ".eE+-")) index++
+            if (peek() == '-') index++
+            while (!atEnd && text[index].isDigit()) index++
+            if (index == start || (text[index - 1] == '-')) {
+                throw JsonException("bad number at $start")
+            }
+            // No leading zeros, per RFC 8259.
+            val integerStart = if (text[start] == '-') start + 1 else start
+            if (index - integerStart > 1 && text[integerStart] == '0') {
+                throw JsonException("leading zero at $integerStart")
+            }
+            if (peek() == '.') {
+                index++
+                val fractionStart = index
+                while (!atEnd && text[index].isDigit()) index++
+                if (index == fractionStart) throw JsonException("digit expected at $index")
+            }
+            if (peek() == 'e' || peek() == 'E') {
+                index++
+                if (peek() == '+' || peek() == '-') index++
+                val exponentStart = index
+                while (!atEnd && text[index].isDigit()) index++
+                if (index == exponentStart) throw JsonException("digit expected at $index")
+            }
             val literal = text.substring(start, index)
-            return literal.toDoubleOrNull() ?: throw JsonException("bad number '$literal' at $start")
+            val value = literal.toDoubleOrNull() ?: throw JsonException("bad number '$literal' at $start")
+            if (!value.isFinite()) throw JsonException("number out of range '$literal' at $start")
+            return value
         }
+
+        private fun Char.isHexDigit(): Boolean =
+            this in '0'..'9' || this in 'a'..'f' || this in 'A'..'F'
 
         private fun <T> readLiteral(literal: String, value: T): T {
             if (!text.startsWith(literal, index)) throw JsonException("'$literal' expected at $index")
@@ -178,8 +226,9 @@ internal fun Map<*, *>.jsonString(key: String): String? = this[key] as? String
 internal fun Map<*, *>.jsonBoolean(key: String, fallback: Boolean = false): Boolean =
     this[key] as? Boolean ?: fallback
 
-/** Reads [key] as a whole number of bytes, or null when absent or not numeric. */
-internal fun Map<*, *>.jsonLong(key: String): Long? = (this[key] as? Double)?.toLong()
+/** Reads [key] as a whole number of bytes, or null when absent, not numeric, or absurd. */
+internal fun Map<*, *>.jsonLong(key: String): Long? =
+    (this[key] as? Double)?.takeIf { it.isFinite() }?.toLong()
 
 /** Reads [key] as a list of objects, skipping any entry that is not one. */
 internal fun Map<*, *>.jsonObjects(key: String): List<Map<*, *>> =

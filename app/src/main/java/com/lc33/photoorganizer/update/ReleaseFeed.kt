@@ -33,6 +33,40 @@ object ReleaseFeed {
         mirror.downloadPrefix + release.assetUrl
 
     /**
+     * Hosts a release asset may be served from.
+     *
+     * The feed is read through public reverse proxies that can see and rewrite the
+     * body, so the URL the user is told to install is attacker-controlled input
+     * until something checks it. [UpdateChecker] only guarantees that the *check*
+     * request went over https; without this set, a mirror answering with
+     * `{"name":"x.apk","browser_download_url":"http://evil.example/app.apk"}` - or
+     * with a `market://` or `intent:` URI - would render as a download row and be
+     * handed straight to an implicit Intent.
+     *
+     * The two hosts are where GitHub actually serves assets from: the
+     * `browser_download_url` points at github.com, which redirects to
+     * objects.githubusercontent.com.
+     */
+    private val AllowedAssetHosts = setOf("github.com", "objects.githubusercontent.com")
+
+    /**
+     * Whether [url] is an https release-asset URL on a host from
+     * [AllowedAssetHosts].
+     *
+     * Hand-parsed rather than handed to `URI`, because the interesting inputs are
+     * the ones parsers disagree about. `https://github.com@evil.example/x` has an
+     * authority whose *host* is evil.example and whose userinfo is github.com, so
+     * any `@` disqualifies the URL instead of being resolved one way or the other,
+     * and the authority has to be the bare host - no port, no credentials.
+     */
+    internal fun isTrustedAssetUrl(url: String): Boolean {
+        val scheme = "https://"
+        if (!url.startsWith(scheme, ignoreCase = true)) return false
+        val authority = url.substring(scheme.length).takeWhile { it != '/' && it != '?' && it != '#' }
+        return authority.lowercase() in AllowedAssetHosts
+    }
+
+    /**
      * Reads the array `GET /repos/{repo}/releases` returns.
      *
      * Releases without an installable APK are dropped rather than reported as
@@ -53,22 +87,22 @@ object ReleaseFeed {
         val tag = entry.jsonString("tag_name")?.takeIf { it.isNotBlank() } ?: return null
         val asset = entry.jsonObjects("assets").firstOrNull { asset ->
             asset.jsonString("name")?.endsWith(".apk", ignoreCase = true) == true &&
-                asset.jsonString("browser_download_url") != null
+                isTrustedAssetUrl(asset.jsonString("browser_download_url").orEmpty())
         } ?: return null
         return ReleaseInfo(
-            tag = tag,
-            version = versionOf(tag, asset.jsonString("name").orEmpty()),
+            tag = sanitize(tag),
+            version = sanitize(versionOf(tag, asset.jsonString("name").orEmpty())),
             // `target_commitish` is a commit for the rolling prerelease, which
             // ci.yml creates with an explicit --target, and a branch name for a
             // tagged release. Only the former can be compared, so anything that
             // is not hexadecimal is discarded here instead of at the comparison.
             commit = entry.jsonString("target_commitish")?.takeIf { it.isCommitSha() }.orEmpty(),
             prerelease = entry.jsonBoolean("prerelease"),
-            publishedAt = entry.jsonString("published_at").orEmpty(),
-            assetName = asset.jsonString("name").orEmpty(),
+            publishedAt = sanitize(entry.jsonString("published_at").orEmpty()),
+            assetName = sanitize(asset.jsonString("name").orEmpty()),
             assetUrl = asset.jsonString("browser_download_url").orEmpty(),
-            assetBytes = asset.jsonLong("size") ?: 0L,
-            notes = entry.jsonString("body").orEmpty(),
+            assetBytes = asset.jsonLong("size")?.takeIf { it >= 0L } ?: 0L,
+            notes = sanitize(entry.jsonString("body").orEmpty()),
         )
     }
 
@@ -122,7 +156,16 @@ object ReleaseFeed {
                 installedVersion.isNotBlank() && release.version.isNotBlank() &&
                     compareVersions(release.version, installedVersion) > 0 -> Comparison.NEWER
                 installed.isEmpty() || published.isEmpty() || !installed.isCommitSha() -> Comparison.UNKNOWN
-                published.startsWith(installed) -> Comparison.CURRENT
+                // Compared over the shorter of the two, not with the installed
+                // side as the prefix: a build that knows its full SHA against a
+                // release whose target_commitish is abbreviated is the same commit,
+                // and a one-directional startsWith reported it as NEWER forever.
+                installed.regionMatches(
+                    thisOffset = 0,
+                    other = published,
+                    otherOffset = 0,
+                    length = minOf(installed.length, published.length),
+                ) -> Comparison.CURRENT
                 else -> Comparison.NEWER
             }
         }
@@ -150,9 +193,19 @@ object ReleaseFeed {
         return 0
     }
 
+    /**
+     * A segment that does not parse counts as zero rather than being dropped.
+     *
+     * `mapNotNull` removed the slot, which shifted every later position left:
+     * `8.x.9` read as `[8, 9]` and therefore compared *above* `8.2`, so a
+     * feed-supplied tag could fabricate a newer version out of a malformed one.
+     * Keeping the slot makes an unparseable segment the smallest possible value,
+     * which fails toward "not newer" - the safe direction for a comparison whose
+     * only consequence is offering the user a download.
+     */
     private fun versionSegments(version: String): List<Long> =
-        version.trim().removePrefix("v").split('.').mapNotNull { segment ->
-            segment.takeWhile { it.isDigit() }.toLongOrNull()
+        version.trim().removePrefix("v").split('.').map { segment ->
+            segment.takeWhile { it.isDigit() }.toLongOrNull() ?: 0L
         }
 
     /**
@@ -172,6 +225,26 @@ object ReleaseFeed {
 
     private val AssetVersion = Regex("""-v(\d+(?:\.\d+)*)""")
 
+    /**
+     * Text from the feed, with the characters that can lie about it removed.
+     *
+     * A tag reaches the download row verbatim, so a right-to-left override or a
+     * newline in it controls what the row *appears* to offer. C0/C1 controls and
+     * the bidi formatting characters are dropped; everything else - including
+     * every script the notes might legitimately be written in - is left alone.
+     */
+    private fun sanitize(text: String): String = text.filterNot { character ->
+        character.code < 0x20 || character.code in 0x7F..0x9F ||
+            character.code in 0x200E..0x200F || character.code in 0x202A..0x202E ||
+            character.code in 0x2066..0x2069
+    }
+
+    /**
+     * Whether this is plausibly a commit SHA rather than a branch name.
+     *
+     * Bounded above as well as below: git SHAs are 40 hex characters (or 64 for
+     * SHA-256), and an unbounded upper end let arbitrary hex-shaped text through.
+     */
     private fun String.isCommitSha(): Boolean =
-        length >= 7 && all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }
+        length in 7..64 && all { it.isDigit() || it in 'a'..'f' || it in 'A'..'F' }
 }

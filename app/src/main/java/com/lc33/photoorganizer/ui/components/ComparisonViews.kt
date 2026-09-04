@@ -21,7 +21,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -40,6 +39,7 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.PlayerView
+import com.lc33.photoorganizer.processing.resizeDecodeBudgetPixels
 import com.lc33.photoorganizer.processing.resizeDecodeSampleSize
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -77,7 +77,7 @@ fun LocalMediaImage(
     isVideo: Boolean,
     modifier: Modifier = Modifier,
     contentScale: ContentScale = ContentScale.Crop,
-    requestSize: Int = 512,
+    requestSize: Int = TileDecodeSize,
     contentDescription: String? = null,
 ) {
     // The length is part of the key because a staged file is written once and then
@@ -85,18 +85,22 @@ fun LocalMediaImage(
     val cacheKey = remember(file, requestSize) {
         "staged:${file.absolutePath}:${file.length()}@$requestSize"
     }
-    val cached = remember(cacheKey) { MediaThumbnailCache.get(cacheKey, requestSize) }
-    val bitmap by produceState<Bitmap?>(initialValue = cached, cacheKey) {
-        if (value != null) return@produceState
-        value = withContext(Dispatchers.IO) {
+    // See MediaThumbnail: produceState's backing state has no keys, so a changed
+    // cacheKey on a surviving composable kept showing the previous file - which is
+    // precisely the case the length above was added to the key for.
+    var bitmap by remember(cacheKey) { mutableStateOf(MediaThumbnailCache.get(cacheKey, requestSize)) }
+    LaunchedEffect(cacheKey) {
+        if (bitmap != null) return@LaunchedEffect
+        bitmap = withContext(Dispatchers.IO) {
             val decoded = if (isVideo) decodeVideoFrame(file, requestSize) else decodeImage(file, requestSize)
             decoded?.also { MediaThumbnailCache.put(cacheKey, requestSize, it) }
         }
     }
     val decoded = bitmap
     if (decoded != null) {
+        val image = remember(decoded) { decoded.asImageBitmap() }
         Image(
-            bitmap = decoded.asImageBitmap(),
+            bitmap = image,
             contentDescription = contentDescription,
             modifier = modifier,
             contentScale = contentScale,
@@ -277,7 +281,12 @@ private fun decodeImage(file: File, requestSize: Int): Bitmap? = runCatching {
     val longEdge = maxOf(bounds.outWidth, bounds.outHeight)
     if (longEdge <= 0) return null
     val options = BitmapFactory.Options().apply {
-        inSampleSize = resizeDecodeSampleSize(longEdge, requestSize)
+        inSampleSize = resizeDecodeSampleSize(
+            width = bounds.outWidth,
+            height = bounds.outHeight,
+            targetLongEdge = requestSize,
+            budgetPixels = resizeDecodeBudgetPixels(Runtime.getRuntime().maxMemory()),
+        )
     }
     BitmapFactory.decodeFile(file.absolutePath, options)
 }.getOrNull()

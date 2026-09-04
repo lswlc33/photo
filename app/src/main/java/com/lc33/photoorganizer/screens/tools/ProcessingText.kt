@@ -31,12 +31,14 @@ internal fun describeBatchFailure(resources: Resources, failure: BatchFailure): 
     val reason = if (error is ProcessingException) {
         resources.getString(error.messageRes, *error.formatArgs.toTypedArray())
     } else {
-        resources.getString(
-            R.string.processing_error_unknown,
-            error.message?.takeIf { it.isNotBlank() } ?: error.javaClass.simpleName,
-        )
+        // The class name, not the message. Every failure the pipeline raises on
+        // purpose is a ProcessingException with a localized string; this branch is
+        // for the genuinely unexpected, where `message` is an English library string
+        // that routinely embeds a content URI or a /storage/emulated/0/DCIM path -
+        // neither of which belongs on screen in a Chinese-first UI.
+        resources.getString(R.string.processing_error_unknown, error.javaClass.simpleName)
     }
-    return "${failure.source.displayName} · $reason"
+    return failure.source.displayName + resources.getString(R.string.detail_separator) + reason
 }
 
 /** `1.2 MB to 480 KB · 61% smaller`, or the "it grew" wording when it did. */
@@ -67,14 +69,17 @@ internal fun StagedMedia.detailText(): String {
     val notes = buildList {
         codecFallback?.let { add(stringResource(R.string.media_tool_codec_fallback, codecLabel(it))) }
         if (hdrLost) add(stringResource(R.string.media_tool_hdr_lost))
+        resizeShortfallPx?.let { achieved ->
+            add(stringResource(R.string.media_tool_resize_shortfall, achieved, requestedLongEdgePx ?: achieved))
+        }
     }
-    return (listOf(size) + notes).joinToString(" · ")
+    return (listOf(size) + notes).joinToString(stringResource(R.string.detail_separator))
 }
 
 @Composable
 internal fun ProcessedMedia.detailText(): String {
     val size = sizeChangeText(originalBytes, outputBytes, savedFraction)
-    return "$size · $folder"
+    return size + stringResource(R.string.detail_separator) + folder
 }
 
 /** `video/hevc` reads as `HEVC` in a summary line, not as a MIME type. */

@@ -6,6 +6,21 @@ import android.util.LruCache
 /** Request sizes at or above this are full-screen previews rather than grid tiles. */
 private const val PreviewSizeThreshold = 1024
 
+/**
+ * The three decode sizes, in one place because they and [PreviewSizeThreshold] are one
+ * policy: the size decides which of the two budgets an entry lands in, so a number
+ * changed at a call site silently reclassified the cache bucket somewhere else.
+ */
+
+/** A grid tile is about 300 px at density 3, so 256 is the closest useful decode. */
+internal const val TileDecodeSize = 256
+
+/** The swipe review card, drawn at roughly 1000x1400. Above the preview threshold. */
+internal const val CardDecodeSize = 1536
+
+/** Full-window and side-by-side comparison views. */
+internal const val PreviewDecodeSize = 2048
+
 /** Enough for a screen of tiles even where the heap fraction rounds to nothing. */
 internal const val MinimumCacheKilobytes = 4 * 1024
 

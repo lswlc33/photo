@@ -62,9 +62,23 @@ object PerceptualHash {
 }
 
 /**
- * Clusters items whose hashes are within [maxDistance] of each other. Similarity
- * is transitive here: a burst where each frame only resembles its neighbour still
- * collapses into one group, which is what a user cleaning up a burst expects.
+ * Clusters items whose hashes are within [maxDistance] of each other, with every
+ * member also within [maxDistance] of its cluster's first member.
+ *
+ * The second half of that sentence is the part that matters. Pairwise union-find
+ * alone computes connected components, which have no diameter bound at all: twelve
+ * pairwise five-bit hops put two photos sixty bits apart in the same group. That
+ * defeats the reason [PerceptualHash.DefaultMaxDistance] is kept tight - the similar
+ * list offers a one-tap "keep one copy", so a false grouping costs the user a photo -
+ * and [PerceptualHash.MinFeatureBits] does not help, because it only filters the
+ * popcount extremes and says nothing about chaining.
+ *
+ * Requiring every member to stay within [maxDistance] of one representative bounds
+ * the cluster diameter at twice [maxDistance] while still collapsing an ordinary
+ * burst, where every frame resembles every other one and not merely its neighbour.
+ * The representative is the first candidate in the cluster, so the partition depends
+ * on input order - unavoidable for any bounded-diameter clustering, and deterministic
+ * because the caller's order is the scan order.
  *
  * Items without a hash, or with a featureless one, are left out entirely.
  * Returned groups have at least two members and keep the input order.
@@ -76,16 +90,24 @@ internal fun <T> groupSimilarItems(
     checkActive: () -> Unit = {},
 ): List<List<T>> {
     val candidates = ArrayList<T>(items.size)
-    val hashes = ArrayList<Long>(items.size)
+    val collected = ArrayList<Long>(items.size)
     items.forEach { item ->
         val hash = hashOf(item) ?: return@forEach
         if (PerceptualHash.isFeatureless(hash)) return@forEach
         candidates += item
-        hashes += hash
+        collected += hash
     }
     if (candidates.size < 2) return emptyList()
 
+    // A LongArray, not the ArrayList<Long> the collection pass needs: this is the
+    // hottest loop in the app, quadratic in the library size, and every read out of a
+    // boxed list is an unbox - two hundred million of them on a twenty thousand image
+    // library.
+    val hashes = LongArray(collected.size) { collected[it] }
     val parent = IntArray(candidates.size) { it }
+    // Members per root, so a merge can be checked against the whole cluster rather
+    // than against one endpoint of it.
+    val members = arrayOfNulls<MutableList<Int>>(candidates.size)
 
     fun rootOf(index: Int): Int {
         var current = index
@@ -96,13 +118,23 @@ internal fun <T> groupSimilarItems(
         return current
     }
 
+    fun membersOf(root: Int): MutableList<Int> =
+        members[root] ?: mutableListOf(root).also { members[root] = it }
+
     for (first in candidates.indices) {
         checkActive()
+        val firstHash = hashes[first]
         for (second in first + 1 until candidates.size) {
-            if (PerceptualHash.distance(hashes[first], hashes[second]) > maxDistance) continue
+            if (PerceptualHash.distance(firstHash, hashes[second]) > maxDistance) continue
             val firstRoot = rootOf(first)
             val secondRoot = rootOf(second)
-            if (firstRoot != secondRoot) parent[secondRoot] = firstRoot
+            if (firstRoot == secondRoot) continue
+            val representative = hashes[firstRoot]
+            val joining = membersOf(secondRoot)
+            if (joining.any { PerceptualHash.distance(hashes[it], representative) > maxDistance }) continue
+            parent[secondRoot] = firstRoot
+            membersOf(firstRoot).addAll(joining)
+            members[secondRoot] = null
         }
     }
 

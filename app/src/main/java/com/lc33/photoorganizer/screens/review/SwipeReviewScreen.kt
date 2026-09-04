@@ -85,6 +85,7 @@ import top.yukonga.miuix.kmp.theme.MiuixTheme
 import com.lc33.photoorganizer.ui.theme.AccentGreen
 import com.lc33.photoorganizer.ui.theme.DangerRed
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import kotlinx.coroutines.launch
@@ -109,7 +110,12 @@ fun SwipeReviewScreen(
     onOpenAlbum: (Long) -> Unit,
     title: String? = null,
 ) {
-    var currentIndex by rememberSaveable { mutableIntStateOf(0) }
+    // The saved position is the item's id, not its index into a list that is not saved.
+    // After process death the queue is re-derived from a fresh scan and its order is not
+    // guaranteed to match, so a restored index of 200 pointed at an arbitrary photo -
+    // and clamping the range, which is all the effect below did, cannot notice that.
+    var restoredId by rememberSaveable { mutableStateOf<Long?>(null) }
+    var currentIndex by remember { mutableIntStateOf(0) }
     var dragX by remember { mutableFloatStateOf(0f) }
     var dragY by remember { mutableFloatStateOf(0f) }
     var dragAxis by remember { mutableStateOf<DragAxis?>(null) }
@@ -125,8 +131,17 @@ fun SwipeReviewScreen(
     val hapticFeedback = LocalHapticFeedback.current
     val clearance = systemClearance()
 
-    LaunchedEffect(media.size) {
-        currentIndex = if (media.isEmpty()) 0 else currentIndex.coerceIn(0, media.lastIndex)
+    LaunchedEffect(media) {
+        val restored = restoredId?.let { id -> media.indexOfFirst { it.id == id } }?.takeIf { it >= 0 }
+        currentIndex = when {
+            media.isEmpty() -> 0
+            restored != null -> restored
+            else -> currentIndex.coerceIn(0, media.lastIndex)
+        }
+        restoredId = media.getOrNull(currentIndex)?.id
+    }
+    LaunchedEffect(currentIndex, media) {
+        restoredId = media.getOrNull(currentIndex)?.id
     }
 
     Scaffold(
@@ -292,14 +307,23 @@ fun SwipeReviewScreen(
                         .pointerInput(current.id) {
                             detectTapGestures(
                                 onTap = { preview.open(current) },
-                                onLongPress = { preview.peek(current) },
+                                // Gated on no drag being in flight. The tap detector and
+                                // the drag detector below are separate pointer nodes with
+                                // separate slop tracking, so a press held for the 500 ms
+                                // long-press timeout and *then* dragged used to open the
+                                // peek preview in the middle of a drag.
+                                onLongPress = { if (dragAxis == null && dragX == 0f && dragY == 0f) preview.peek(current) },
                                 onPress = {
                                     tryAwaitRelease()
                                     preview.release(current.id)
                                 },
                             )
                         }
-                        .pointerInput(current.id, animationEnabled) {
+                        // `media` is a key: onDrag and commitVertical both read
+                        // media.lastIndex, and marking a *different* item rebuilds the
+                        // list while current.id stays the same, so the handler went on
+                        // using the previous list's bounds.
+                        .pointerInput(current.id, media, animationEnabled) {
                             detectDragGestures(
                                 onDragStart = {
                                     if (!settling) {
@@ -596,11 +620,16 @@ private fun SwipeDecisionButtons(
 /** Folder, capture date and size, so a decision has some context behind it. */
 @Composable
 private fun ColumnScope.SwipeMediaCaption(item: UiMedia, bottomPadding: Dp) {
-    val caption = remember(item.id) {
+    // The locale is a key as well as the id: scanDate and formatBytes are both
+    // locale-dependent, and keyed on the id alone the caption kept the previous
+    // language's date and size after a system language change.
+    val locale = LocalConfiguration.current.locales[0]
+    val separator = stringResource(R.string.detail_separator)
+    val caption = remember(item.id, locale, separator) {
         buildString {
             append(item.relativePath?.trimEnd('/') ?: item.mimeType)
-            item.dateTakenMillis?.let { append(" / "); append(scanDate(it)) }
-            append(" / ")
+            item.dateTakenMillis?.let { append(separator); append(scanDate(it)) }
+            append(separator)
             append(formatBytes(item.sizeBytes))
         }
     }

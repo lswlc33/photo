@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.listSaver
@@ -110,7 +111,7 @@ fun OrganizeScreen(
         val percent = if (totalCount <= 0) 0 else reviewed * 100 / totalCount
         GradientHero(
             title = stringResource(R.string.organize_progress_title),
-            value = stringResource(R.string.organize_progress_value, percent),
+            value = stringResource(R.string.percent_value, percent),
             subtitle = if (totalCount <= 0) {
                 stringResource(R.string.organize_progress_empty)
             } else {
@@ -261,8 +262,10 @@ private fun TargetedFilterSheet(
     }
     var showAlbumPicker by rememberSaveable { mutableStateOf(false) }
     var editingDate by rememberSaveable { mutableStateOf<DateField?>(null) }
+    // mutableIntStateOf, not mutableStateOf: this is read by a slider, so the boxing was
+    // one Integer allocation per drag frame.
     var minSizeMb by rememberSaveable {
-        mutableStateOf(initial.minSizeBytes?.div(MEGABYTE)?.toInt() ?: 0)
+        mutableIntStateOf(initial.minSizeBytes?.div(MEGABYTE)?.toInt() ?: 0)
     }
     val reset = {
         albumPaths = emptySet()

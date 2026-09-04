@@ -10,8 +10,8 @@
     <string name="media_type_photo">Photo</string>
     <string name="media_type_video">Video</string>
     <string name="media_type_screenshot">Screenshot</string>
-    <string name="media_type_raw">RAW</string>
-    <string name="media_type_gif">GIF</string>
+    <string name="media_type_raw" translatable="false">RAW</string>
+    <string name="media_type_gif" translatable="false">GIF</string>
     <string name="media_type_live_photo">Live Photo</string>
     <string name="media_preview_close_cd">Close preview</string>
     <string name="media_tile_cd">%1$s, %2$s, %3$s</string>
@@ -74,7 +74,8 @@
     <!-- Organize -->
     <string name="organize_title">Organize</string>
     <string name="organize_progress_title">Review progress</string>
-    <string name="organize_progress_value">%1$d%%</string>
+    <string name="percent_value" translatable="false">%1$d%%</string>
+    <string name="resolution_value" translatable="false">%1$dp</string>
     <string name="organize_progress_summary">Kept %1$s · Discarded %2$s · %3$s to go</string>
     <string name="organize_progress_empty">Nothing indexed yet</string>
     <string name="organize_subtitle">Pick a review mode</string>
@@ -94,7 +95,7 @@
     </plurals>
 
     <!-- Review (swipe) -->
-    <string name="review_progress">%1$d / %2$d</string>
+    <string name="review_progress" translatable="false">%1$d / %2$d</string>
     <string name="review_action_keep">Keep</string>
     <string name="review_action_trash">Trash</string>
     <string name="review_action_album">Album</string>
@@ -118,6 +119,7 @@
     <string name="manual_trash">Discard</string>
     <string name="manual_clear">Clear marks</string>
     <string name="manual_compress">Compress</string>
+    <string name="manual_scrubber_cd">Fast scroll by date</string>
     <string name="manual_unknown_date">Date unknown</string>
     <string name="manual_select_mode_cd">Select media</string>
     <string name="manual_search_cd">Search by file name</string>
@@ -188,6 +190,7 @@
 
     <!-- Tools -->
     <string name="tools_title">Tools</string>
+    <string name="tools_analysis_failed">Analysis failed — tap to try again</string>
     <string name="tools_analysis_running">Analyzing local media…</string>
     <string name="tools_duplicate_title">Exact duplicates</string>
     <string name="duplicate_empty">No duplicate groups detected.</string>
@@ -289,7 +292,7 @@
     </plurals>
     <string name="media_tool_bitrate">Target bitrate</string>
     <string name="media_tool_bitrate_auto">Auto</string>
-    <string name="media_tool_bitrate_value">%1$s Mbps</string>
+    <string name="media_tool_bitrate_value" translatable="false">%1$s Mbps</string>
     <string name="media_tool_bitrate_hint">Auto selects a target bitrate significantly below the source.</string>
     <string name="media_tool_pick_images">Choose photos</string>
     <string name="media_tool_pick_videos">Choose videos</string>
@@ -303,7 +306,6 @@
     <string name="media_tool_process_selected_summary">Uses the settings above; originals stay untouched</string>
     <string name="media_tool_clear_selection">Drop the selection</string>
     <string name="media_tool_progress_queue">Item %1$d of %2$d</string>
-    <string name="media_tool_results">Results</string>
     <plurals name="media_tool_results_total">
         <item quantity="one">%1$d file · %2$s saved</item>
         <item quantity="other">%1$d files · %2$s saved</item>
@@ -323,9 +325,11 @@
     <string name="processing_error_original_too_large">The original image is %1$s x %2$s pixels, which is too large to process safely. Choose 3840 px or a smaller size.</string>
     <string name="processing_error_encode_image">Encoding to %1$s failed.</string>
     <string name="processing_error_copy_metadata">The image was encoded, but its metadata could not be preserved.</string>
+    <string name="processing_error_read_orientation">The image orientation could not be read, so rotating it correctly was not possible.</string>
     <string name="processing_error_gallery_insert">The gallery entry could not be created; check storage space.</string>
     <string name="processing_error_gallery_write">The result could not be written to the gallery.</string>
     <string name="processing_error_gallery_publish">The result could not be published to the gallery.</string>
+    <string name="processing_error_truncated_output">Transcoding stopped early: the result is %1$s s long but the source is %2$s s. Nothing was kept.</string>
     <string name="processing_error_empty_output">Transcoding produced an empty file; this device may not support the required encoder.</string>
     <string name="processing_error_video_export">Video transcoding failed (%1$s); this device may not support the required encoder.</string>
     <string name="processing_error_dolby_vision">Dolby Vision video. Its metadata lives in a layer no re-encode can carry, so the file was left unprocessed.</string>
@@ -344,9 +348,9 @@
     <string name="media_tool_track_video_desc">Drop the audio track</string>
     <string name="media_tool_track_audio_desc">Export the audio track as M4A</string>
     <string name="media_tool_codec">Video codec</string>
-    <string name="media_tool_codec_h264">H.264</string>
+    <string name="media_tool_codec_h264" translatable="false">H.264</string>
     <string name="media_tool_codec_hevc">HEVC (H.265)</string>
-    <string name="media_tool_codec_av1">AV1</string>
+    <string name="media_tool_codec_av1" translatable="false">AV1</string>
     <string name="media_tool_codec_source_desc">Keep the source codec when this device supports it, otherwise H.264</string>
     <string name="media_tool_codec_h264_desc">Compatible with all players; larger than HEVC at the same quality</string>
     <string name="media_tool_codec_hevc_desc">Noticeably smaller than H.264 at the same quality; older players may not open it</string>
@@ -356,6 +360,8 @@
     <string name="media_tool_codec_fallback">Encoded as %1$s — this device does not support the selected codec</string>
     <string name="media_tool_allow_hdr_sdr">Allow an SDR copy of HDR video</string>
     <string name="media_tool_allow_hdr_sdr_summary">Off by default. A re-encode usually cannot preserve HDR, and the output is a faded SDR file</string>
+    <string name="media_tool_resize_shortfall">%1$d px, not the %2$d px requested — this device could not decode the original at full size</string>
+    <string name="detail_separator" translatable="false"> · </string>
     <string name="media_tool_hdr_lost">HDR was not preserved; the output is SDR</string>
 
     <!-- Processing flow: output settings, file picker, progress, review -->
@@ -384,8 +390,8 @@
     <string name="processing_review_hint">Left is the source, right is the result. Hold a pair to compare it full screen; two videos play in sync.</string>
     <string name="processing_review_source">Source</string>
     <string name="processing_review_result">Result</string>
-    <string name="processing_review_compare_cd">Compare the source with the result</string>
-    <string name="processing_review_keep_cd">Keep this result</string>
+    <string name="processing_review_compare_cd">Compare the source with the result: %1$s</string>
+    <string name="processing_review_keep_cd">Keep this result: %1$s</string>
     <string name="processing_review_clear">Clear</string>
     <plurals name="processing_review_save">
         <item quantity="one">Save %1$d</item>
@@ -402,6 +408,9 @@
         <item quantity="one">%1$d result could not be saved</item>
         <item quantity="other">%1$d results could not be saved</item>
     </plurals>
+    <string name="processing_commit_retry_summary">Their staged files were kept, so retrying does not encode anything again.</string>
+    <string name="processing_commit_retry">Retry</string>
+    <string name="processing_commit_give_up">Discard them</string>
     <string name="processing_sources_title">Keep the source files?</string>
     <plurals name="processing_sources_summary">
         <item quantity="one">%1$d source file now has a saved result beside it. Keeping it uses more space; deleting cannot be undone.</item>
@@ -472,7 +481,6 @@
     <string name="settings_about">About</string>
     <string name="settings_about_version">Photo Organizer</string>
     <string name="settings_about_summary">App information, privacy, source code and licenses</string>
-    <string name="settings_version_summary">v%1$s</string>
     <string name="about_title">About</string>
     <string name="about_application_section">About this app</string>
     <string name="about_application_description">Photo Organizer indexes photos and videos on this device, then helps you review them with keep and discard marks. Discarded items are only removed after Android displays its system confirmation.</string>

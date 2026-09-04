@@ -10,8 +10,6 @@
     <string name="media_type_photo">照片</string>
     <string name="media_type_video">视频</string>
     <string name="media_type_screenshot">截屏</string>
-    <string name="media_type_raw">RAW</string>
-    <string name="media_type_gif">GIF</string>
     <string name="media_type_live_photo">实况照片</string>
     <string name="media_preview_close_cd">关闭预览</string>
     <string name="media_tile_cd">%1$s，%2$s，%3$s</string>
@@ -73,7 +71,6 @@
     <!-- 整理 -->
     <string name="organize_title">整理</string>
     <string name="organize_progress_title">整理进度</string>
-    <string name="organize_progress_value">%1$d%%</string>
     <string name="organize_progress_summary">已保留 %1$s · 已弃置 %2$s · 待整理 %3$s</string>
     <string name="organize_progress_empty">尚未建立索引</string>
     <string name="organize_subtitle">选择整理方式</string>
@@ -92,7 +89,6 @@
     </plurals>
 
     <!-- 快速整理 -->
-    <string name="review_progress">%1$d / %2$d</string>
     <string name="review_action_keep">保留</string>
     <string name="review_action_trash">弃置</string>
     <string name="review_action_album">相册</string>
@@ -115,6 +111,7 @@
     <string name="manual_trash">弃置</string>
     <string name="manual_clear">清除标记</string>
     <string name="manual_compress">压缩</string>
+    <string name="manual_scrubber_cd">按日期快速滚动</string>
     <string name="manual_unknown_date">日期未知</string>
     <string name="manual_select_mode_cd">选择媒体</string>
     <string name="manual_search_cd">按文件名搜索</string>
@@ -183,6 +180,7 @@
 
     <!-- 工具 -->
     <string name="tools_title">工具</string>
+    <string name="tools_analysis_failed">分析失败 —— 点击重试</string>
     <string name="tools_analysis_running">正在分析本地媒体…</string>
     <string name="tools_duplicate_title">精确重复照片</string>
     <string name="duplicate_empty">未发现重复内容。</string>
@@ -277,7 +275,6 @@
     </plurals>
     <string name="media_tool_bitrate">目标码率</string>
     <string name="media_tool_bitrate_auto">自动</string>
-    <string name="media_tool_bitrate_value">%1$s Mbps</string>
     <string name="media_tool_bitrate_hint">自动选择一个显著低于源码率的目标值。</string>
     <string name="media_tool_pick_images">选择照片</string>
     <string name="media_tool_pick_videos">选择视频</string>
@@ -290,7 +287,6 @@
     <string name="media_tool_process_selected_summary">使用上方参数处理，原文件保持不变</string>
     <string name="media_tool_clear_selection">清除所选项目</string>
     <string name="media_tool_progress_queue">第 %1$d / %2$d 项</string>
-    <string name="media_tool_results">处理结果</string>
     <plurals name="media_tool_results_total">
         <item quantity="other">%1$d 个文件 · 节省 %2$s</item>
     </plurals>
@@ -306,10 +302,12 @@
     <string name="processing_error_decode_image">无法解码这张图片，文件可能已损坏或格式不受支持。</string>
     <string name="processing_error_original_too_large">原图尺寸为 %1$s × %2$s 像素，直接处理可能耗尽内存。请选择 3840 像素或更小尺寸。</string>
     <string name="processing_error_encode_image">编码为 %1$s 失败。</string>
+    <string name="processing_error_read_orientation">读不到这张图的方向信息，无法把它转到正确的方向。</string>
     <string name="processing_error_copy_metadata">图片已编码，但无法保留其元数据。</string>
     <string name="processing_error_gallery_insert">无法创建图库条目，请检查存储空间。</string>
     <string name="processing_error_gallery_write">无法把结果写入图库。</string>
     <string name="processing_error_gallery_publish">无法把结果发布到图库。</string>
+    <string name="processing_error_truncated_output">转码提前结束：结果只有 %1$s 秒，而源文件是 %2$s 秒。这一项没有保留。</string>
     <string name="processing_error_empty_output">转码生成了空文件，本设备可能不支持所需的编码器。</string>
     <string name="processing_error_video_export">视频转码失败（%1$s），本设备可能不支持所需的编码器。</string>
     <string name="processing_error_dolby_vision">这是杜比视界视频。它的元数据位于重新编码无法携带的图层中，因此该文件未作处理。</string>
@@ -328,9 +326,7 @@
     <string name="media_tool_track_video_desc">移除音频轨道</string>
     <string name="media_tool_track_audio_desc">将音频轨道导出为 M4A</string>
     <string name="media_tool_codec">视频编码</string>
-    <string name="media_tool_codec_h264">H.264</string>
     <string name="media_tool_codec_hevc">HEVC（H.265）</string>
-    <string name="media_tool_codec_av1">AV1</string>
     <string name="media_tool_codec_source_desc">本设备支持时沿用原编码，否则改用 H.264</string>
     <string name="media_tool_codec_h264_desc">兼容所有播放器；同画质下体积大于 HEVC</string>
     <string name="media_tool_codec_hevc_desc">同画质下体积明显更小；较旧的播放器可能无法打开</string>
@@ -340,6 +336,7 @@
     <string name="media_tool_codec_fallback">实际编码为 %1$s —— 本设备不支持所选编码</string>
     <string name="media_tool_allow_hdr_sdr">允许把 HDR 压成 SDR</string>
     <string name="media_tool_allow_hdr_sdr_summary">默认关闭。重新编码通常无法保留 HDR，输出会是一个色彩变淡的 SDR 文件</string>
+    <string name="media_tool_resize_shortfall">%1$d px，不是请求的 %2$d px —— 本机无法按原尺寸解码这张图</string>
     <string name="media_tool_hdr_lost">HDR 未能保留，输出为 SDR</string>
 
     <!-- 处理流程：输出设置、选择文件、进度、结果确认 -->
@@ -367,8 +364,8 @@
     <string name="processing_review_hint">左侧是原文件，右侧是处理结果。长按任意一组可全屏对比，两个视频会同步播放。</string>
     <string name="processing_review_source">原文件</string>
     <string name="processing_review_result">处理结果</string>
-    <string name="processing_review_compare_cd">对比原文件与处理结果</string>
-    <string name="processing_review_keep_cd">保留这个结果</string>
+    <string name="processing_review_compare_cd">对比原文件与处理结果：%1$s</string>
+    <string name="processing_review_keep_cd">保留这个结果：%1$s</string>
     <string name="processing_review_clear">全不选</string>
     <plurals name="processing_review_save">
         <item quantity="other">保存 %1$d 项</item>
@@ -382,6 +379,9 @@
     <plurals name="processing_commit_failed">
         <item quantity="other">%1$d 项保存失败</item>
     </plurals>
+    <string name="processing_commit_retry_summary">它们的暂存文件还留着，重试不会重新编码一遍。</string>
+    <string name="processing_commit_retry">重试</string>
+    <string name="processing_commit_give_up">放弃这些结果</string>
     <string name="processing_sources_title">是否保留源文件？</string>
     <plurals name="processing_sources_summary">
         <item quantity="other">已有 %1$d 个源文件在同一目录下生成了结果。保留会占用更多空间，删除后无法恢复。</item>
@@ -448,7 +448,6 @@
     <string name="settings_about">关于</string>
     <string name="settings_about_version">照片整理</string>
     <string name="settings_about_summary">应用信息、隐私、源代码与许可</string>
-    <string name="settings_version_summary">v%1$s</string>
     <string name="about_title">关于</string>
     <string name="about_application_section">软件介绍</string>
     <string name="about_application_description">照片整理会在本机索引照片和视频，并通过保留与弃置标记帮助你逐项检查。只有在 Android 显示系统确认后，已弃置内容才会被真正删除。</string>

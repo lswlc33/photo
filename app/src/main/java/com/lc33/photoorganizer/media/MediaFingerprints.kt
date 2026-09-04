@@ -33,7 +33,15 @@ object MediaFingerprintCodec {
     private const val Absent = "-"
     private const val Separator = '\t'
 
-    fun encode(entries: Map<MediaHashKey, MediaFingerprint>): List<String> = entries
+    fun encode(entries: Map<MediaHashKey, MediaFingerprint>): List<String> =
+        encodeLines(entries).toList()
+
+    /**
+     * The same lines as [encode], lazily. [MediaFingerprintStore.save] streams them
+     * rather than materialising twenty thousand strings and then one two-megabyte
+     * string out of them, twice per refresh.
+     */
+    fun encodeLines(entries: Map<MediaHashKey, MediaFingerprint>): Sequence<String> = entries
         .asSequence()
         .filterNot { (_, fingerprint) -> fingerprint.isEmpty }
         .map { (key, fingerprint) ->
@@ -46,7 +54,6 @@ object MediaFingerprintCodec {
                 fingerprint.perceptualHash?.let { java.lang.Long.toHexString(it) } ?: Absent,
             ).joinToString(Separator.toString())
         }
-        .toList()
 
     fun decode(lines: List<String>): Map<MediaHashKey, MediaFingerprint> {
         val decoded = LinkedHashMap<MediaHashKey, MediaFingerprint>()
@@ -83,18 +90,20 @@ class MediaFingerprintStore(private val file: File) {
     }.getOrElse { emptyMap() }
 
     fun save(entries: Map<MediaHashKey, MediaFingerprint>) {
-        runCatching {
-            val lines = MediaFingerprintCodec.encode(entries)
-            if (lines.isEmpty()) {
-                file.delete()
-                return@runCatching
-            }
-            file.parentFile?.mkdirs()
-            val temporary = File(file.parentFile, file.name + ".tmp")
-            temporary.writeText(lines.joinToString("\n", postfix = "\n"))
-            if (!temporary.renameTo(file)) {
-                file.delete()
-                temporary.renameTo(file)
+        if (entries.values.all { it.isEmpty }) {
+            file.delete()
+            return
+        }
+        // Streamed rather than joined: this used to build one string per entry and then
+        // one multi-megabyte string out of all of them, twice per refresh. No fsync -
+        // unlike the review log this is a cache, and redoing the work is the whole
+        // fallback.
+        writeFileAtomically(file, sync = false) { stream ->
+            stream.bufferedWriter().use { writer ->
+                MediaFingerprintCodec.encodeLines(entries).forEach { line ->
+                    writer.write(line)
+                    writer.write("\n")
+                }
             }
         }
     }

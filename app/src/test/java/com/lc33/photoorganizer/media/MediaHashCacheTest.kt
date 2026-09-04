@@ -80,6 +80,47 @@ class MediaHashCacheTest {
         assertTrue("dropping entries changes what should be persisted", cache.isDirty)
     }
 
+    /**
+     * The assertion the old suite could not make: that retain keeps the *live* keys.
+     * With only `retain(emptyList())` covered, an inverted predicate - dropping what is
+     * still in the library and keeping what is gone - passed everything.
+     */
+    @Test
+    fun retainDropsOnlyTheKeysThatAreNoLongerActive() {
+        val cache = MediaHashCache()
+        val live = key(size = 1L, modified = 1L)
+        val stale = key(size = 2L, modified = 1L)
+        cache.putAll(
+            mapOf(
+                live to MediaFingerprint(contentHash = "live"),
+                stale to MediaFingerprint(contentHash = "stale"),
+            ),
+        )
+
+        cache.retainKeys(setOf(live))
+
+        assertEquals(setOf(live), cache.snapshot().keys)
+        assertTrue("dropping an entry has to schedule a write-back", cache.consumeDirty())
+    }
+
+    @Test
+    fun retainKeepsEverythingWhenEveryKeyIsStillActive() {
+        val cache = MediaHashCache()
+        val first = key(size = 1L, modified = 1L)
+        val second = key(size = 2L, modified = 1L)
+        cache.putAll(
+            mapOf(
+                first to MediaFingerprint(contentHash = "a"),
+                second to MediaFingerprint(contentHash = "b"),
+            ),
+        )
+
+        cache.retainKeys(setOf(first, second))
+
+        assertEquals(setOf(first, second), cache.snapshot().keys)
+        assertFalse("nothing was dropped, so nothing needs writing", cache.isDirty)
+    }
+
     @Test
     fun retainKeepsTheFlagDownWhenNothingIsDropped() {
         val cache = MediaHashCache()

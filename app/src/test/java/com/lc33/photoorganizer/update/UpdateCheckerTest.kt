@@ -26,6 +26,7 @@ class UpdateCheckerTest {
     @Test
     fun reportsAnAvailableStableUpdate() {
         val status = UpdateChecker.check(
+            consented = true,
             channel = UpdateChannel.STABLE,
             mirror = UpdateMirror.DIRECT,
             installedVersion = "7.9",
@@ -43,6 +44,7 @@ class UpdateCheckerTest {
     @Test
     fun reportsUpToDate() {
         val status = UpdateChecker.check(
+            consented = true,
             channel = UpdateChannel.DEV,
             mirror = UpdateMirror.DIRECT,
             installedVersion = "8.0",
@@ -55,6 +57,7 @@ class UpdateCheckerTest {
     @Test
     fun reportsUndeterminedWithoutAnInstalledCommit() {
         val status = UpdateChecker.check(
+            consented = true,
             channel = UpdateChannel.DEV,
             mirror = UpdateMirror.DIRECT,
             installedVersion = "8.0",
@@ -74,6 +77,7 @@ class UpdateCheckerTest {
         val attempted = mutableListOf<String>()
 
         val status = UpdateChecker.check(
+            consented = true,
             channel = UpdateChannel.STABLE,
             mirror = UpdateMirror.DIRECT,
             installedVersion = "7.9",
@@ -95,6 +99,7 @@ class UpdateCheckerTest {
     @Test
     fun aDownloadOnlyMirrorChecksDirectlyButDownloadsThroughItself() {
         val status = UpdateChecker.check(
+            consented = true,
             channel = UpdateChannel.STABLE,
             mirror = UpdateMirror.GHFAST,
             installedVersion = "7.9",
@@ -127,6 +132,7 @@ class UpdateCheckerTest {
     @Test
     fun reportsUnreachableWhenEveryRouteFails() {
         val status = UpdateChecker.check(
+            consented = true,
             channel = UpdateChannel.STABLE,
             mirror = UpdateMirror.DIRECT,
             installedVersion = "8.0",
@@ -142,6 +148,7 @@ class UpdateCheckerTest {
     @Test
     fun reportsUnreachableWhenEveryRouteAnswersGarbage() {
         val status = UpdateChecker.check(
+            consented = true,
             channel = UpdateChannel.STABLE,
             mirror = UpdateMirror.DIRECT,
             installedVersion = "8.0",
@@ -151,9 +158,72 @@ class UpdateCheckerTest {
         assertEquals(FailureReason.UNREACHABLE, (status as UpdateStatus.Failed).reason)
     }
 
+    /**
+     * The gate is inside the one function that opens a socket, not only at the call
+     * site: a future caller that forgets to consult the switch must not be able to
+     * connect at all.
+     */
+    @Test
+    fun refusesToFetchAnythingWithoutConsent() {
+        var attempts = 0
+
+        val status = UpdateChecker.check(
+            consented = false,
+            channel = UpdateChannel.STABLE,
+            mirror = UpdateMirror.DIRECT,
+            installedVersion = "7.9",
+            installedCommit = "abc1234",
+        ) { attempts++; feed }
+
+        assertEquals(0, attempts)
+        assertEquals(UpdateStatus.NetworkDisabled, status)
+    }
+
+    /**
+     * A proxy answering `[]` - cached, rate-limited, or stripped - used to end the whole
+     * check with "this channel has nothing published", without ever trying the route that
+     * would have answered.
+     */
+    @Test
+    fun anEmptyAnswerFromOneRouteStillTriesTheNext() {
+        val attempted = mutableListOf<String>()
+
+        val status = UpdateChecker.check(
+            consented = true,
+            channel = UpdateChannel.STABLE,
+            mirror = UpdateMirror.DIRECT,
+            installedVersion = "7.9",
+            installedCommit = "abc1234",
+        ) { url ->
+            attempted += url
+            if (url.startsWith("https://api.github.com")) "[]" else feed
+        }
+
+        assertEquals(2, attempted.size)
+        assertTrue(status is UpdateStatus.Available)
+    }
+
+    /**
+     * The check falling back must not silently move the download to a host the user did
+     * not pick, when the host they did pick serves downloads perfectly well.
+     */
+    @Test
+    fun aFallbackForTheCheckKeepsTheChosenDownloadRoute() {
+        val status = UpdateChecker.check(
+            consented = true,
+            channel = UpdateChannel.STABLE,
+            mirror = UpdateMirror.LLKK,
+            installedVersion = "7.9",
+            installedCommit = "abc1234",
+        ) { url -> if (url.startsWith("https://api.github.com")) throw IOException("blocked") else feed }
+
+        assertTrue((status as UpdateStatus.Available).downloadUrl.startsWith("https://gh.llkk.cc/"))
+    }
+
     @Test
     fun reportsAnEmptyChannel() {
         val status = UpdateChecker.check(
+            consented = true,
             channel = UpdateChannel.STABLE,
             mirror = UpdateMirror.DIRECT,
             installedVersion = "8.0",

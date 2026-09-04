@@ -8,14 +8,15 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -28,12 +29,15 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Audiotrack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Deselect
+import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.SelectAll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -61,12 +65,19 @@ import androidx.compose.ui.window.DialogProperties
 import com.lc33.photoorganizer.R
 import com.lc33.photoorganizer.media.formatBytes
 import com.lc33.photoorganizer.processing.BatchPhase
+import com.lc33.photoorganizer.processing.MediaBatchState
 import com.lc33.photoorganizer.processing.MediaBatchViewModel
 import com.lc33.photoorganizer.processing.OutputKind
 import com.lc33.photoorganizer.processing.StagedMedia
 import com.lc33.photoorganizer.ui.PreferenceGroup
+import com.lc33.photoorganizer.ui.components.ActionToolbar
+import com.lc33.photoorganizer.ui.components.CompactTextButton
 import com.lc33.photoorganizer.ui.components.DialogActions
 import com.lc33.photoorganizer.ui.components.EmptyState
+import com.lc33.photoorganizer.ui.components.MinimumTouchTarget
+import com.lc33.photoorganizer.ui.components.ToolbarClearance
+import com.lc33.photoorganizer.ui.components.PreviewDecodeSize
+import com.lc33.photoorganizer.ui.components.TileDecodeSize
 import com.lc33.photoorganizer.ui.components.LocalMediaImage
 import com.lc33.photoorganizer.ui.components.MediaThumbnail
 import com.lc33.photoorganizer.ui.components.OverlayAction
@@ -82,7 +93,6 @@ import com.lc33.photoorganizer.ui.theme.AccentGreen
 import top.yukonga.miuix.kmp.basic.BasicComponent
 import top.yukonga.miuix.kmp.basic.Card
 import top.yukonga.miuix.kmp.basic.Checkbox
-import top.yukonga.miuix.kmp.basic.FloatingToolbar
 import top.yukonga.miuix.kmp.basic.Icon
 import top.yukonga.miuix.kmp.basic.IconButton
 import top.yukonga.miuix.kmp.basic.LinearProgressIndicator
@@ -91,14 +101,9 @@ import top.yukonga.miuix.kmp.overlay.OverlayDialog
 import top.yukonga.miuix.kmp.theme.MiuixTheme
 import kotlin.math.roundToInt
 
-/** Decode size for the two halves of a full-screen comparison. */
-private const val ComparisonPreviewSize = 2048
-
-/** Decode size for the two thumbnails inside a review card. */
-private const val ComparisonTileSize = 512
 
 /** Extra scroll clearance so the floating toolbar never covers the last card. */
-private val ReviewToolbarClearance = 84.dp
+private val ReviewToolbarClearance = ToolbarClearance
 
 /**
  * Level four of the processing flow: every staged result next to the file it came
@@ -122,7 +127,17 @@ fun ProcessingReviewScreen(
     onFinished: () -> Unit,
 ) {
     val resources = LocalResources.current
-    val batch by batchViewModel.state.collectAsState()
+    // Held as a State rather than unwrapped, so the commit tick can be read where it
+    // is drawn instead of here. GalleryWriter reports the copy per whole percent, so
+    // commitProgress changes many times a second, and reading `batch` in this scope
+    // re-invoked every visible ComparisonCard - six string lookups, two formatBytes
+    // and two thumbnail subtrees each - on every one of them.
+    val batchState = batchViewModel.state.collectAsState()
+    // derivedStateOf so these only invalidate when the value they name actually
+    // changes; the ticking fields are read inside CommitProgressCard.
+    val phase by remember(batchState) { derivedStateOf { batchState.value.phase } }
+    val staged by remember(batchState) { derivedStateOf { batchState.value.staged } }
+    val accepted by remember(batchState) { derivedStateOf { batchState.value.accepted } }
     val clearance = systemClearance()
     var previewed by remember { mutableStateOf<StagedMedia?>(null) }
     var previewTemporary by remember { mutableStateOf(false) }
@@ -143,10 +158,16 @@ fun ProcessingReviewScreen(
         onFinished()
     }
 
-    LaunchedEffect(batch.phase) {
+    LaunchedEffect(phase, staged.isEmpty()) {
         when {
-            batch.phase == BatchPhase.DONE -> {
-                sourceUris = batch.committedSources.map { it.uri }
+            phase == BatchPhase.DONE -> {
+                // A copy that failed keeps its staged file so it can be retried.
+                // Asking about source files while a retry is still on the table would
+                // be asking about half the run, so the question waits until the
+                // retryable set is empty - which a successful retry, or giving up on
+                // it, both bring about.
+                if (staged.isNotEmpty()) return@LaunchedEffect
+                sourceUris = batchState.value.committedSources.map { it.uri }
                 sourceCount = sourceUris.size
                 // Nothing landed, so there is no source worth asking about. The
                 // outcome section below then carries the way out instead.
@@ -155,7 +176,7 @@ fun ProcessingReviewScreen(
             }
             // A restore after process death: the staging directory was swept and
             // there is nothing left to confirm.
-            batch.phase == BatchPhase.IDLE && !leaving -> onBack()
+            phase == BatchPhase.IDLE && !leaving -> onBack()
             else -> Unit
         }
     }
@@ -168,23 +189,29 @@ fun ProcessingReviewScreen(
     ScreenLazyColumn(
         title = stringResource(R.string.processing_review_title),
         contentBottomPadding = 32.dp + clearance.bottom +
-            if (batch.phase == BatchPhase.REVIEW) ReviewToolbarClearance else 0.dp,
+            if (phase == BatchPhase.REVIEW) ReviewToolbarClearance else 0.dp,
         navigationIcon = {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.back_cd))
             }
         },
         actions = {
-            if (batch.phase == BatchPhase.REVIEW) {
-                OverlayActionPopup(
-                    show = showOverflow,
-                    actions = listOf(
+            if (phase == BatchPhase.REVIEW) {
+                // Remembered because OverlayAction holds a lambda and is therefore
+                // compared by instance: a fresh list every recomposition means the
+                // popup can never skip.
+                val overflowActions = remember {
+                    listOf(
                         OverlayAction(R.string.processing_review_discard) {
                             leaving = true
                             batchViewModel.discardStaged()
                             onFinished()
                         },
-                    ),
+                    )
+                }
+                OverlayActionPopup(
+                    show = showOverflow,
+                    actions = overflowActions,
                     onDismissRequest = { showOverflow = false },
                     anchor = {
                         IconButton(onClick = { showOverflow = true }) {
@@ -198,9 +225,9 @@ fun ProcessingReviewScreen(
         // and a transient flow is better served by an explanation the user cannot
         // miss than by one behind a question mark.
         floatingToolbar = {
-            if (batch.phase == BatchPhase.REVIEW && batch.staged.isNotEmpty()) {
+            if (phase == BatchPhase.REVIEW && staged.isNotEmpty()) {
                 ReviewToolbar(
-                    acceptedCount = batch.accepted.size,
+                    acceptedCount = accepted.size,
                     bottomClearance = clearance.bottom,
                     onSelectAll = batchViewModel::acceptAll,
                     onSelectNone = batchViewModel::acceptNone,
@@ -209,39 +236,40 @@ fun ProcessingReviewScreen(
             }
         },
     ) {
-        if (batch.phase == BatchPhase.REVIEW) {
+        if (phase == BatchPhase.REVIEW) {
             item(key = "hint") { ReviewHintCard() }
         }
 
-        if (batch.phase == BatchPhase.COMMITTING || batch.phase == BatchPhase.DONE) {
+        if (phase == BatchPhase.COMMITTING || phase == BatchPhase.DONE) {
             item(key = "commit") {
-                CommitProgressCard(
-                    committing = batch.phase == BatchPhase.COMMITTING,
-                    index = batch.commitIndex,
-                    total = batch.commitTotal,
-                    progress = batch.commitProgress,
-                    currentName = batch.currentName,
-                )
+                // The ticking fields are read here, inside this item's own recompose
+                // scope, rather than in the screen body.
+                CommitProgressCard(committing = phase == BatchPhase.COMMITTING, state = batchState)
             }
         }
 
         items(
-            count = batch.staged.size,
-            key = { index -> batch.staged[index].source.uri.toString() },
-        ) { index ->
-            val staged = batch.staged[index]
+            items = staged,
+            key = { it.source.uri.toString() },
+            contentType = { it.kind },
+        ) { item ->
+            // derivedStateOf per row: a single toggle changes one boolean, and
+            // reading the whole set here would recompose every visible card.
+            val isAccepted by remember(item.source.uri, accepted) {
+                derivedStateOf { item.source.uri in accepted }
+            }
             ComparisonCard(
-                staged = staged,
-                accepted = staged.source.uri in batch.accepted,
-                interactive = batch.phase == BatchPhase.REVIEW,
-                onToggle = { batchViewModel.toggleAccepted(staged.source.uri) },
+                staged = item,
+                accepted = isAccepted,
+                interactive = phase == BatchPhase.REVIEW,
+                onToggle = { batchViewModel.toggleAccepted(item.source.uri) },
                 onOpen = {
-                    previewed = staged
+                    previewed = item
                     previewTemporary = false
                     previewVisible = true
                 },
                 onPeek = {
-                    previewed = staged
+                    previewed = item
                     previewTemporary = true
                     previewVisible = true
                 },
@@ -249,23 +277,35 @@ fun ProcessingReviewScreen(
             )
         }
 
-        if (batch.phase == BatchPhase.DONE) {
+        if (phase == BatchPhase.DONE) {
             item(key = "outcome") {
+                val batch = batchState.value
+                val failureLines = remember(batch.commitFailures, resources) {
+                    batch.commitFailures.map { describeBatchFailure(resources, it) }
+                }
                 CommitOutcomeSection(
                     committedCount = batch.committed.size,
                     savedBytes = batch.savedBytes,
                     relocatedCount = batch.relocatedCount,
-                    failureLines = batch.commitFailures.map { describeBatchFailure(resources, it) },
+                    failureLines = failureLines,
+                    // Non-empty only while a failed copy still has its staged file,
+                    // which is what makes a retry free.
+                    retryableCount = staged.size,
+                    onRetry = batchViewModel::retryFailedCommits,
+                    onGiveUp = batchViewModel::discardRemainingStaged,
                 )
             }
-            // Every copy failed, so no dialog was raised and this is the only way out.
-            if (batch.committed.isEmpty()) {
+            // Nothing landed and nothing is retryable, so no dialog was raised and
+            // this is the only way out.
+            if (batchState.value.committed.isEmpty() && staged.isEmpty()) {
                 item(key = "outcome-empty") {
                     EmptyState(
                         title = stringResource(R.string.processing_nothing_title),
                         summary = stringResource(R.string.processing_nothing_summary),
                         actionLabel = stringResource(R.string.empty_review_action),
                         onAction = ::endRun,
+                        icon = Icons.Default.ErrorOutline,
+                        iconTint = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                     )
                 }
             }
@@ -322,16 +362,20 @@ private fun ReviewHintCard() {
     }
 }
 
-/** The copy-back progress bar, which is the last thing the flow does. */
+/**
+ * The copy-back progress bar, which is the last thing the flow does.
+ *
+ * Takes the whole state rather than four values so the per-percent progress read
+ * happens in this composable's own scope. Passed down as values it invalidated the
+ * screen body, and with it every visible comparison card, several times a second.
+ */
 @Composable
-private fun CommitProgressCard(
-    committing: Boolean,
-    index: Int,
-    total: Int,
-    progress: Float,
-    currentName: String?,
-) {
-    val animatedProgress by animateFloatAsState(progress, label = "processingCommitProgress")
+private fun CommitProgressCard(committing: Boolean, state: State<MediaBatchState>) {
+    val batch = state.value
+    val index = batch.commitIndex
+    val total = batch.commitTotal
+    val currentName = batch.currentName
+    val animatedProgress by animateFloatAsState(batch.commitProgress, label = "processingCommitProgress")
     Card(modifier = Modifier.fillMaxWidth(), colors = standardCardColors()) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -362,7 +406,7 @@ private fun CommitProgressCard(
             }
             LinearProgressIndicator(modifier = Modifier.fillMaxWidth(), progress = animatedProgress)
             Text(
-                "${(animatedProgress * 100).roundToInt()}%",
+                stringResource(R.string.percent_value, (animatedProgress * 100).roundToInt()),
                 color = MiuixTheme.colorScheme.onSurfaceVariantSummary,
                 fontSize = 12.sp,
             )
@@ -376,6 +420,9 @@ private fun CommitOutcomeSection(
     savedBytes: Long,
     relocatedCount: Int,
     failureLines: List<String>,
+    retryableCount: Int,
+    onRetry: () -> Unit,
+    onGiveUp: () -> Unit,
 ) {
     PreferenceGroup(stringResource(R.string.section_processing_finished)) {
         BasicComponent(
@@ -410,6 +457,24 @@ private fun CommitOutcomeSection(
                 summary = failureLines.joinToString("\n"),
             )
         }
+        // A failed copy kept its staged file, so retrying costs nothing but the copy
+        // itself. Without this the only way back was to encode the whole thing again.
+        if (retryableCount > 0) {
+            BasicComponent(summary = stringResource(R.string.processing_commit_retry_summary))
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                CompactTextButton(
+                    text = stringResource(R.string.processing_commit_retry),
+                    onClick = onRetry,
+                )
+                CompactTextButton(
+                    text = stringResource(R.string.processing_commit_give_up),
+                    onClick = onGiveUp,
+                )
+            }
+        }
     }
 }
 
@@ -421,37 +486,24 @@ private fun ReviewToolbar(
     onSelectNone: () -> Unit,
     onSave: () -> Unit,
 ) {
-    FloatingToolbar(
-        outSidePadding = PaddingValues(
-            start = 12.dp,
-            end = 12.dp,
-            top = 8.dp,
-            bottom = 12.dp + bottomClearance,
-        ),
-    ) {
-        Row(
-            Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            ToolbarAction(
-                icon = Icons.Default.SelectAll,
-                label = stringResource(R.string.action_select_all),
-                onClick = onSelectAll,
-            )
-            ToolbarAction(
-                icon = Icons.Default.Deselect,
-                label = stringResource(R.string.processing_review_clear),
-                onClick = onSelectNone,
-            )
-            ToolbarAction(
-                icon = Icons.Default.Save,
-                label = pluralStringResource(R.plurals.processing_review_save, acceptedCount, acceptedCount),
-                tint = AccentBlue,
-                enabled = acceptedCount > 0,
-                onClick = onSave,
-            )
-        }
+    ActionToolbar(bottomClearance) {
+        ToolbarAction(
+            icon = Icons.Default.SelectAll,
+            label = stringResource(R.string.action_select_all),
+            onClick = onSelectAll,
+        )
+        ToolbarAction(
+            icon = Icons.Default.Deselect,
+            label = stringResource(R.string.processing_review_clear),
+            onClick = onSelectNone,
+        )
+        ToolbarAction(
+            icon = Icons.Default.Save,
+            label = pluralStringResource(R.plurals.processing_review_save, acceptedCount, acceptedCount),
+            tint = AccentBlue,
+            enabled = acceptedCount > 0,
+            onClick = onSave,
+        )
     }
 }
 
@@ -484,10 +536,16 @@ private fun ComparisonCard(
                     )
                 }
                 if (interactive) {
-                    val keepDescription = stringResource(
-                        R.string.processing_review_keep_cd,
-                    ) + " · " + staged.outputName
-                    Box(Modifier.semantics { contentDescription = keepDescription }) {
+                    val keepDescription = stringResource(R.string.processing_review_keep_cd, staged.outputName)
+                    // mergeDescendants so the description and the toggleable node are
+                    // one TalkBack stop rather than two, and defaultMinSize because
+                    // MIUIX's Checkbox does not enforce a touch target of its own.
+                    Box(
+                        Modifier
+                            .defaultMinSize(MinimumTouchTarget, MinimumTouchTarget)
+                            .semantics(mergeDescendants = true) { contentDescription = keepDescription },
+                        contentAlignment = Alignment.Center,
+                    ) {
                         Checkbox(
                             if (accepted) ToggleableState.On else ToggleableState.Off,
                             onToggle,
@@ -495,9 +553,8 @@ private fun ComparisonCard(
                     }
                 }
             }
-            val compareDescription = stringResource(
-                R.string.processing_review_compare_cd,
-            ) + " · " + staged.outputName
+            val compareDescription =
+                stringResource(R.string.processing_review_compare_cd, staged.outputName)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -523,7 +580,7 @@ private fun ComparisonCard(
                     MediaThumbnail(
                         uri = staged.source.uri,
                         modifier = Modifier.matchParentSize(),
-                        requestSize = ComparisonTileSize,
+                        requestSize = TileDecodeSize,
                     )
                 }
                 ComparisonPane(
@@ -531,7 +588,7 @@ private fun ComparisonCard(
                     detail = formatBytes(staged.outputBytes),
                     modifier = Modifier.weight(1f).aspectRatio(1f),
                 ) {
-                    StagedThumbnail(staged, Modifier.matchParentSize(), ComparisonTileSize)
+                    StagedThumbnail(staged, Modifier.matchParentSize(), TileDecodeSize)
                 }
             }
         }
@@ -690,7 +747,7 @@ private fun RowScope.StillComparisonHalves(staged: StagedMedia) {
             uri = staged.source.uri,
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Fit,
-            requestSize = ComparisonPreviewSize,
+            requestSize = PreviewDecodeSize,
             contentDescription = staged.source.displayName,
         )
     }
@@ -724,7 +781,7 @@ private fun RowScope.SyncedComparisonHalves(
                 uri = staged.source.uri,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Fit,
-                requestSize = ComparisonPreviewSize,
+                requestSize = PreviewDecodeSize,
                 contentDescription = staged.source.displayName,
             )
         }
@@ -758,7 +815,7 @@ private fun StagedThumbnailFit(staged: StagedMedia) {
             isVideo = staged.kind == OutputKind.VIDEO,
             modifier = Modifier.fillMaxSize(),
             contentScale = ContentScale.Fit,
-            requestSize = ComparisonPreviewSize,
+            requestSize = PreviewDecodeSize,
             contentDescription = staged.outputName,
         )
     }

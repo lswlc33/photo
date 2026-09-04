@@ -104,6 +104,16 @@ data class MediaBatchState(
     val running: Boolean get() = phase == BatchPhase.RUNNING
     val busy: Boolean get() = phase == BatchPhase.RUNNING || phase == BatchPhase.COMMITTING
     val acceptedStaged: List<StagedMedia> get() = staged.filter { it.source.uri in accepted }
+
+    /**
+     * Results the user accepted whose copy did not land, and which are still on disk.
+     *
+     * A failed copy is the one case where a staged file has to outlive the commit:
+     * it was accepted, it is not a copy anywhere, and re-encoding it is minutes of
+     * work. Non-empty here means [BatchPhase.DONE] still has something to offer, so
+     * the source-file question waits until it is empty.
+     */
+    val retryable: List<StagedMedia> get() = if (phase == BatchPhase.DONE) staged else emptyList()
     val savedBytes: Long get() = committed.sumOf { it.savedBytes }
     val relocatedCount: Int get() = committed.count { it.relocated }
     val hasRunReport: Boolean
@@ -134,6 +144,17 @@ class MediaBatchViewModel(application: Application) : AndroidViewModel(applicati
     private var job: Job? = null
 
     /**
+     * The constructor sweep, joined before a run touches the staging directory.
+     *
+     * [StagingArea.clear] deletes everything in the directory, and it used to be
+     * fire-and-forget on Dispatchers.IO while start() could already be running on
+     * the main thread. The window was small and the failure was awful to read: an
+     * input scratch copy or a first output disappearing mid-encode surfaces as
+     * "the selected file has no content".
+     */
+    private val startupSweep: Job
+
+    /**
      * The app-wide defaults last folded into [settings]. Held so a per-run override
      * is not clobbered every time the settings page recomposes, while a change to
      * the app-wide default still re-seeds it.
@@ -144,7 +165,7 @@ class MediaBatchViewModel(application: Application) : AndroidViewModel(applicati
         // A run interrupted by process death leaves its outputs in staging, and
         // nothing else will ever delete them: the review set that named them is
         // gone with the process.
-        viewModelScope.launch(Dispatchers.IO) { StagingArea.clear(getApplication()) }
+        startupSweep = viewModelScope.launch(Dispatchers.IO) { StagingArea.clear(getApplication()) }
     }
 
     /**
@@ -193,7 +214,14 @@ class MediaBatchViewModel(application: Application) : AndroidViewModel(applicati
         job?.cancel()
     }
 
+    // The three accept mutators are phase-guarded for the same reason commitAccepted
+    // is: runCommit snapshots the queue when it starts, so acceptNone() during
+    // COMMITTING left the review list showing zero accepted while files kept
+    // landing in the gallery. Until now the only thing preventing that was the
+    // review screen's own `interactive` flag - an invariant living in the UI rather
+    // than in the state holder that owns it.
     fun toggleAccepted(sourceUri: Uri) {
+        if (_state.value.phase != BatchPhase.REVIEW) return
         _state.update {
             it.copy(
                 accepted = if (sourceUri in it.accepted) {
@@ -206,12 +234,14 @@ class MediaBatchViewModel(application: Application) : AndroidViewModel(applicati
     }
 
     fun acceptAll() {
+        if (_state.value.phase != BatchPhase.REVIEW) return
         _state.update { current ->
             current.copy(accepted = current.staged.mapTo(HashSet()) { it.source.uri })
         }
     }
 
     fun acceptNone() {
+        if (_state.value.phase != BatchPhase.REVIEW) return
         _state.update { it.copy(accepted = emptySet()) }
     }
 
@@ -219,7 +249,24 @@ class MediaBatchViewModel(application: Application) : AndroidViewModel(applicati
     fun commitAccepted() {
         val current = _state.value
         if (current.phase != BatchPhase.REVIEW) return
-        val queue = current.acceptedStaged
+        startCommit(current.acceptedStaged, clearPreviousFailures = false)
+    }
+
+    /**
+     * Copies the results whose first attempt failed, without re-encoding them.
+     *
+     * Only reachable from [BatchPhase.DONE], where [MediaBatchState.staged] holds
+     * exactly the failed set: the run's own [MediaBatchState.commitFailures] are
+     * dropped first, because a retry that succeeds must not leave the failure it
+     * replaced on the report.
+     */
+    fun retryFailedCommits() {
+        val current = _state.value
+        if (current.phase != BatchPhase.DONE) return
+        startCommit(current.acceptedStaged, clearPreviousFailures = true)
+    }
+
+    private fun startCommit(queue: List<StagedMedia>, clearPreviousFailures: Boolean) {
         if (queue.isEmpty()) return
         _state.update {
             it.copy(
@@ -228,6 +275,7 @@ class MediaBatchViewModel(application: Application) : AndroidViewModel(applicati
                 commitIndex = 1,
                 commitTotal = queue.size,
                 currentName = queue.first().outputName,
+                commitFailures = if (clearPreviousFailures) emptyList() else it.commitFailures,
             )
         }
         job = viewModelScope.launch { runCommit(queue) }
@@ -236,8 +284,30 @@ class MediaBatchViewModel(application: Application) : AndroidViewModel(applicati
     /** Throws the whole review set away without writing anything to the gallery. */
     fun discardStaged() {
         if (_state.value.busy) return
-        val staged = _state.value.staged
-        _state.value = MediaBatchState()
+        discardStagedInternal(_state.value.staged, MediaBatchState())
+    }
+
+    /**
+     * Gives up on the results whose copy failed, leaving the finished run's report
+     * intact so the source-file question can still be asked about what did land.
+     */
+    fun discardRemainingStaged() {
+        val current = _state.value
+        if (current.phase != BatchPhase.DONE || current.staged.isEmpty()) return
+        discardStagedInternal(
+            current.staged,
+            current.copy(staged = emptyList(), accepted = emptySet()),
+        )
+    }
+
+    private fun discardStagedInternal(staged: List<StagedMedia>, next: MediaBatchState) {
+        // Unlinked here rather than only inside the coroutine: discarding is
+        // immediately followed by navigating away, and a viewModelScope cancelled
+        // before the first dispatch would never run the body at all, leaving a whole
+        // video on disk until the next launch. A handful of File.delete calls is
+        // sub-millisecond, so this is not worth a thread.
+        staged.forEach { it.file.delete() }
+        _state.value = next
         viewModelScope.launch { deleteStaged(staged) }
     }
 
@@ -253,6 +323,7 @@ class MediaBatchViewModel(application: Application) : AndroidViewModel(applicati
         previous: List<StagedMedia>,
     ) {
         try {
+            startupSweep.join()
             // A new run replaces the last review set, so its files go now rather
             // than waiting for the next launch to sweep them.
             deleteStaged(previous)
@@ -279,6 +350,11 @@ class MediaBatchViewModel(application: Application) : AndroidViewModel(applicati
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
+                } catch (fatal: Error) {
+                    // OutOfMemoryError and friends are not per-item failures. After
+                    // one, the rest of the queue will almost certainly fail the same
+                    // way, and recording twenty of them buries the one that matters.
+                    throw fatal
                 } catch (failure: Throwable) {
                     _state.update { it.copy(failures = it.failures + BatchFailure(source, failure)) }
                 }
@@ -328,14 +404,22 @@ class MediaBatchViewModel(application: Application) : AndroidViewModel(applicati
         } catch (_: CancellationException) {
             // Nothing to undo: every file that made it into the gallery is whole.
         } finally {
-            // Everything staged goes, accepted or not: the accepted ones are copies
-            // now, and the rest were turned down.
-            deleteStaged(_state.value.staged)
+            // A failed copy keeps its staged file; everything else goes.
+            //
+            // "The accepted ones are copies now, and the rest were turned down" was
+            // only true of the items that succeeded. An item in commitFailures was
+            // accepted by the user, is not a copy anywhere, and deleting its staged
+            // file left re-encoding as the only way back - which is exactly the cost
+            // the staging directory exists to avoid paying twice. Keeping it makes
+            // retryFailedCommits() possible.
+            val failedSources = _state.value.commitFailures.mapTo(HashSet()) { it.source.uri }
+            val (kept, discarded) = _state.value.staged.partition { it.source.uri in failedSources }
+            deleteStaged(discarded, keep = kept)
             _state.update {
                 it.copy(
                     phase = BatchPhase.DONE,
-                    staged = emptyList(),
-                    accepted = emptySet(),
+                    staged = kept,
+                    accepted = kept.mapTo(HashSet()) { staged -> staged.source.uri },
                     currentName = null,
                     commitProgress = 1f,
                 )
@@ -349,10 +433,16 @@ class MediaBatchViewModel(application: Application) : AndroidViewModel(applicati
      * run was cancelled; a plain `withContext` would abandon the delete there and
      * leak a whole video into the cache.
      */
-    private suspend fun deleteStaged(staged: List<StagedMedia>) {
+    private suspend fun deleteStaged(staged: List<StagedMedia>, keep: List<StagedMedia> = emptyList()) {
         withContext(NonCancellable + Dispatchers.IO) {
             staged.forEach { it.file.delete() }
-            if (staged.isNotEmpty()) StagingArea.clear(getApplication())
+            // The directory sweep is what catches an input scratch copy or an output
+            // whose StagedMedia never made it into the list, so it runs even when
+            // nothing was named - but it has to spare the retryable set, or it would
+            // delete the very files the retry is for.
+            if (staged.isNotEmpty() || keep.isNotEmpty()) {
+                StagingArea.clear(getApplication(), keep = keep.mapTo(HashSet()) { it.file })
+            }
         }
     }
 

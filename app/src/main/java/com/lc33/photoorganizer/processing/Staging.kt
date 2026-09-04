@@ -47,6 +47,18 @@ data class StagedMedia(
      * this is measured from the finished file.
      */
     val hdrLost: Boolean = false,
+    /**
+     * The long edge actually delivered, when the decode budget forced it below the
+     * one the user asked for. Null when the request was met.
+     *
+     * Reported for the same reason as [hdrLost]: `inSampleSize` only halves, so a
+     * decode that stays at or above the target can overshoot it four-fold in pixels,
+     * and on a small heap the only alternative to halving once more is an
+     * OutOfMemoryError. Halving is the right call - saying nothing about it is not.
+     */
+    val resizeShortfallPx: Int? = null,
+    /** The long edge that was asked for, so the shortfall can be stated as a comparison. */
+    val requestedLongEdgePx: Int? = null,
 ) {
     val savedBytes: Long get() = (originalBytes - outputBytes).coerceAtLeast(0L)
     val savedFraction: Float
@@ -55,13 +67,24 @@ data class StagedMedia(
 }
 
 /**
- * The cache subdirectory staged outputs live in.
+ * The directory staged outputs live in.
  *
- * A subdirectory rather than `cacheDir` itself, so a sweep can delete everything
- * inside it without having to guess which loose cache files belonged to a run that
- * a process death interrupted. The old flat layout had no way to tell, so nothing
+ * A directory of its own rather than a shared one, so a sweep can delete everything
+ * inside it without having to guess which loose files belonged to a run that a
+ * process death interrupted. The old flat layout had no way to tell, so nothing
  * ever swept and an interrupted run leaked a whole video until Android reclaimed
  * the cache directory on its own.
+ *
+ * Under `noBackupFilesDir` rather than `cacheDir`, for two reasons. A run parks
+ * several hundred megabytes of freshly transcoded video here for as long as the
+ * user takes to review it, and `cacheDir` is documented as deletable by the system
+ * at any moment: under storage pressure Android could delete the very files the
+ * review screen is displaying, and minutes of encoding would be gone with no way
+ * to get them back short of encoding again. And `noBackup` is the point of the
+ * other half: these are transient copies of the user's photos, so they must not
+ * travel in a cloud backup. The startup sweep is what reclaims the space now, and
+ * that was always the mechanism - the cache directory's own reclamation was only
+ * ever an accident this code inherited the risk of.
  */
 internal object StagingArea {
 
@@ -75,7 +98,7 @@ internal object StagingArea {
     private val sequence = AtomicLong()
 
     fun directory(context: Context): File =
-        File(context.cacheDir, DirectoryName).apply { mkdirs() }
+        File(context.noBackupFilesDir, DirectoryName).apply { mkdirs() }
 
     /** A unique path inside the staging directory. Nothing is created until written. */
     fun file(context: Context, prefix: String, extension: String): File {
@@ -84,8 +107,18 @@ internal object StagingArea {
         return File(directory(context), name)
     }
 
-    /** Deletes everything staged. Safe to call when nothing is. */
-    fun clear(context: Context) {
-        directory(context).listFiles()?.forEach { it.delete() }
+    /**
+     * Deletes everything staged except [keep]. Safe to call when nothing is staged.
+     *
+     * [keep] exists for the one case where a sweep must not be total: a copy that
+     * failed to reach the gallery keeps its staged file so the user can retry it,
+     * and a blanket sweep would delete the only copy of a result they had already
+     * accepted.
+     */
+    fun clear(context: Context, keep: Set<File> = emptySet()) {
+        val spared = keep.mapTo(HashSet()) { it.absolutePath }
+        directory(context).listFiles()?.forEach { file ->
+            if (file.absolutePath !in spared) file.delete()
+        }
     }
 }

@@ -120,15 +120,28 @@ fun MetricCard(
     }
 }
 
-/** Full-area empty or finished state with an optional action. */
+/**
+ * Full-area empty or finished state with an optional action.
+ *
+ * The icon is a parameter because the default is a green check, and this composable
+ * is also what renders "every copy failed" and "no search results" - a success mark
+ * over a total failure says the opposite of what happened.
+ */
 @Composable
-fun EmptyState(title: String, summary: String, actionLabel: String? = null, onAction: (() -> Unit)? = null) {
+fun EmptyState(
+    title: String,
+    summary: String,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+    icon: ImageVector = Icons.Default.Check,
+    iconTint: Color = SuccessGreen,
+) {
     Column(
         Modifier.fillMaxSize().padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
-        Icon(Icons.Default.Check, null, tint = SuccessGreen, modifier = Modifier.size(48.dp))
+        Icon(icon, null, tint = iconTint, modifier = Modifier.size(48.dp))
         Spacer(Modifier.height(12.dp))
         Text(title, fontWeight = FontWeight.Bold, color = MiuixTheme.colorScheme.onSurface)
         Text(

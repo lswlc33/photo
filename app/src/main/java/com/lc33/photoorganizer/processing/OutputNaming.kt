@@ -85,8 +85,12 @@ internal object OutputNaming {
         if (match != null) {
             val stem = match.groupValues[1]
             val pass = match.groupValues[2].toIntOrNull()
-            if (stem.isNotEmpty() && pass != null && pass < MaxPass) {
-                return "$stem-z${pass + 1}"
+            if (stem.isNotEmpty() && pass != null) {
+                // Clamped rather than abandoned. The pass < MaxPass guard used to fall
+                // through to the "-z1" branch, so IMG-z999 became IMG-z999-z1 - stacking
+                // suffixes, which is the one thing this function exists to prevent - and
+                // the fall-through also skipped truncate().
+                return "$stem-z${(pass + 1).coerceAtMost(MaxPass)}"
             }
         }
         return "${truncate(base)}-z1"

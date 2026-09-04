@@ -120,4 +120,65 @@ class JsonReaderTest {
         assertEquals(emptyList<Map<*, *>>(), parsed.jsonObjects("c"))
         assertNull(parsed.jsonString("missing"))
     }
-}
+
+    /**
+     * Everything below is untrusted input read through a public reverse proxy, and every
+     * case here used to be accepted.
+     */
+
+    /** `1e400` is Infinity as a Double; jsonLong turned that into Long.MAX_VALUE, and
+     *  the download row advertised an 8192 PB update. */
+    @Test
+    fun rejectsNumbersOutsideDoubleRange() {
+        assertThrows(JsonException::class.java) { JsonReader.parse("""{"size":1e400}""") }
+        assertThrows(JsonException::class.java) { JsonReader.parse("""{"size":-1e400}""") }
+    }
+
+    /** toDoubleOrNull accepts all of these; the JSON grammar does not. */
+    @Test
+    fun rejectsNumberFormsThatAreNotJson() {
+        listOf("+5", ".5", "5.", "01", "-", "1e", "1e+", "0x10", "Infinity", "NaN").forEach { literal ->
+            assertThrows(literal, JsonException::class.java) { JsonReader.parse("""{"n":$literal}""") }
+        }
+    }
+
+    @Test
+    fun acceptsTheNumberFormsThatAreJson() {
+        assertEquals(0.0, numberOf("0"), 0.0)
+        assertEquals(-0.5, numberOf("-0.5"), 0.0)
+        assertEquals(5_075_357.0, numberOf("5075357"), 0.0)
+        assertEquals(1.5e3, numberOf("1.5e3"), 0.0)
+        assertEquals(1.5e-3, numberOf("1.5E-3"), 0.0)
+    }
+
+    /** `toIntOrNull(16)` honours a sign, so "\u+041" silently produced 'A'. */
+    @Test
+    fun rejectsAUnicodeEscapeThatIsNotFourHexDigits() {
+        assertThrows(JsonException::class.java) { JsonReader.parse("""["\u+041"]""") }
+        assertThrows(JsonException::class.java) { JsonReader.parse("""["\u-041"]""") }
+        assertThrows(JsonException::class.java) { JsonReader.parse("""["\u 041"]""") }
+        assertEquals(listOf("A"), JsonReader.parse("""["\u0041"]"""))
+    }
+
+    /** RFC 8259 forbids raw control characters in a string; a newline or a NUL used to
+     *  travel straight into text rendered on the settings page. */
+    @Test
+    fun rejectsUnescapedControlCharacters() {
+        assertThrows(JsonException::class.java) { JsonReader.parse("[\"a\u0000b\"]") }
+        assertThrows(JsonException::class.java) { JsonReader.parse("[\"a\nb\"]") }
+        assertEquals(listOf("a\nb"), JsonReader.parse("""["a\nb"]"""))
+    }
+
+    /**
+     * Last-wins meant two readers could disagree about the same document, and the
+     * document decides what the user is told to install: this one read as not a draft.
+     */
+    @Test
+    fun rejectsDuplicateKeys() {
+        assertThrows(JsonException::class.java) {
+            JsonReader.parse("""{"draft":true,"tag_name":"v9.9","draft":false}""")
+        }
+    }
+
+    private fun numberOf(literal: String): Double =
+        (JsonReader.parse("""{"n":$literal}""") as Map<*, *>)["n"] as Double}

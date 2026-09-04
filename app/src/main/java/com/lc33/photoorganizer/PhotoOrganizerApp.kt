@@ -194,16 +194,16 @@ fun PhotoOrganizerApp() {
     // the channel so flipping either re-asks rather than showing an answer to a
     // question the user has since changed.
     LaunchedEffect(updateAutoCheck, updateChannel, updateMirror) {
-        if (updateAutoCheck) {
-            updateViewModel.check(
-                enabled = true,
-                channel = updateChannel,
-                mirror = updateMirror,
-                automatic = true,
-            )
-        } else {
-            updateViewModel.reset(enabled = false)
-        }
+        // The switch is passed through rather than re-asserted as `enabled = true` under
+        // an `if`: the KDoc promises one condition guarding the network, and writing it
+        // as an `if` plus a hardcoded true made it two that could drift apart.
+        updateViewModel.check(
+            enabled = updateAutoCheck,
+            channel = updateChannel,
+            mirror = updateMirror,
+            automatic = true,
+        )
+        if (!updateAutoCheck) updateViewModel.reset(enabled = false)
     }
     var scanRequest by remember { mutableIntStateOf(0) }
     // An immutable map rather than a SnapshotStateMap: a state map has no
@@ -249,7 +249,13 @@ fun PhotoOrganizerApp() {
                 val refreshed = context.mediaPermissionState()
                 val permissionChanged = refreshed != latestPermissionState
                 permissionState = refreshed
-                if (hasResumedOnce && (permissionChanged || refreshed.isLimited)) {
+                // selectedOnly, not isLimited. The unconditional rescan exists because the
+                // photo picker lets the user add files while the app is in the
+                // background, so the visible set can genuinely have changed. isLimited is
+                // also true for "images granted, videos not", which is a stable and
+                // complete view of the photos - and that user was paying for a full
+                // library rescan plus a full duplicate pass on every single resume.
+                if (hasResumedOnce && (permissionChanged || refreshed.selectedOnly)) {
                     scanRequest++
                 }
                 hasResumedOnce = true
@@ -293,7 +299,7 @@ fun PhotoOrganizerApp() {
                 store = reviewStore,
                 prefs = prefs,
                 items = snapshot.items,
-                pruneStaleKeys = indexScope.mode == IndexScopeMode.ALL && !snapshot.permissionLimited,
+                pruneStaleKeys = indexScope.mode == IndexScopeMode.ALL && !snapshot.permissionSelectedOnly,
             )
         }
         reviewStates = hydrated
@@ -302,13 +308,31 @@ fun PhotoOrganizerApp() {
         rawItems.map { it.toUiMedia(reviewStates[it.id] ?: ReviewState.UNREVIEWED) }
     }
     val itemsById = remember(rawItems) { rawItems.associateBy { it.id } }
-    val keptCount = remember(media) { media.count { it.state == ReviewState.KEPT } }
-    val trashCount = remember(media) { media.count { it.state == ReviewState.TRASH_MARKED } }
+    // Counted in one pass, not five. Marking one photo replaces the reviewStates
+    // instance and therefore invalidates every `remember(media)` below it, so these
+    // walked the whole library four times on each keep-or-discard tap.
+    val counts = remember(media) {
+        var kept = 0
+        var trash = 0
+        var photos = 0
+        var videos = 0
+        media.forEach { item ->
+            when (item.state) {
+                ReviewState.KEPT -> kept++
+                ReviewState.TRASH_MARKED -> trash++
+                ReviewState.UNREVIEWED -> Unit
+            }
+            if (item.uri != null) if (item.isVideo) videos++ else photos++
+        }
+        MediaCounts(kept = kept, trash = trash, photos = photos, videos = videos)
+    }
+    val keptCount = counts.kept
+    val trashCount = counts.trash
     // What the processing picker would have to show. The tools page disables its own
     // entry point when the answer is zero, which is the case with no permission or a
     // scope that excludes everything - a picker that opens onto nothing is worse.
-    val processablePhotoCount = remember(media) { media.count { !it.isVideo && it.uri != null } }
-    val processableVideoCount = remember(media) { media.count { it.isVideo && it.uri != null } }
+    val processablePhotoCount = counts.photos
+    val processableVideoCount = counts.videos
     val toolAnalysisReady = duplicateAnalysisReady
     val toolAnalysis = remember(indexState.duplicateGroups, rawItems, largestThresholdMb) {
         val thresholdBytes = ToolAnalyzer.thresholdBytesOf(largestThresholdMb)
@@ -364,7 +388,9 @@ fun PhotoOrganizerApp() {
     }
 
     LaunchedEffect(rawItems, mediaIndexReady, indexScope) {
-        if (!mediaIndexReady || indexScope.mode != IndexScopeMode.ALL || permissionState.isLimited) return@LaunchedEffect
+        if (!mediaIndexReady || indexScope.mode != IndexScopeMode.ALL || permissionState.selectedOnly) {
+            return@LaunchedEffect
+        }
         val activeIds = rawItems.mapTo(hashSetOf()) { it.id }
         val pruned = logicalAlbums.map { album -> album.copy(mediaIds = album.mediaIds intersect activeIds) }
         if (pruned != logicalAlbums) saveLogicalAlbums(pruned)
@@ -573,6 +599,7 @@ fun PhotoOrganizerApp() {
                         hasPermission = hasMediaPermission,
                         indexReady = mediaIndexReady,
                         duplicateAnalysisReady = duplicateAnalysisReady,
+                        duplicateAnalysisFailed = indexState.duplicateAnalysisFailed,
                         similar = indexState.similar,
                         contentBottomPadding = contentBottomPadding,
                         largestThresholdMb = largestThresholdMb,
@@ -996,6 +1023,14 @@ private fun writePreference(prefs: SharedPreferences, key: String, value: Any?) 
 }
 
 /**
+ * The four counts the root derives from the projected library, in one walk.
+ *
+ * A holder rather than four `remember(media)` blocks: they all invalidate together,
+ * because a single mark replaces the review-state map and with it the projected list.
+ */
+private data class MediaCounts(val kept: Int, val trash: Int, val photos: Int, val videos: Int)
+
+/**
  * Loads every item's review decision, folding in any decision an older version
  * left in `SharedPreferences`, and compacts the log once replaying it costs more
  * than the decisions it yields.
@@ -1034,9 +1069,12 @@ private fun hydrateReviewStates(
     // in view, a key nothing matched is stale by definition.
     val legacyKeys = prefs.all.keys.filter { it.startsWith("review_") }
     if (legacyKeys.isNotEmpty()) prefs.edit { legacyKeys.forEach(::remove) }
-    val live = byKey.filterKeys { it in activeKeys }
-    if (live.size != byKey.size || shouldCompactLog(store.lastLineCount, live.size)) {
-        store.compact(live)
+    // The keys to keep, not the decisions to write: `byKey` is a snapshot taken before
+    // the walk above, and on a large library several marks can land while that runs.
+    // Handing the snapshot to compact() deleted them.
+    val liveCount = byKey.count { it.key in activeKeys }
+    if (liveCount != byKey.size || shouldCompactLog(store.lastLineCount, liveCount)) {
+        store.compact(activeKeys)
     }
     return states
 }

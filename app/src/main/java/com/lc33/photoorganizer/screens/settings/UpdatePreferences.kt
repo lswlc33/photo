@@ -2,7 +2,7 @@ package com.lc33.photoorganizer.screens.settings
 
 import android.content.ActivityNotFoundException
 import android.content.Intent
-import android.net.Uri
+import androidx.core.net.toUri
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -79,9 +79,22 @@ fun ColumnScope.UpdatePreferenceGroup(
         }
     }
 
+    // The second half of ReleaseFeed.isTrustedAssetUrl. The string handed to an
+    // implicit Intent here is built from a network response read through a public
+    // proxy, and ACTION_VIEW on a scheme this app never expected can land on a
+    // component that is not a browser at all. Anything that is not https falls
+    // back to the releases page, which is a constant compiled into this build, and
+    // CATEGORY_BROWSABLE keeps the resolution to handlers that claim to be
+    // browsers rather than to whatever else registered for the scheme.
     val open: (String) -> Unit = { url ->
+        val target = url.takeIf { it.startsWith("https://", ignoreCase = true) }
+            ?: ReleaseFeed.releasesPageUrl()
         try {
-            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+            context.startActivity(
+                Intent(Intent.ACTION_VIEW, target.toUri())
+                    .addCategory(Intent.CATEGORY_BROWSABLE)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
         } catch (_: ActivityNotFoundException) {
             showNoBrowser = true
         }

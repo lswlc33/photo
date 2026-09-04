@@ -75,61 +75,95 @@ internal object ReviewDecisionCodec {
  *
  * Unlike [MediaFingerprintStore] this is a source of truth, not a cache, so writes
  * report whether they succeeded instead of failing silently.
+ *
+ * Every operation holds the same lock. They are called from more than one IO thread -
+ * a mark appends from the review screen while a rescan is replaying and compacting -
+ * and without the lock [compact] could rewrite the file from a map read *before* an
+ * append that had since landed, deleting it. That was not a narrow window either: the
+ * delete handler appends a batch of clears and requests a rescan in the same callback,
+ * so "append while compacting" was the ordinary path after a deletion.
  */
 class ReviewDecisionStore(private val file: File) {
+    private val lock = Any()
+
     /** Lines read by the last [load], so the caller can decide whether to compact. */
     var lastLineCount: Int = 0
-        private set
+        get() = synchronized(lock) { field }
+        private set(value) {
+            synchronized(lock) { field = value }
+        }
 
-    fun load(): Map<String, ReviewState> = runCatching {
-        if (!file.isFile) {
+    fun load(): Map<String, ReviewState> = synchronized(lock) {
+        runCatching {
+            if (!file.isFile) {
+                lastLineCount = 0
+                emptyMap()
+            } else {
+                val lines = file.readLines()
+                lastLineCount = lines.size
+                ReviewDecisionCodec.decode(lines)
+            }
+        }.getOrElse {
             lastLineCount = 0
             emptyMap()
-        } else {
-            val lines = file.readLines()
-            lastLineCount = lines.size
-            ReviewDecisionCodec.decode(lines)
         }
-    }.getOrElse {
-        lastLineCount = 0
-        emptyMap()
     }
 
     /** Appends [decisions] in one open/close. Returns false if nothing was written. */
     fun append(decisions: Map<String, ReviewState>): Boolean {
         if (decisions.isEmpty()) return true
-        return runCatching {
-            file.parentFile?.mkdirs()
-            val text = decisions.entries.joinToString(separator = "", postfix = "") { (key, state) ->
-                ReviewDecisionCodec.encodeLine(key, state) + "\n"
-            }
-            file.appendText(text)
-            lastLineCount += decisions.size
-            true
-        }.getOrDefault(false)
+        return synchronized(lock) {
+            runCatching {
+                file.parentFile?.mkdirs()
+                val text = decisions.entries.joinToString(separator = "", postfix = "") { (key, state) ->
+                    ReviewDecisionCodec.encodeLine(key, state) + "\n"
+                }
+                file.appendText(text)
+                lastLineCount += decisions.size
+                true
+            }.getOrDefault(false)
+        }
     }
 
     /**
-     * Rewrites the log with only [decisions], through a temporary file so an
-     * interrupted write cannot leave a half-written log in place of a good one.
+     * Rewrites the log keeping only the decisions whose key is in [activeKeys].
+     *
+     * Takes the keys to keep rather than the decisions to write, and re-reads the log
+     * under the lock, because the caller's map is a snapshot: it was built by
+     * replaying the file and walking the library, which takes long enough on a large
+     * library for several marks to land in between. Trusting it deleted those marks.
+     *
+     * Written through [writeFileAtomically], which fsyncs and then replaces the log in
+     * one atomic move, so a power cut cannot leave a zero-length file and a failed move
+     * leaves the original intact. The previous version deleted the log and retried the
+     * rename, which made the one situation where losing the user's entire review history
+     * hurt most the only one that could cause it.
      */
-    fun compact(decisions: Map<String, ReviewState>): Boolean = runCatching {
-        val lines = ReviewDecisionCodec.encode(decisions)
+    fun compact(activeKeys: Set<String>): Boolean = synchronized(lock) {
+        val live = runCatching {
+            ReviewDecisionCodec
+                .decode(if (file.isFile) file.readLines() else emptyList())
+                .filterKeys { it in activeKeys }
+        }.getOrElse { return@synchronized false }
+        val lines = ReviewDecisionCodec.encode(live)
         if (lines.isEmpty()) {
             file.delete()
             lastLineCount = 0
-            return@runCatching true
+            return@synchronized true
         }
-        file.parentFile?.mkdirs()
-        val temporary = File(file.parentFile, file.name + ".tmp")
-        temporary.writeText(lines.joinToString("\n", postfix = "\n"))
-        if (!temporary.renameTo(file)) {
-            file.delete()
-            if (!temporary.renameTo(file)) return@runCatching false
+        val written = writeFileAtomically(file, sync = true) { stream ->
+            lines.forEach { line ->
+                stream.write(line.toByteArray())
+                stream.write(NewLine)
+            }
         }
-        lastLineCount = lines.size
-        true
-    }.getOrDefault(false)
+        if (written) lastLineCount = lines.size
+        written
+    }
+
+    private companion object {
+        val NewLine = "\n".toByteArray()
+    }
 }
 
 /**
